@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.test.example
+!.env.example
+*.log
+.superpowers/
+.worktrees/
+.local/
+apps/backend/src/generated/

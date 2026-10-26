@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+  moduleFormat = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum TokenKind {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique @db.VarChar(254)
+  name String @db.VarChar(80)
+  passwordHash String @db.VarChar(255)
+  role Role @default(CUSTOMER)
+  emailVerifiedAt DateTime? @db.Timestamptz(6)
+  disabledAt DateTime? @db.Timestamptz(6)
+  sessionVersion Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  tokens AuthToken[]
+  @@map("users")
+}
+
+model AuthToken {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String @unique @db.VarChar(64)
+  kind TokenKind
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@index([userId, kind])
+  @@index([expiresAt])
+  @@map("auth_tokens")
+}
+
+// connect-pg-simple's server-side store; not exposed to HTTP clients.
+model Session {
+  sid String @id @db.VarChar(255)
+  sess Json @db.JsonB
+  expire DateTime @db.Timestamptz(6)
+  @@index([expire])
+  @@map("sessions")
+}

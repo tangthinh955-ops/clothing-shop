@@ -1,0 +1,42 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: clothing
+          POSTGRES_PASSWORD: ci_test_only
+          POSTGRES_DB: clothing_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U clothing -d clothing_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://clothing:ci_test_only@127.0.0.1:5432/clothing_test
+      APP_ORIGIN: http://127.0.0.1:5174
+      SESSION_SECRET: ci-ephemeral-only-not-for-deployment-1234567890
+      MAIL_MODE: preview
+      MAIL_PREVIEW_DIR: ../../.local/test-mailbox
+      SWAGGER_ENABLED: 'false'
+      TRUST_PROXY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci --no-fund
+      - run: npm run db:generate
+      - run: npm run db:migrate:test -w @clothing/backend
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:e2e:install -- --with-deps
+      - run: npm run test:e2e

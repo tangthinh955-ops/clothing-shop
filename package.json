@@ -1,0 +1,38 @@
+{
+  "name": "clothing-shop",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "engines": {
+    "node": ">=24.22.1 <25",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "setup:local": "node tools/setup-local.mjs",
+    "dev:backend": "npm run dev -w @clothing/backend",
+    "dev:frontend": "npm run dev -w @clothing/frontend",
+    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "node --test tools/*.test.mjs && npm run test --workspaces",
+    "test:integration": "npm run test:integration -w @clothing/backend",
+    "test:e2e": "node tools/test-e2e.mjs",
+    "test:e2e:install": "node tools/test-e2e.mjs install",
+    "db:generate": "npm run db:generate -w @clothing/backend",
+    "db:migrate": "npm run db:migrate -w @clothing/backend",
+    "admin:create": "npm run admin:create -w @clothing/backend"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true,
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true,
+    "@scarf/scarf": false
+  }
+}
