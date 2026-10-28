@@ -46,6 +46,10 @@ export interface Product {
   images: { id: string; url: string }[];
   variants: ProductVariant[];
 }
+export interface ProductImagesInput {
+  assetIds: string[];
+  expectedVersion: number;
+}
 export interface ProductPage {
   items: Product[];
   page: number;
@@ -58,4 +62,5 @@ export const productsApi = {
   detail: (id: string) => request<Product>(`/admin/products/${encodeURIComponent(id)}`),
   create: (input: ProductInput) => request<Product>('/admin/products', { method: 'POST', body: input }),
   update: (id: string, input: ProductUpdateInput) => request<Product>(`/admin/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: input }),
+  images: (id: string, input: ProductImagesInput) => request<Product>(`/admin/products/${encodeURIComponent(id)}/images`, { method: 'PUT', body: input }),
 };

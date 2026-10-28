@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { hash } from 'argon2';
 import { randomUUID } from 'node:crypto';
+import { unlink } from 'node:fs/promises';
+import path from 'node:path';
+import sharp from 'sharp';
 import { PrismaService } from '../../backend/dist/modules/prisma/prisma.service.js';
 import { readEnvironment } from '../../backend/dist/config/environment.js';
 
@@ -8,7 +11,7 @@ const prefix = `products-${randomUUID()}`;
 const adminEmail = `${prefix}-admin@example.test`;
 const customerEmail = `${prefix}-customer@example.test`;
 const password = 'products-e2e-only-password-123!';
-const slugs = [`${prefix}-one`, `${prefix}-two`, `${prefix}-edit`, `${prefix}-tab`, `${prefix}-blocked`, `${prefix}-sku-owner`] as const;
+const slugs = [`${prefix}-one`, `${prefix}-two`, `${prefix}-edit`, `${prefix}-tab`, `${prefix}-blocked`, `${prefix}-sku-owner`, `${prefix}-image`] as const;
 const sku = `M33-${randomUUID()}`;
 // Valid boundary: 64 characters without hyphens or other natural wrap points.
 const editSku = 'W'.repeat(32) + randomUUID().replaceAll('-', '').toUpperCase();
@@ -16,6 +19,7 @@ const publishedSku = `M341P-${randomUUID()}`.toUpperCase();
 const tabSku = `M341T-${randomUUID()}`.toUpperCase();
 const addedSku = `M342A-${randomUUID()}`.toUpperCase();
 const takenSku = `M342T-${randomUUID()}`.toUpperCase();
+const imageSku = `M35-${randomUUID()}`.toUpperCase();
 let categoryId = '';
 let db: PrismaService | undefined;
 
@@ -47,12 +51,19 @@ test.afterAll(async () => {
   try {
     const products = await db.product.findMany({ where: { slug: { in: [...slugs] } }, select: { id: true } });
     const productIds = products.map((product) => product.id);
+    await db.productImage.deleteMany({ where: { productId: { in: productIds } } });
     await db.inventory.deleteMany({ where: { variant: { productId: { in: productIds } } } });
     await db.variant.deleteMany({ where: { productId: { in: productIds } } });
     await db.product.deleteMany({ where: { id: { in: productIds } } });
     if (categoryId) await db.category.delete({ where: { id: categoryId } });
     const users = await db.user.findMany({ where: { email: { in: [adminEmail, customerEmail] } }, select: { id: true } });
     for (const user of users) {
+      // Only assets uploaded by this run's users; their WebP files live in the test upload folder.
+      const assets = await db.uploadAsset.findMany({ where: { ownerId: user.id } });
+      await db.uploadAsset.deleteMany({ where: { ownerId: user.id } });
+      for (const asset of assets) {
+        if (/^[0-9a-f-]{36}\.webp$/.test(asset.storageKey)) await unlink(path.resolve('../../.local/test-uploads', asset.storageKey)).catch(() => undefined);
+      }
       await db.session.deleteMany({ where: { sess: { path: ['userId'], equals: user.id } } });
       await db.user.delete({ where: { id: user.id } });
     }
@@ -271,4 +282,45 @@ test('edit page refuses products that are not drafts', async ({ page }) => {
   await expect(page.getByText(/Chỉ sản phẩm nháp được sửa ở phần này/)).toBeVisible();
   await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Lưu thay đổi', exact: true })).toHaveCount(0);
+});
+
+test('admin uploads a real image, rejects fake bytes, attaches it and keeps the info draft saveable', async ({ page }, info) => {
+  test.setTimeout(60000);
+  if (!db) throw new Error('Missing test DB');
+  const draft = await db.product.create({ data: { name: 'Áo có ảnh thử', slug: slugs[6], description: '', categoryId, priceFrom: 250000,
+    variants: { create: { sku: imageSku, size: 'M', color: 'be', price: 250000, active: true, inventory: { create: {} } } } } });
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(adminEmail);
+  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await page.goto(`/admin/products/${draft.id}`);
+  await expect(page.getByText('Sản phẩm chưa có ảnh. Cần ít nhất một ảnh trước khi xuất bản.')).toBeVisible();
+  await page.getByLabel('Tải ảnh sản phẩm').setInputFiles({ name: 'fake.png', mimeType: 'image/png', buffer: Buffer.from('<svg></svg>') });
+  await expect(page.getByRole('alert')).toContainText('Chỉ nhận JPEG, PNG, WebP tĩnh');
+  const image = await sharp({ create: { width: 300, height: 400, channels: 3, background: '#b5a78f' } }).png().toBuffer();
+  await page.getByLabel('Tải ảnh sản phẩm').setInputFiles({ name: 'ao.png', mimeType: 'image/png', buffer: image });
+  await expect(page.getByRole('img', { name: 'Ảnh 1 của Áo có ảnh thử (chưa lưu)' })).toBeVisible();
+  await page.getByLabel('Tên sản phẩm', { exact: true }).fill('Áo có ảnh đã sửa');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Lưu thứ tự ảnh', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Đã lưu ảnh');
+  const attached = await db.product.findUniqueOrThrow({ where: { id: draft.id }, include: { images: true } });
+  expect(attached.version).toBe(1);
+  expect(attached.images).toHaveLength(1);
+  expect(attached.images[0]?.position).toBe(0);
+  await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toHaveValue('Áo có ảnh đã sửa');
+  await page.screenshot({ path: info.outputPath('product-images-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/products$/);
+  expect(await db.product.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({ name: 'Áo có ảnh đã sửa', version: 2 });
+  await page.goto(`/admin/products/${draft.id}`);
+  const thumbnail = page.getByRole('img', { name: 'Ảnh 1 của Áo có ảnh đã sửa', exact: true });
+  await expect(thumbnail).toBeVisible();
+  await expect.poll(() => thumbnail.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+  const assetId = attached.images[0]?.assetId ?? '';
+  // The public media route serves only images of published products, so a draft image stays private.
+  const media = await page.request.get(`/api/v1/media/${assetId}`);
+  expect(media.status()).toBe(404);
 });

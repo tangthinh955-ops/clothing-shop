@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI ảnh/điều chỉnh tồn/lịch sử kho/xuất bản. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục, gỡ/sắp xếp ảnh, điều chỉnh tồn/lịch sử kho hoặc xuất bản. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -138,7 +138,7 @@ Tên 2–120 ký tự; slug tối đa 120 ký tự theo dạng `ao-cotton`; mô 
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductCreatePage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Test các phần đã làm: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products). Ca catalog toàn M3 giữ nguyên, chưa coi là đạt khi UI ảnh/kho/public chưa có.
 
-**Điểm dừng hiện tại: M3.4.2 (Người A) và M3.7.1 (Người B), chờ người dùng chạy thử.** Ảnh, điều chỉnh/lịch sử kho và xuất bản cần kế hoạch riêng được duyệt.
+**Điểm dừng hiện tại: M3.5 (Người A) và M3.7.1 (Người B), chờ người dùng chạy thử.** Gỡ/sắp xếp ảnh, điều chỉnh/lịch sử kho và xuất bản cần kế hoạch riêng được duyệt.
 
 ## M3.4.1 — admin sửa thông tin sản phẩm nháp
 
@@ -244,5 +244,42 @@ Admin sửa/thêm/tắt dòng biến thể → `validateVariants` kiểm tra SKU
 - `id` có/không: có `id` là cập nhật biến thể đã lưu, không có là tạo mới; backend từ chối nếu thiếu `id` của biến thể đã có.
 - `active`: tắt thay cho xóa; sản phẩm và biến thể đã có lịch sử không bị xóa.
 - `variants.<index>.<field>`: khóa lỗi theo dòng để báo đúng ô.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented`.
+
+## M3.5 — admin tải và gắn ảnh thật cho sản phẩm nháp
+
+Giữ backend/frontend local, đăng nhập ADMIN, có một sản phẩm **Nháp**. Không cần dependency hoặc migration mới. Ảnh local lưu ở `.local/uploads` (ngoài Git); môi trường production chưa cấu hình lưu ảnh nên upload bị từ chối ở đó.
+
+1. Mở **http://127.0.0.1:5173/admin/products** → **Sửa** một sản phẩm nháp → khung **Ảnh sản phẩm** ở đầu trang.
+2. Bấm **Chọn ảnh để tải lên** (hoặc Tab tới ô chọn file rồi Enter) → chọn ảnh JPEG/PNG/WebP → thấy thumbnail "Ảnh n · chưa lưu".
+3. Bấm **Lưu thứ tự ảnh** → báo "Đã lưu ảnh sản phẩm."; refresh vẫn thấy ảnh.
+4. Có thể sửa tên trước khi lưu ảnh: sau khi lưu ảnh, phần đang nhập còn nguyên và **Lưu thay đổi** vẫn thành công.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Chọn file GIF/SVG/PDF | Báo "Chỉ nhận ảnh JPEG, PNG hoặc WebP.", không gửi request |
+| Chọn ảnh trên 5 MB | Báo "Ảnh vượt quá 5 MB." |
+| Đổi đuôi một file không phải ảnh thành `.png` | Server giải mã thất bại, báo "Chỉ nhận JPEG, PNG, WebP tĩnh, mỗi chiều 64–8000…" |
+| Ảnh nhỏ hơn 64 px hoặc ảnh động | Server từ chối với thông báo như trên |
+| Bấm **Bỏ** ở ảnh chưa lưu | Ảnh biến mất, không được gắn; file tạm được dọn sau 24 giờ |
+| Tải hơn 10 ảnh trong 1 phút | Server báo thao tác quá nhanh (429) |
+| Đủ 8 ảnh | Ô chọn file bị khóa, ghi "Đã đủ 8 ảnh cho một sản phẩm." |
+| Đang tải ảnh / đang lưu ảnh | Lưu thay đổi, Tải dữ liệu mới và các nút ảnh bị khóa đến khi xong |
+| Lưu ảnh khi tab khác đã sửa sản phẩm | Báo lỗi version từ server, ảnh chưa lưu vẫn còn; bấm Tải dữ liệu mới rồi tải lại ảnh |
+| Mở `/api/v1/media/<id ảnh>` khi sản phẩm còn nháp | 404, ảnh nháp không công khai |
+
+Chưa gỡ hoặc đổi thứ tự ảnh đã lưu (M3.6). Bấm Tải dữ liệu mới sẽ bỏ cả ảnh chưa lưu như mọi phần đang nhập khác.
+
+### Luồng dữ liệu / key M3.5
+
+Chọn file → `uploadsApi.image` POST multipart `/api/v1/admin/uploads/images` (CSRF) → `UploadsService` giải mã bằng sharp, chuyển WebP, ghi file ngoài transaction và tạo `UploadAsset` tạm → thumbnail "chưa lưu" → **Lưu thứ tự ảnh** → `productsApi.images` PUT `/api/v1/admin/products/<id>/images` `{assetIds, expectedVersion}` → `ProductsService.images` kiểm tra version, chủ asset và hạn 24 giờ, ghi `ProductImage` trong transaction → page nhận version mới.
+
+- `UploadAsset` tạm: ảnh đã tải nhưng chưa gắn; chỉ người tải xem được; dọn sau 24 giờ nếu không gắn.
+- `assetIds`: toàn bộ danh sách ảnh theo thứ tự muốn lưu (ảnh cũ + ảnh mới); server thay cả danh sách.
+- Chuỗi `version`: lưu ảnh tăng version; page lấy version trả về cho form thông tin nên phần đang nhập vẫn lưu được.
+- Khóa `operation` của page có thêm `images`, để lưu ảnh không chạy chồng với lưu thông tin hoặc tải lại.
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented`.

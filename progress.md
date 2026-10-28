@@ -16,15 +16,69 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.4.2 (Người A) đã có sửa/thêm/tắt biến thể của sản phẩm nháp; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có ảnh, điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
+| M3 Catalog/ảnh/kho | M3.5 (Người A) đã có tải và gắn ảnh thật cho sản phẩm nháp, sau M3.4.2 sửa biến thể; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có gỡ/sắp xếp ảnh, điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — M3.5 (Người A): tải và gắn ảnh thật
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.5 và cho commit M3.4.2 trước (`31ef890` trên `feat/m3.4.2-variants`). M3.5 làm trên nhánh `feat/m3.5-images` tạo từ nhánh đó. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push M3.5.
+
+### File thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/api/uploads.api.ts` (mới) | `uploadsApi.image(file)` gửi multipart qua client CSRF chung |
+| `apps/frontend/src/features/admin/products/api/products.api.ts` | `ProductImagesInput` và `productsApi.images` (PUT) |
+| `apps/frontend/src/features/admin/products/components/ProductImagesManager.tsx` (mới) | Chọn file (ẩn trực quan nhưng Tab tới được), kiểm tra loại/5 MB/8 ảnh, thumbnail, ảnh chưa lưu, Lưu thứ tự ảnh, thông báo lỗi/thành công |
+| `apps/frontend/src/features/admin/products/components/ProductImagesManager.test.tsx` (mới) | 8 test: tải và lưu đúng thứ tự, chặn loại/kích thước, lỗi 415/413, bỏ ảnh chưa lưu, lỗi gắn giữ ảnh, chống tải lặp, giới hạn 8, khóa khi page bận |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Khung ảnh, thao tác `images` trong khóa chung, cập nhật `version`/`images` của snapshot sau PUT; từ chối (không im lặng) khi không lấy được khóa |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | Bỏ bản copy snapshot riêng, đọc `expectedVersion` từ snapshot của page |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.test.tsx` | Stub upload/PUT ảnh; test chuỗi version ảnh → thông tin và khóa nút trong lúc gắn ảnh |
+| `apps/frontend/e2e/products.spec.ts` | Ca ảnh thật: file giả 415, PNG sharp, lưu ảnh rồi lưu tên (version 1 → 2), thumbnail tải được sau refresh, media công khai 404 cho nháp, mobile; cleanup xóa thêm product_images/upload_assets và file `.local/test-uploads` của lượt chạy |
+| `.github/workflows/ci.yml`, `README.md`, `docs/local-trial-m3.md`, `docs/architecture.md`, `docs/m3-implementation-plan.md`, `docs/plan.md` | Trạng thái, hướng dẫn thử và tổ chức code M3.5 |
+
+Đúng danh sách kế hoạch. Backend, schema, migration, dependency không đổi.
+
+### Data flow / key
+
+Chọn file → POST multipart `/admin/uploads/images` → sharp giải mã, ghi WebP ngoài transaction, tạo `UploadAsset` tạm → thumbnail chưa lưu → Lưu thứ tự ảnh → PUT `/admin/products/:id/images` `{assetIds, expectedVersion}` → transaction kiểm tra version/chủ asset/24 giờ, ghi `ProductImage` → page nhận version mới, form thông tin giữ phần đang nhập.
+
+- `UploadAsset` tạm: ảnh đã tải chưa gắn, riêng người tải, dọn sau 24 giờ.
+- `assetIds`: danh sách đầy đủ theo thứ tự; server thay toàn bộ.
+- Chuỗi `version`: PUT chỉ thành công trên version đã chốt nên version trả về an toàn cho form thông tin.
+- `operation = 'images'`: khóa chung với lưu/tải lại.
+
+### Kiểm tra thực tế
+
+| Lệnh | Kết quả |
+|---|---|
+| Test mới trước khi viết code | Page test fail vì chưa có ô "Tải ảnh sản phẩm"; test component fail vì chưa có `uploads.api` (RED) |
+| `npm run typecheck` | Đạt |
+| `npm test` | 9 backend + 89 frontend đạt (tools 8 đạt ở lượt M3.4.2, không đổi) |
+| `npm run build` | Đạt; cảnh báo chunk Vite có sẵn |
+| `npm run test:integration` | 29/29 đạt |
+| `npm run test:e2e:implemented` | 12/12 đạt, khoảng 26 giây |
+| Ảnh mobile 390px | Agent đã xem: thumbnail ảnh thật, thông báo đã lưu, form không tràn ngang |
+| Thư mục `.local/test-uploads` sau E2E | Không còn file của lượt E2E; còn 4 file nhỏ có từ trước và từ lượt integration (xem giới hạn) |
+
+Lệnh chạy bằng npm trực tiếp với Node 24.15.0 như M3.4.2 (chưa có Node 24.22.1+ trên máy). Rà lại code phát hiện `saveImages` trả về im lặng khi không lấy được khóa sẽ làm khung ảnh báo thành công giả; đã đổi sang từ chối.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Chưa gỡ/đổi thứ tự ảnh đã lưu (M3.6). Tải dữ liệu mới bỏ cả ảnh chưa lưu.
+- Upload chỉ hoạt động local; production từ chối vì chưa cấu hình nơi lưu ảnh.
+- `catalog.integration.spec.ts` có sẵn để lại một file WebP nhỏ trong `.local/test-uploads` mỗi lần chạy; ngoài phạm vi M3.5, cần sửa riêng.
+- `e2e/catalog.spec.ts` mong trang tạo sản phẩm chuyển sang trang sửa; hiện về danh sách, để M3.12 xử lý.
+- Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m35--admin-tải-và-gắn-ảnh-thật-cho-sản-phẩm-nháp).
+
+**Dừng ở M3.5 chờ người dùng thử.** M3.6 (gỡ/sắp xếp ảnh) cần kế hoạch riêng được duyệt.
+
 ## Ngày 29/10/2026 — M3.4.2 (Người A): sửa, thêm và tắt biến thể
 
-**Phạm vi:** người dùng yêu cầu bắt đầu phần Người A theo kế hoạch M3.4.2 đã gửi; giữ quy tắc chỉ sản phẩm DRAFT. Nhánh `feat/m3.4.2-variants`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push.
+**Phạm vi:** người dùng yêu cầu bắt đầu phần Người A theo kế hoạch M3.4.2 đã gửi; giữ quy tắc chỉ sản phẩm DRAFT. Nhánh `feat/m3.4.2-variants`. **Đã viết, agent đã kiểm tra local; người dùng cho tiếp tục; đã commit `31ef890`, chưa push.**
 
 ### File thực tế
 

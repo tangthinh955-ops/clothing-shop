@@ -4,25 +4,29 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../../../../shared/api/client';
 import { categoriesApi } from '../../categories/api/categories.api';
-import { productsApi, productsKey, type Product, type ProductUpdateInput } from '../api/products.api';
+import { productsApi, productsKey, type Product, type ProductImagesInput, type ProductUpdateInput } from '../api/products.api';
 import { ProductEditForm } from '../components/ProductEditForm';
+import { ProductImagesManager } from '../components/ProductImagesManager';
+
+type Operation = 'save' | 'reload' | 'images';
 
 export function ProductEditPage() {
   const productId = useParams()['productId'] ?? '';
   const categories = useQuery({ queryKey: ['admin-categories'], queryFn: categoriesApi.list, retry: false });
   const detail = useQuery({ queryKey: [...productsKey, 'detail', productId], queryFn: () => productsApi.detail(productId), enabled: productId !== '', retry: false });
   const update = useMutation({ mutationFn: (input: ProductUpdateInput) => productsApi.update(productId, input), retry: false });
+  const attach = useMutation({ mutationFn: (input: ProductImagesInput) => productsApi.images(productId, input), retry: false });
   // Snapshot freezes the product/version this edit session started from; background refetches never rebase it.
   const [snapshot, setSnapshot] = useState<Product | null>(null);
   const [revision, setRevision] = useState(0);
-  const operationRef = useRef<'save' | 'reload' | null>(null);
-  const [operation, setOperation] = useState<'save' | 'reload' | null>(null);
+  const operationRef = useRef<Operation | null>(null);
+  const [operation, setOperation] = useState<Operation | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   if (detail.data && snapshot === null) setSnapshot(detail.data);
 
-  function beginOperation(next: 'save' | 'reload') {
+  function beginOperation(next: Operation) {
     // The page owns this lock so a form remount cannot clear an in-flight operation.
     if (operationRef.current !== null) return false;
     operationRef.current = next;
@@ -41,6 +45,17 @@ export function ProductEditPage() {
       const saved = await update.mutateAsync(input);
       await queryClient.invalidateQueries({ queryKey: productsKey });
       void navigate('/admin/products', { replace: true, state: { updatedName: saved.name } });
+    } finally { endOperation(); }
+  }
+
+  async function saveImages(assetIds: string[]) {
+    // Reject rather than return: a silent return would let the manager report success and drop its unsaved images.
+    if (!snapshot || !beginOperation('images')) throw new Error('Another product operation is running');
+    try {
+      const saved = await attach.mutateAsync({ assetIds, expectedVersion: snapshot.version });
+      // The PUT only succeeds on the captured version, so the returned version covers just this image change: adopting it keeps the info draft valid.
+      setSnapshot((current) => current && { ...current, version: saved.version, images: saved.images });
+      void queryClient.invalidateQueries({ queryKey: productsKey });
     } finally { endOperation(); }
   }
 
@@ -80,6 +95,9 @@ export function ProductEditPage() {
         <Typography variant="body2" color="text.secondary">Tải dữ liệu mới sẽ thay toàn bộ nội dung đang nhập bằng bản mới nhất trên máy chủ.</Typography>
         {operation === 'reload' && <Typography role="status">Đang tải dữ liệu mới…</Typography>}
       </Stack>
+      <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
+        <ProductImagesManager key={revision} productName={snapshot.name} images={snapshot.images} disabled={operation !== null} onSave={saveImages} />
+      </Paper>
       <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
         <ProductEditForm key={revision} product={snapshot} categories={categories.data ?? []} disabled={operation !== null} onSubmit={save} />
       </Paper>

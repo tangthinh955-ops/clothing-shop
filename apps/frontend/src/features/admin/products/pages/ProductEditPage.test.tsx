@@ -21,10 +21,14 @@ afterEach(() => vi.restoreAllMocks());
 
 function stubApi() {
   const stubs: Record<string, unknown> = { categories: [category], detail, patch: { ...detail, version: 4 },
-    list: { items: [], page: 1, pageSize: 24, total: 0 } };
+    list: { items: [], page: 1, pageSize: 24, total: 0 },
+    upload: { id: 'asset-new', width: 300, height: 400, url: '/api/v1/admin/uploads/images/asset-new' },
+    images: { ...detail, version: 4, images: [{ id: 'asset-new', url: '/api/v1/admin/uploads/images/asset-new' }] } };
   const spy = vi.spyOn(client, 'request').mockImplementation(async (path: string, options?: client.RequestOptions) => {
     const respond = (value: unknown) => { if (value instanceof Error) throw value; return value; };
     if (path === '/admin/categories') return respond(stubs.categories);
+    if (path === '/admin/uploads/images' && options?.method === 'POST') return respond(stubs.upload);
+    if (path === '/admin/products/product-test/images' && options?.method === 'PUT') return respond(stubs.images);
     if (path === '/admin/products/product-test' && options?.method === 'PATCH') return respond(stubs.patch);
     if (path === '/admin/products/product-test') return respond(stubs.detail);
     if (path.startsWith('/admin/products?page=')) return respond(stubs.list);
@@ -161,6 +165,32 @@ describe('edit a draft product', () => {
       const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
       expect((patch?.[1]?.body as Record<string, unknown>)?.['expectedVersion']).toBe(3);
       expect((patch?.[1]?.body as Record<string, unknown>)?.['name']).toBe('Bản đang nhập');
+    });
+  });
+
+  it('attaches an image with the captured version, then saves info with the version returned by that image save', async () => {
+    const { spy, stubs } = stubApi();
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Tên sản phẩm'), { target: { value: 'Bản đang nhập' } });
+    await userEvent.upload(screen.getByLabelText('Tải ảnh sản phẩm'), new File(['png'], 'ao.png', { type: 'image/png' }));
+    let finishImages: (value: unknown) => void = () => { throw new Error('Image save not started'); };
+    stubs.images = new Promise((resolve) => { finishImages = resolve; });
+    await userEvent.click(await screen.findByRole('button', { name: 'Lưu thứ tự ảnh' }));
+    const put = spy.mock.calls.find(([, options]) => options?.method === 'PUT');
+    expect(put?.[0]).toBe('/admin/products/product-test/images');
+    expect(put?.[1]?.body).toEqual({ assetIds: ['asset-new'], expectedVersion: 3 });
+    expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Tải dữ liệu mới' })).toBeDisabled();
+    await act(async () => {
+      finishImages({ ...detail, version: 4, images: [{ id: 'asset-new', url: '/api/v1/admin/uploads/images/asset-new' }] });
+    });
+    expect(await screen.findByText('Đã lưu ảnh sản phẩm.')).toBeVisible();
+    expect(screen.getByRole('img', { name: 'Ảnh 1 của Áo cotton' })).toBeVisible();
+    expect(screen.getByLabelText('Tên sản phẩm')).toHaveValue('Bản đang nhập');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => {
+      const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
+      expect(patch?.[1]?.body).toMatchObject({ name: 'Bản đang nhập', expectedVersion: 4 });
     });
   });
 

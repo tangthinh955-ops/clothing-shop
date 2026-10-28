@@ -169,6 +169,19 @@ File: `api/products.api.ts` thêm detail/update + `VariantUpdateInput`/`ProductU
 | Giới hạn | Đổi chéo size/màu giữa hai biến thể trong một lần lưu bị 409 do unique (product,size,color) và cập nhật tuần tự; backend không đổi |
 | Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m342--admin-sửa-thêm-và-tắt-biến-thể-của-sản-phẩm-nháp); M3.5 cần kế hoạch riêng |
 
+## M3.5 — admin tải và gắn ảnh thật (Người A)
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.5 ngày 29/10/2026. Nhánh `feat/m3.5-images` tạo từ `feat/m3.4.2-variants`. Đã triển khai và kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin tải ảnh JPEG/PNG/WebP thật và gắn vào sản phẩm nháp, refresh vẫn thấy thumbnail |
+| UI | Khung Ảnh sản phẩm: ô chọn file "Tải ảnh sản phẩm", ảnh đã gắn, ảnh chưa lưu có nút Bỏ, nút Lưu thứ tự ảnh, thông báo Đã lưu ảnh sản phẩm |
+| API | POST `/admin/uploads/images` (multipart) và PUT `/admin/products/:id/images` sẵn có; backend không đổi |
+| Version | Lưu ảnh và lưu thông tin dùng chung version; page nhận version mới sau PUT để form thông tin giữ phần đang nhập và vẫn lưu được |
+| Kiểm tra | 8 test khung ảnh, 1 test trang về chuỗi version và khóa; E2E ảnh thật, file giả bị 415, thumbnail tải được sau refresh, ảnh nháp không công khai, mobile 390px |
+| Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m35--admin-tải-và-gắn-ảnh-thật-cho-sản-phẩm-nháp); M3.6 gỡ/sắp xếp ảnh cần kế hoạch riêng |
+
 ## Thiết kế kỹ thuật tham khảo
 
 Các mục Task 1–3 phía dưới là bản thiết kế M3 ban đầu, dùng tra cứu contract/test; không phải lịch chạy nối tiếp và checkbox không đại diện tiến độ. Bảng chia phần ở trên và [progress](../progress.md) là điểm theo dõi hiện tại.
