@@ -8,7 +8,13 @@ import { ProductImagesManager } from './ProductImagesManager';
 const saved = { id: 'asset-saved', url: '/api/v1/admin/uploads/images/asset-saved' };
 const uploaded: UploadedImage = { id: 'asset-new', width: 300, height: 400, url: '/api/v1/admin/uploads/images/asset-new' };
 
+const three = ['a', 'b', 'c'].map((id) => ({ id, url: `/${id}` }));
+
 afterEach(() => vi.restoreAllMocks());
+
+function sources() {
+  return screen.getAllByRole('img').map((image) => image.getAttribute('src'));
+}
 
 function png(name = 'ao.png') {
   return new File(['png-bytes'], name, { type: 'image/png' });
@@ -99,6 +105,46 @@ describe('upload and attach product images', () => {
     renderManager({ images: eight });
     expect(screen.getByLabelText('Tải ảnh sản phẩm')).toBeDisabled();
     expect(screen.getByText('Đã đủ 8 ảnh cho một sản phẩm.')).toBeVisible();
+  });
+
+  it('reorders images, marks the first as main, and saves the new order', async () => {
+    const onSave = renderManager({ images: three });
+    expect(sources()).toEqual(['/a', '/b', '/c']);
+    expect(screen.getByText('Ảnh chính')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Đưa ảnh 1 lên trước' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Đưa ảnh 3 ra sau' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Đưa ảnh 3 lên trước' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Đưa ảnh 1 ra sau' }));
+    expect(sources()).toEqual(['/c', '/a', '/b']);
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' }));
+    expect(onSave).toHaveBeenCalledWith(['c', 'a', 'b']);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Đã lưu ảnh sản phẩm.');
+    expect(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' })).toBeDisabled();
+  });
+
+  it('removes a saved image with a warning, and Hủy thay đổi ảnh restores the saved list', async () => {
+    const onSave = renderManager({ images: three });
+    await userEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh 2' }));
+    expect(sources()).toEqual(['/a', '/c']);
+    expect(screen.getByText('Ảnh đã gỡ sẽ không khôi phục được sau khi lưu.')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Hủy thay đổi ảnh' }));
+    expect(sources()).toEqual(['/a', '/b', '/c']);
+    expect(screen.queryByText('Ảnh đã gỡ sẽ không khôi phục được sau khi lưu.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh 2' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' }));
+    expect(onSave).toHaveBeenCalledWith(['a', 'c']);
+  });
+
+  it('lets a new upload become the main image before saving', async () => {
+    vi.spyOn(uploadsApi, 'image').mockResolvedValue(uploaded);
+    const onSave = renderManager();
+    await userEvent.upload(screen.getByLabelText('Tải ảnh sản phẩm'), png());
+    await userEvent.click(await screen.findByRole('button', { name: 'Đưa ảnh 2 lên trước' }));
+    expect(screen.getByRole('img', { name: 'Ảnh 1 của Áo cotton (chưa lưu)' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thứ tự ảnh' }));
+    expect(onSave).toHaveBeenCalledWith(['asset-new', 'asset-saved']);
   });
 
   it('locks upload and save while the page holds another operation', () => {

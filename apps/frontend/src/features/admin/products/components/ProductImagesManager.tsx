@@ -2,6 +2,7 @@ import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { ApiError } from '../../../../shared/api/client';
 import { uploadsApi } from '../api/uploads.api';
+import { ProductImageTile } from './ProductImageTile';
 
 const maxImages = 8;
 const maxBytes = 5 * 1024 * 1024;
@@ -27,15 +28,19 @@ function uploadError(cause: unknown) {
 }
 
 export function ProductImagesManager({ productName, images, disabled, onSave }: Props) {
-  // Uploaded but not yet attached; the server cleans unattached assets after 24 hours.
-  const [pending, setPending] = useState<ImageRef[]>([]);
+  // `saved` is the list the server holds; `rows` is the order being edited, including uploads not attached yet
+  // (the server cleans unattached uploads after 24 hours).
+  const [saved, setSaved] = useState<ImageRef[]>(images);
+  const [rows, setRows] = useState<ImageRef[]>(images);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ severity: 'error' | 'success'; text: string } | null>(null);
   const busy = useRef(false);
   const hintId = useId();
-  const total = images.length + pending.length;
-  const full = total >= maxImages;
+  const savedIds = new Set(saved.map((image) => image.id));
+  const changed = rows.map((image) => image.id).join() !== saved.map((image) => image.id).join();
+  const removesSaved = saved.some((image) => !rows.some((row) => row.id === image.id));
+  const full = rows.length >= maxImages;
   const locked = disabled || uploading || saving;
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
@@ -55,7 +60,7 @@ export function ProductImagesManager({ productName, images, disabled, onSave }: 
     setMessage(null);
     try {
       const uploaded = await uploadsApi.image(file);
-      setPending((rows) => [...rows, { id: uploaded.id, url: uploaded.url }]);
+      setRows((current) => [...current, { id: uploaded.id, url: uploaded.url }]);
     } catch (cause: unknown) {
       setMessage({ severity: 'error', text: uploadError(cause) });
     } finally {
@@ -64,14 +69,24 @@ export function ProductImagesManager({ productName, images, disabled, onSave }: 
     }
   }
 
+  function move(index: number, offset: -1 | 1) {
+    setRows((current) => {
+      const next = [...current];
+      const [image] = next.splice(index, 1);
+      if (image) next.splice(index + offset, 0, image);
+      return next;
+    });
+  }
+
   async function save() {
-    if (busy.current || disabled || !pending.length) return;
+    if (busy.current || disabled || !changed) return;
     busy.current = true;
     setSaving(true);
     setMessage(null);
     try {
-      await onSave([...images, ...pending].map((image) => image.id));
-      setPending([]);
+      await onSave(rows.map((image) => image.id));
+      // The server replaces the whole list with exactly what was sent, so it becomes the new saved baseline.
+      setSaved(rows);
       setMessage({ severity: 'success', text: 'Đã lưu ảnh sản phẩm.' });
     } catch (cause: unknown) {
       setMessage({ severity: 'error', text: cause instanceof ApiError ? cause.message : 'Chưa lưu được ảnh. Vui lòng thử lại.' });
@@ -81,25 +96,14 @@ export function ProductImagesManager({ productName, images, disabled, onSave }: 
     }
   }
 
-  const rows = [...images.map((image) => ({ ...image, saved: true })), ...pending.map((image) => ({ ...image, saved: false }))];
-
   return <Stack spacing={2.5} aria-busy={locked}>
     <Typography component="h2" variant="h5">Ảnh sản phẩm</Typography>
     {message && <Alert severity={message.severity}>{message.text}</Alert>}
     {rows.length === 0 && <Typography color="text.secondary">Sản phẩm chưa có ảnh. Cần ít nhất một ảnh trước khi xuất bản.</Typography>}
     {rows.length > 0 && <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-      {rows.map((image, index) => {
-        const position = index + 1;
-        return <Box component="li" key={image.id} sx={{ minWidth: 0 }}>
-          <Box component="img" src={image.url} alt={`Ảnh ${position} của ${productName}${image.saved ? '' : ' (chưa lưu)'}`}
-            sx={{ display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', bgcolor: 'action.hover' }} />
-          <Stack direction="row" useFlexGap sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
-            <Typography variant="body2">Ảnh {position}{image.saved ? '' : ' · chưa lưu'}</Typography>
-            {!image.saved && <Button size="small" color="inherit" disabled={locked} aria-label={`Bỏ ảnh chưa lưu ${position}`}
-              onClick={() => setPending((current) => current.filter((row) => row.id !== image.id))}>Bỏ</Button>}
-          </Stack>
-        </Box>;
-      })}
+      {rows.map((image, index) => <ProductImageTile key={image.id} productName={productName} url={image.url} position={index + 1}
+        total={rows.length} saved={savedIds.has(image.id)} disabled={locked} onMove={(offset) => move(index, offset)}
+        onRemove={() => setRows((current) => current.filter((row) => row.id !== image.id))} />)}
     </Box>}
     <Box>
       <Box component="label" sx={{ position: 'relative', display: 'inline-flex',
@@ -114,8 +118,12 @@ export function ProductImagesManager({ productName, images, disabled, onSave }: 
       </Typography>
       {uploading && <Typography role="status" sx={{ mt: 1 }}>Đang tải ảnh lên…</Typography>}
     </Box>
-    <Button variant="contained" sx={{ alignSelf: 'flex-start' }} disabled={locked || !pending.length} onClick={() => { void save(); }}>
-      {saving ? 'Đang lưu ảnh…' : 'Lưu thứ tự ảnh'}
-    </Button>
+    {removesSaved && <Alert severity="warning" role="status">Ảnh đã gỡ sẽ không khôi phục được sau khi lưu.</Alert>}
+    <Stack direction="row" useFlexGap sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+      <Button variant="contained" disabled={locked || !changed} onClick={() => { void save(); }}>
+        {saving ? 'Đang lưu ảnh…' : 'Lưu thứ tự ảnh'}
+      </Button>
+      <Button variant="outlined" disabled={locked || !changed} onClick={() => setRows(saved)}>Hủy thay đổi ảnh</Button>
+    </Stack>
   </Stack>;
 }

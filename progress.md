@@ -16,15 +16,68 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.5 (Người A) đã có tải và gắn ảnh thật cho sản phẩm nháp, sau M3.4.2 sửa biến thể; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có gỡ/sắp xếp ảnh, điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
+| M3 Catalog/ảnh/kho | M3.6 (Người A) đã có sắp xếp/gỡ ảnh, sau M3.4.2 biến thể và M3.5 gắn ảnh (người dùng đã thử M3.5); M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — Môi trường: Node 24.22.1 local và DB local
+
+- Người dùng yêu cầu cài Node. Tải `node-v24.22.1-win-x64.zip` từ nodejs.org, SHA-256 khớp `SHASUMS256.txt`, giải nén vào `.local/node-v24.22.1-win-x64` (bị Git bỏ qua). Không đổi Node toàn máy. `./tools/npm.ps1` chạy được từ đây.
+- DB `clothing_local` trên máy này chưa có migration (0 bảng) nên đăng nhập lỗi 500 `relation "sessions" does not exist`. Đã chạy `npm run db:migrate` (migrate deploy) trên DB trống; người dùng yêu cầu tạo admin và agent chạy `admin:create` với mật khẩu người dùng cung cấp (không ghi vào file/log).
+
+## Ngày 29/10/2026 — M3.6 (Người A): sắp xếp và gỡ ảnh
+
+**Phạm vi:** người dùng đã thử M3.5 (ảnh hiển thị và lưu được), duyệt kế hoạch M3.6 và cho commit M3.5 (`3e2bd91`). Nhánh `feat/m3.6-image-order` tạo từ `feat/m3.5-images`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push M3.6.
+
+### File thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/components/ProductImagesManager.tsx` | Chuyển sang `saved`/`rows`: lên/xuống, gỡ ảnh đã lưu, Hủy thay đổi ảnh, Lưu chỉ bật khi khác bản đã lưu, cảnh báo khi gỡ |
+| `apps/frontend/src/features/admin/products/components/ProductImageTile.tsx` (mới) | Một ô ảnh: thumbnail, nhãn Ảnh chính, nút Lên/Xuống/Gỡ (hoặc Bỏ) có aria-label theo vị trí |
+| `apps/frontend/src/features/admin/products/components/ProductImagesManager.test.tsx` | 3 test mới: sắp xếp và lưu đúng thứ tự, gỡ + hủy + lưu, ảnh mới thành ảnh chính |
+| `apps/frontend/e2e/product-images.spec.ts` (mới) | Fixture/cleanup riêng; ca M3.5 chuyển sang; ca M3.6 với 2 ảnh thật, kiểm tra `position` trong DB, hủy rồi gỡ, refresh, mobile |
+| `apps/frontend/e2e/products.spec.ts` | Bỏ ca ảnh và phần dọn ảnh; giống hệt bản M3.4.2 |
+| `package.json` | Thêm `product-images.spec.ts` vào `test:e2e:implemented` |
+| `.github/workflows/ci.yml`, `README.md`, `docs/local-trial-m3.md`, `docs/architecture.md`, `docs/m3-implementation-plan.md`, `docs/plan.md` | Trạng thái, hướng dẫn thử và tổ chức code M3.6 |
+
+Khác kế hoạch: tách E2E ảnh sang file riêng vì `products.spec.ts` đã 326 dòng; chỉ chuyển ca có sẵn, không đổi nội dung kiểm tra (thêm `animations: 'disabled'` cho ảnh chụp). Backend, schema, migration, dependency không đổi.
+
+### Data flow / key
+
+Lên/Xuống/Gỡ chỉ đổi `rows` trong trình duyệt → Lưu thứ tự ảnh → PUT `/admin/products/:id/images` với `assetIds` theo thứ tự và `expectedVersion` → transaction xóa danh sách cũ, ghi `position` 0..n → page nhận version mới, `rows` thành `saved`.
+
+- `saved` / `rows`: bản server đang giữ và bản đang chỉnh.
+- `position` 0: ảnh chính.
+- Ảnh đã gỡ và lưu không khôi phục được (asset quá 24 giờ không gắn lại được và bị dọn).
+
+### Kiểm tra thực tế (Node 24.22.1 qua `./tools/npm.ps1`)
+
+| Lệnh | Kết quả |
+|---|---|
+| 3 test mới trước khi viết code | 3/3 fail vì chưa có nút Lên/Gỡ/Hủy (RED) |
+| `run typecheck` | Đạt |
+| `test` | 8 tools + 9 backend + 92 frontend đạt |
+| `run build` | Exit 0; cảnh báo chunk Vite có sẵn |
+| `run test:integration` | 29/29 đạt |
+| `run test:e2e:implemented` | 13/13 đạt, khoảng 29 giây |
+| Ảnh mobile 390px | Agent đã xem: một ảnh còn lại có Ảnh chính, Lên/Xuống tắt, Lưu/Hủy bật, cảnh báo gỡ rõ, không tràn ngang |
+
+Ảnh chụp đầu tiên cho thấy nút Lưu còn xám vì chụp giữa hiệu ứng chuyển màu 250ms của MUI; thêm `animations: 'disabled'` cho `page.screenshot` và chạy lại spec ảnh (2/2 đạt) thì trạng thái nút khớp logic. Rà lại: đổi cảnh báo gỡ từ chữ màu `warning.main` (tương phản thấp) sang `Alert` warning `role="status"`.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Sắp xếp bằng nút Lên/Xuống, chưa có kéo-thả.
+- Ảnh đã gỡ và lưu không lấy lại được.
+- Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m36--admin-sắp-xếp-và-gỡ-ảnh-đã-gắn).
+
+**Dừng ở M3.6 chờ người dùng thử.** M3.8 (xuất bản/ẩn) cần kế hoạch riêng được duyệt.
+
 ## Ngày 29/10/2026 — M3.5 (Người A): tải và gắn ảnh thật
 
-**Phạm vi:** người dùng duyệt kế hoạch M3.5 và cho commit M3.4.2 trước (`31ef890` trên `feat/m3.4.2-variants`). M3.5 làm trên nhánh `feat/m3.5-images` tạo từ nhánh đó. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push M3.5.
+**Phạm vi:** người dùng duyệt kế hoạch M3.5 và cho commit M3.4.2 trước (`31ef890` trên `feat/m3.4.2-variants`). M3.5 làm trên nhánh `feat/m3.5-images` tạo từ nhánh đó. **Đã viết, agent đã kiểm tra local; người dùng đã thử (ảnh hiển thị và lưu được); đã commit `3e2bd91`, chưa push.**
 
 ### File thực tế
 

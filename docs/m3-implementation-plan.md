@@ -182,6 +182,19 @@ File: `api/products.api.ts` thêm detail/update + `VariantUpdateInput`/`ProductU
 | Kiểm tra | 8 test khung ảnh, 1 test trang về chuỗi version và khóa; E2E ảnh thật, file giả bị 415, thumbnail tải được sau refresh, ảnh nháp không công khai, mobile 390px |
 | Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m35--admin-tải-và-gắn-ảnh-thật-cho-sản-phẩm-nháp); M3.6 gỡ/sắp xếp ảnh cần kế hoạch riêng |
 
+## M3.6 — admin sắp xếp và gỡ ảnh (Người A)
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.6 ngày 29/10/2026 và cho commit M3.5 trước (`3e2bd91`). Nhánh `feat/m3.6-image-order` tạo từ `feat/m3.5-images`. Đã triển khai và kiểm tra local bằng Node 24.22.1; chờ người dùng chạy thử, chưa nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin đổi thứ tự ảnh (ảnh 1 là ảnh chính) và gỡ ảnh đã gắn của sản phẩm nháp |
+| UI | Mỗi ảnh có Lên/Xuống/Gỡ (ảnh chưa lưu: Bỏ), nhãn Ảnh chính, Hủy thay đổi ảnh, cảnh báo khi gỡ ảnh đã lưu; Lưu chỉ bật khi có thay đổi |
+| API | PUT `/admin/products/:id/images` sẵn có; backend không đổi |
+| Kiểm tra | 3 test mới cho khung ảnh (tổng 11); E2E mới ở `e2e/product-images.spec.ts`: 2 ảnh thật, đổi thứ tự, hủy rồi gỡ, kiểm tra `position` trong DB và sau refresh, mobile 390px |
+| Khác kế hoạch | Ca ảnh M3.5 chuyển từ `products.spec.ts` (đã 326 dòng) sang `product-images.spec.ts`; `package.json` thêm spec mới vào `test:e2e:implemented` |
+| Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m36--admin-sắp-xếp-và-gỡ-ảnh-đã-gắn); M3.8 xuất bản/ẩn cần kế hoạch riêng |
+
 ## Thiết kế kỹ thuật tham khảo
 
 Các mục Task 1–3 phía dưới là bản thiết kế M3 ban đầu, dùng tra cứu contract/test; không phải lịch chạy nối tiếp và checkbox không đại diện tiến độ. Bảng chia phần ở trên và [progress](../progress.md) là điểm theo dõi hiện tại.

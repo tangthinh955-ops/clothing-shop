@@ -6,7 +6,7 @@ Website một shop quần áo, phục vụ khách từ Instagram. React/Vite và
 
 Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản local. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng: **M3.5 (Người A) — tải và gắn ảnh thật cho sản phẩm nháp** và **M3.7.1 (Người B) — xem/tìm tồn kho**, chờ người dùng chạy thử. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai gỡ/sắp xếp ảnh, điều chỉnh tồn/lịch sử kho, xuất bản và catalog khách trên UI.
+Điểm dừng: **M3.6 (Người A) — sắp xếp và gỡ ảnh của sản phẩm nháp** và **M3.7.1 (Người B) — xem/tìm tồn kho**, chờ người dùng chạy thử. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai điều chỉnh tồn/lịch sử kho, xuất bản và catalog khách trên UI.
 
 Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật.
 
@@ -99,7 +99,7 @@ Hai phạm vi E2E được giữ tường minh:
 
 | Lệnh từ root | Phạm vi |
 |---|---|
-| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories + products (tạo nháp, sửa thông tin/biến thể, gắn ảnh đến M3.5) + inventory (xem/tìm tồn M3.7.1), hiện 15 ca; CI dùng lệnh này và ghi rõ tên bước |
+| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories + products + product-images (tạo nháp, sửa thông tin/biến thể, gắn/sắp xếp/gỡ ảnh đến M3.6) + inventory (xem/tìm tồn M3.7.1), hiện 16 ca; CI dùng lệnh này và ghi rõ tên bước |
 | `./tools/npm.ps1 run test:e2e` | Toàn bộ E2E, gồm `catalog.spec.ts` kiểm tra sản phẩm/ảnh/kho/public catalog toàn M3; hiện chưa đạt vì các UI đó chưa có |
 
 Không xóa hoặc skip test catalog. Khi triển khai thêm các phần M3, phải cập nhật phạm vi E2E đã triển khai; khi toàn M3 sẵn sàng, CI cần chạy bộ đầy đủ. Kết quả xanh của bộ implemented không phải nghiệm thu toàn M3.
