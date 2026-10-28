@@ -1,5 +1,5 @@
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
-import { useId, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import { ApiError } from '../../../../shared/api/client';
 import { uploadsApi } from '../api/uploads.api';
 import { ProductImageTile } from './ProductImageTile';
@@ -20,6 +20,7 @@ interface Props {
   images: ImageRef[];
   disabled: boolean;
   onSave: (assetIds: string[]) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function uploadError(cause: unknown) {
@@ -27,7 +28,7 @@ function uploadError(cause: unknown) {
   return cause instanceof ApiError ? cause.message : 'Chưa tải được ảnh. Vui lòng thử lại.';
 }
 
-export function ProductImagesManager({ productName, images, disabled, onSave }: Props) {
+export function ProductImagesManager({ productName, images, disabled, onSave, onDirtyChange }: Props) {
   // `saved` is the list the server holds; `rows` is the order being edited, including uploads not attached yet
   // (the server cleans unattached uploads after 24 hours).
   const [saved, setSaved] = useState<ImageRef[]>(images);
@@ -42,6 +43,12 @@ export function ProductImagesManager({ productName, images, disabled, onSave }: 
   const removesSaved = saved.some((image) => !rows.some((row) => row.id === image.id));
   const full = rows.length >= maxImages;
   const locked = disabled || uploading || saving;
+
+  useEffect(() => {
+    onDirtyChange?.(changed);
+  }, [changed, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];

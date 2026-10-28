@@ -195,6 +195,19 @@ File: `api/products.api.ts` thêm detail/update + `VariantUpdateInput`/`ProductU
 | Khác kế hoạch | Ca ảnh M3.5 chuyển từ `products.spec.ts` (đã 326 dòng) sang `product-images.spec.ts`; `package.json` thêm spec mới vào `test:e2e:implemented` |
 | Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m36--admin-sắp-xếp-và-gỡ-ảnh-đã-gắn); M3.8 xuất bản/ẩn cần kế hoạch riêng |
 
+## M3.8 — admin xuất bản và ẩn sản phẩm (Người A)
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.8 (gồm khóa Xuất bản khi còn thay đổi chưa lưu) và cho commit M3.6 (`cf5a141`). Nhánh `feat/m3.8-publish` tạo từ `feat/m3.6-image-order`. Đã triển khai và kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin xuất bản sản phẩm nháp đủ điều kiện để API công khai trả về, ẩn và xuất bản lại khi cần |
+| UI | Khung Trạng thái cho mọi trạng thái: nhãn, 3 điều kiện Đạt/Chưa đạt, Xuất bản/Ẩn sản phẩm; tiêu đề Quản lý sản phẩm khi không còn là nháp; link Quản lý trong danh sách |
+| API | POST `/admin/products/:id/publish` và `/hide` sẵn có; backend không đổi |
+| Kiểm tra | 9 test khung trạng thái, 3 test trang (xuất bản/ẩn dùng đúng version, khóa khi form hoặc ảnh chưa lưu), 1 test danh sách; E2E `product-status.spec.ts`: thiếu ảnh bị khóa, xuất bản/ẩn/xuất bản lại theo API công khai và media, server từ chối khi danh mục bị tắt ở DB, ACL 401/403, mobile |
+| Giới hạn | Sau khi xuất bản không quay lại nháp và không sửa được trên UI; trang khách thuộc M3.9 |
+| Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m38--admin-xuất-bản-và-ẩn-sản-phẩm) |
+
 ## Thiết kế kỹ thuật tham khảo
 
 Các mục Task 1–3 phía dưới là bản thiết kế M3 ban đầu, dùng tra cứu contract/test; không phải lịch chạy nối tiếp và checkbox không đại diện tiến độ. Bảng chia phần ở trên và [progress](../progress.md) là điểm theo dõi hiện tại.

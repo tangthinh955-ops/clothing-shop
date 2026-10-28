@@ -16,11 +16,63 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.6 (Người A) đã có sắp xếp/gỡ ảnh, sau M3.4.2 biến thể và M3.5 gắn ảnh (người dùng đã thử M3.5); M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
+| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có điều chỉnh tồn/lịch sử kho (M3.7.2/M3.7.3) và catalog khách (M3.9 trở đi) |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
+
+## Ngày 29/10/2026 — M3.8 (Người A): xuất bản và ẩn sản phẩm
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.8 (gồm khóa Xuất bản khi còn thay đổi chưa lưu) và cho commit M3.6 (`cf5a141`). Nhánh `feat/m3.8-publish` tạo từ `feat/m3.6-image-order`. Phiên làm việc bị ngắt sau khi viết test đầu; đã kiểm tra lại Git và tiếp tục đúng phạm vi. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push M3.8.
+
+### File thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/api/products.api.ts` | `productsApi.publish` / `hide` (POST `{expectedVersion}`) |
+| `apps/frontend/src/features/admin/products/components/ProductStatusPanel.tsx` (mới) | Nhãn trạng thái, 3 điều kiện Đạt/Chưa đạt, Xuất bản/Ẩn sản phẩm, thông báo, chống bấm lặp |
+| `apps/frontend/src/features/admin/products/components/ProductStatusPanel.test.tsx` (mới) | 9 test: xuất bản, điều kiện chưa đạt, danh mục chưa rõ, chưa lưu, ẩn, xuất bản lại khi đã ẩn, lỗi 409, bấm đúp, khóa khi page bận |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Khung trạng thái cho mọi trạng thái, thao tác `status`, thay snapshot sau khi đổi trạng thái, gom cờ chưa lưu, tiêu đề Quản lý sản phẩm khi không còn nháp |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | `onDirtyChange`: so trạng thái form với lúc mở |
+| `apps/frontend/src/features/admin/products/components/ProductImagesManager.tsx` | `onDirtyChange`: báo khi danh sách ảnh khác bản đã lưu |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.test.tsx` | 3 test: xuất bản rồi ẩn dùng đúng version, khóa khi thông tin chưa lưu, khóa khi ảnh chưa lưu |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.tsx` / `.test.tsx` | Link Quản lý cho hàng Đã xuất bản/Đã ẩn và test |
+| `apps/frontend/e2e/product-status.spec.ts` (mới) | Luồng xuất bản/ẩn/xuất bản lại với API công khai và media, server từ chối khi danh mục bị tắt ở DB, ACL, mobile |
+| `package.json`, `.github/workflows/ci.yml`, `README.md`, `docs/local-trial-m3.md`, `docs/architecture.md`, `docs/m3-implementation-plan.md`, `docs/plan.md` | Đăng ký spec mới, trạng thái, hướng dẫn thử |
+
+Đúng danh sách kế hoạch. Backend, schema, migration, dependency không đổi.
+
+### Data flow / key
+
+Bấm Xuất bản → POST `/admin/products/:id/publish` `{expectedVersion}` → `ProductsService.state` kiểm tra version, đổi trạng thái và kiểm tra lại danh mục/ảnh/biến thể trong transaction (409 + rollback nếu không đạt) → page thay snapshot, invalidate danh sách → `/api/v1/products` và `/api/v1/media/:id` công khai trả dữ liệu. Ẩn đi qua `/hide`.
+
+- `status`: DRAFT/PUBLISHED/HIDDEN; HIDDEN xuất bản lại được, không có đường về DRAFT.
+- Điều kiện trên UI tính từ dữ liệu đã lưu; server là bên quyết định.
+- `unsaved` (từ `onDirtyChange`): chặn xuất bản khi form/ảnh còn thay đổi vì xuất bản gỡ hai phần này khỏi trang.
+
+### Kiểm tra thực tế (Node 24.22.1 qua `./tools/npm.ps1`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test mới trước khi viết code | 4 test trang/danh sách fail vì chưa có nút Xuất bản/link Quản lý; test khung trạng thái fail vì chưa có component (RED) |
+| `run typecheck` | Đạt |
+| `test` | 8 tools + 9 backend + 105 frontend đạt |
+| `run build` | Exit 0; cảnh báo chunk Vite có sẵn |
+| `run test:integration` | 29/29 đạt |
+| `run test:e2e:implemented` | 15/15 đạt, khoảng 32 giây |
+| Ảnh mobile 390px | Agent đã xem: Quản lý sản phẩm, nhãn Đã xuất bản, thông báo, nút Ẩn, không tràn ngang |
+
+Lần chạy E2E đầu fail do test: trang tải lại danh mục sau khi test đã tắt danh mục trong DB nên UI đúng là khóa nút, test chờ bấm đến hết giờ. Sửa test chờ danh mục tải xong trước khi tắt ở DB; chạy lại 2/2 rồi toàn bộ 15/15 đạt. Không đổi code app cho lỗi này.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Sau khi xuất bản không quay lại nháp và không sửa được trên UI (giữ quy tắc chỉ sửa DRAFT).
+- Trang khách `/shop` chưa có (M3.9); kiểm tra hiển thị công khai qua URL API.
+- `e2e/catalog.spec.ts` vẫn cần trang tạo sản phẩm chuyển sang trang sửa (M3.12).
+- Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m38--admin-xuất-bản-và-ẩn-sản-phẩm).
+
+**Dừng ở M3.8 chờ người dùng thử.** Các phần còn lại của Người A trong M3 là M3.12 (cùng Người B); M3.7/M3.9–M3.11 thuộc Người B.
 
 ## Ngày 29/10/2026 — Môi trường: Node 24.22.1 local và DB local
 

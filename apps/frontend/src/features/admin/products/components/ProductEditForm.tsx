@@ -14,12 +14,19 @@ interface Props {
   categories: Category[];
   onSubmit: (input: ProductUpdateInput) => Promise<void>;
   disabled?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+function editState(info: ProductInfoValues, variants: VariantDraft[]) {
+  return JSON.stringify([info, variants.map(toVariantInput)]);
 }
 
 // `product` is the page snapshot: fields are read once on mount, while `version` follows the page (an image save may advance it).
-export function ProductEditForm({ product, categories, onSubmit, disabled = false }: Props) {
+export function ProductEditForm({ product, categories, onSubmit, disabled = false, onDirtyChange }: Props) {
   const [info, setInfo] = useState<ProductInfoValues>({ name: product.name, slug: product.slug, description: product.description, categoryId: product.categoryId });
   const [variants, setVariants] = useState<VariantDraft[]>(() => product.variants.map(toVariantDraft));
+  // What the form opened with; any difference means unsaved edits (the page blocks publishing on it).
+  const [initial] = useState(() => editState(info, variants));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -28,10 +35,17 @@ export function ProductEditForm({ product, categories, onSubmit, disabled = fals
   const errorSummary = useRef<HTMLDivElement>(null);
   const id = useId();
   const locked = pending || disabled;
+  const dirty = editState(info, variants) !== initial;
 
   useEffect(() => {
     if (error) errorSummary.current?.focus();
   }, [error]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   function changeVariant(key: string, next: VariantDraft) {
     setVariants((rows) => rows.map((row) => row.key === key ? next : row));

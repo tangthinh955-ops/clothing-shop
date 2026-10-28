@@ -7,8 +7,9 @@ import { categoriesApi } from '../../categories/api/categories.api';
 import { productsApi, productsKey, type Product, type ProductImagesInput, type ProductUpdateInput } from '../api/products.api';
 import { ProductEditForm } from '../components/ProductEditForm';
 import { ProductImagesManager } from '../components/ProductImagesManager';
+import { ProductStatusPanel, type StatusAction } from '../components/ProductStatusPanel';
 
-type Operation = 'save' | 'reload' | 'images';
+type Operation = 'save' | 'reload' | 'images' | 'status';
 
 export function ProductEditPage() {
   const productId = useParams()['productId'] ?? '';
@@ -16,11 +17,15 @@ export function ProductEditPage() {
   const detail = useQuery({ queryKey: [...productsKey, 'detail', productId], queryFn: () => productsApi.detail(productId), enabled: productId !== '', retry: false });
   const update = useMutation({ mutationFn: (input: ProductUpdateInput) => productsApi.update(productId, input), retry: false });
   const attach = useMutation({ mutationFn: (input: ProductImagesInput) => productsApi.images(productId, input), retry: false });
+  const transition = useMutation({ mutationFn: ({ action, version }: { action: StatusAction; version: number }) => productsApi[action](productId, version), retry: false });
   // Snapshot freezes the product/version this edit session started from; background refetches never rebase it.
   const [snapshot, setSnapshot] = useState<Product | null>(null);
   const [revision, setRevision] = useState(0);
   const operationRef = useRef<Operation | null>(null);
   const [operation, setOperation] = useState<Operation | null>(null);
+  // Reported by the form and the image manager; publishing would unmount them, so it waits until nothing is unsaved.
+  const [formDirty, setFormDirty] = useState(false);
+  const [imagesDirty, setImagesDirty] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -59,6 +64,15 @@ export function ProductEditPage() {
     } finally { endOperation(); }
   }
 
+  async function changeStatus(action: StatusAction) {
+    if (!snapshot || !beginOperation('status')) throw new Error('Another product operation is running');
+    try {
+      // The version check passed, so the response is this product with only the status change applied.
+      setSnapshot(await transition.mutateAsync({ action, version: snapshot.version }));
+      void queryClient.invalidateQueries({ queryKey: productsKey });
+    } finally { endOperation(); }
+  }
+
   async function reloadLatest() {
     if (!beginOperation('reload')) return;
     try {
@@ -72,18 +86,22 @@ export function ProductEditPage() {
   }
 
   const editing = snapshot?.status === 'DRAFT';
+  const categoryActive = snapshot ? categories.data?.find((category) => category.id === snapshot.categoryId)?.active : undefined;
 
   return <Box sx={{ maxWidth: 760, mx: 'auto', py: { xs: 4, md: 6 } }}>
     <title>Sửa sản phẩm | Quản trị Clothing Shop</title>
     <Button component={Link} to="/admin/products" sx={{ mb: 2 }}>Về danh sách sản phẩm</Button>
-    <Typography component="h1" variant="h3" sx={{ mb: 3 }}>Sửa sản phẩm nháp</Typography>
+    <Typography component="h1" variant="h3" sx={{ mb: 3 }}>{snapshot && !editing ? 'Quản lý sản phẩm' : 'Sửa sản phẩm nháp'}</Typography>
     {detail.isPending && <Typography role="status">Đang tải sản phẩm…</Typography>}
     {detail.isError && <Stack spacing={2} sx={{ mb: 3 }}>
       <Alert severity="error">{detail.error instanceof ApiError ? detail.error.message : 'Chưa tải được sản phẩm. Vui lòng thử lại.'}</Alert>
       <Button variant="outlined" disabled={detail.isFetching} onClick={() => { void detail.refetch(); }}>Tải lại sản phẩm</Button>
     </Stack>}
-    {snapshot && !editing && <Alert severity="info">Chỉ sản phẩm nháp được sửa ở phần này. Sản phẩm đã xuất bản hoặc đã ẩn sẽ có luồng riêng sau.</Alert>}
-    {editing && snapshot && <Stack spacing={2.5}>
+    {snapshot && <Stack spacing={2.5}>
+      {!editing && <>
+        <Typography component="p" variant="h5" sx={{ overflowWrap: 'anywhere' }}>{snapshot.name}</Typography>
+        <Alert severity="info">Chỉ sản phẩm nháp được sửa ở phần này. Sản phẩm đã xuất bản hoặc đã ẩn sẽ có luồng riêng sau.</Alert>
+      </>}
       {categories.isError && <Stack spacing={2}>
         <Alert severity="error">{categories.error instanceof ApiError ? categories.error.message : 'Chưa tải được danh mục. Vui lòng thử lại.'}</Alert>
         <Button variant="outlined" disabled={categories.isFetching} onClick={() => { void categories.refetch(); }}>Tải lại danh mục</Button>
@@ -96,11 +114,17 @@ export function ProductEditPage() {
         {operation === 'reload' && <Typography role="status">Đang tải dữ liệu mới…</Typography>}
       </Stack>
       <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
-        <ProductImagesManager key={revision} productName={snapshot.name} images={snapshot.images} disabled={operation !== null} onSave={saveImages} />
+        <ProductStatusPanel key={revision} product={snapshot} categoryActive={categoryActive} unsaved={editing && (formDirty || imagesDirty)}
+          disabled={operation !== null} onChange={changeStatus} />
       </Paper>
-      <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
-        <ProductEditForm key={revision} product={snapshot} categories={categories.data ?? []} disabled={operation !== null} onSubmit={save} />
-      </Paper>
+      {editing && <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
+        <ProductImagesManager key={revision} productName={snapshot.name} images={snapshot.images} disabled={operation !== null}
+          onSave={saveImages} onDirtyChange={setImagesDirty} />
+      </Paper>}
+      {editing && <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
+        <ProductEditForm key={revision} product={snapshot} categories={categories.data ?? []} disabled={operation !== null}
+          onSubmit={save} onDirtyChange={setFormDirty} />
+      </Paper>}
     </Stack>}
   </Box>;
 }
