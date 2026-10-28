@@ -34,6 +34,22 @@
 
 Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ liệu. Nếu lúc lập kế hoạch chi tiết một phần còn quá lớn, tách thành M3.x.1/M3.x.2 trước khi triển khai. Bảng phụ thuộc không thay thế bước duyệt; điểm dừng hiện tại là M3.4.1, không tự bắt đầu M3.4.2.
 
+## Phân công hai người (29/10/2026)
+
+Người dùng đồng ý chia phần còn lại cho hai người. Lý do chia: backend Categories/Products/Inventory/Uploads và API công khai đã có, phần còn thiếu chủ yếu là UI gọi API sẵn có. Người A giữ editor sản phẩm admin (cùng đụng `ProductEditPage`); Người B làm các thư mục tách riêng (kho, catalog khách, seed). Phân công không thay bước gửi kế hoạch → duyệt → bàn giao → chờ thử của từng phần.
+
+| Người | Phần theo thứ tự | Thư mục chính |
+|---|---|---|
+| A | M3.4.2 → M3.5 → M3.6 → M3.8 | `apps/frontend/src/features/admin/products/` |
+| B | M3.7 → M3.9 → M3.10 → M3.11 | `features/admin/inventory/` (mới), `features/catalog/`, seed CLI backend |
+| A + B | M3.12 | `e2e/catalog.spec.ts`, checklist M3 |
+
+- M3.9/M3.10 không phải chờ M3.8: E2E tự tạo sản phẩm PUBLISHED trên DB `_test` bằng Prisma như các spec hiện có.
+- Mỗi phần một nhánh `feat/m3.x-...` và PR vào `main`; người còn lại review trước khi merge.
+- File dùng chung (`app/App.tsx`, `features/admin/AdminPage.tsx`, script `test:e2e:implemented` trong `package.json`, `.github/workflows/ci.yml`, `progress.md`, tài liệu): sửa tối thiểu, mỗi người ghi mục có ngày và mã phần riêng trong `progress.md`; khi xung đột giữ cả hai bên.
+- Migration Prisma: tại mỗi thời điểm chỉ một PR có migration; rebase `main` trước khi tạo; không sửa migration đã áp dụng.
+- Điều kiện bắt đầu: người dùng đã thử M3.4.1; cả hai máy có Node 24.22.1+ (`tools/npm.ps1` từ chối Node thấp hơn).
+
 ## M3.1 — admin xem và thêm danh mục
 
 **Trạng thái: người dùng đã duyệt, đã triển khai; kết quả kiểm tra và review ghi tại [progress.md](../progress.md).** Phạm vi M3.1 là xem/tạo. M3.2 bên dưới bổ sung sửa/bật/tắt; chưa có xóa danh mục hoặc tạo sản phẩm trên UI. Hướng dẫn thử: [local-trial-m3.md](local-trial-m3.md).

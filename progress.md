@@ -22,6 +22,13 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — Đánh giá repo và phân công hai người
+
+- Pull `main` tới `13b02d1` (đã gồm PR #2 `fix/review-findings` và PR #3 M3.4). Không sửa code.
+- Đối chiếu code: backend M3 đã có API sản phẩm (biến thể, publish/hide, gắn ảnh), upload, kho (list/movements/adjustments) và catalog công khai; frontend chưa có UI biến thể/ảnh/kho/xuất bản/catalog khách.
+- Kiểm tra: `npm run typecheck` đạt; `npm test` đạt (9 backend + 74 frontend). Chạy bằng npm trực tiếp vì `tools/npm.ps1` từ chối Node 24.15.0 của máy và thiếu `.local/node-v24.22.1-win-x64`. Chưa chạy integration/E2E.
+- Người dùng đồng ý chia việc hai người: bảng ở [docs/plan.md](docs/plan.md#phân-công-hai-người) và [docs/m3-implementation-plan.md](docs/m3-implementation-plan.md#phân-công-hai-người-29102026). Phần đầu đề xuất: M3.4.2 (A), M3.7 (B), chờ duyệt kế hoạch chi tiết. M3.4.1 vẫn chờ người dùng thử.
+
 ## Ngày 28/10/2026 — M3.4.1: sửa hai finding P2 từ review
 
 **Người dùng đã duyệt sửa đúng hai lỗi review.** Đã sửa và kiểm tra local, chờ người dùng chạy thử; không bắt đầu M3.4.2. Chỉ nhận các chỉnh sửa dưới đây của lượt này, không nhận code M3.4.1 do OpenCode tạo là phần mới của agent.

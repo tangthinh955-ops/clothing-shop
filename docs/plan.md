@@ -45,6 +45,20 @@ Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy
 - Duyệt lộ trình không đồng nghĩa cho phép tự chạy hết các phần. Chỉ chuyển phần khi người dùng yêu cầu và phần tiếp theo có kế hoạch cụ thể đã được duyệt; sửa lỗi phần đang thử trước khi đi tiếp.
 - Ghi riêng trạng thái đã viết, đã kiểm tra kỹ thuật và đã được người dùng chạy thử; giữ tiêu chí hoàn thành của mốc bên dưới. Các phần cụ thể cần đối chiếu working tree trước khi lập, không suy ra trạng thái từ tài liệu thiết kế.
 
+## Phân công hai người
+
+Từ 29/10/2026 phần còn lại chia cho hai người. Chi tiết M3 ở [m3-implementation-plan.md](m3-implementation-plan.md#phân-công-hai-người-29102026). M4–M7 dưới đây là khung, sẽ chia lại thành `Mx.y` và duyệt trước khi bắt đầu mỗi mốc.
+
+| Mốc | Người A | Người B |
+|---|---|---|
+| M4.0 | Schema/migration Order, Payment, Settings, Idempotency | Review migration trước merge |
+| M4 | Khách: giỏ local → quote → tạo đơn COD giữ kho atomic → đơn của tôi → hủy | Admin/tiền: chuyển trạng thái đơn, chuyển khoản (deadline, ghi khoản thu, sweep hết hạn), đơn Instagram, email ngoài transaction |
+| M5 | Trả hàng: yêu cầu → duyệt → nhận/kiểm → restock | Nghĩa vụ hoàn/refund, đơn thay thế đổi size |
+| M6 | Deploy + smoke HTTPS/proxy | Backup/restore + rollback |
+| M7 | E2E, mobile, UI Instagram | ASVS/ZAP, hướng dẫn admin |
+
+Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có migration tại một thời điểm.
+
 ## Bước thực hiện và điều kiện hoàn thành
 
 ### M1 — Thiết kế

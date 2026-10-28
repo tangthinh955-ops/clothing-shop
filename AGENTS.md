@@ -115,6 +115,7 @@ Trước mỗi nhiệm vụ/phần code, gửi bảng kế hoạch ngắn ngay t
 - Test tích hợp/E2E chỉ chạy với môi trường test và database riêng có hậu tố `_test`; kiểm tra trước mọi thao tác ghi hoặc cleanup. Chỉ dọn dữ liệu do test tạo.
 - Không reset/truncate database, xóa volume, force push hoặc xóa dữ liệu người dùng nếu chưa được yêu cầu rõ. Trên Windows phải kiểm tra đường dẫn tuyệt đối trước thao tác xóa/di chuyển đệ quy.
 - Khi được yêu cầu commit/push: kiểm tra diff, tệp bị ignore, tệp staged và remote; không đưa `.env`, mailbox, runtime, dependency hoặc artifact build vào commit. Không tự push khi chỉ được giao sửa code.
+- Commit message và mô tả PR không thêm dòng ghi công AI (ví dụ `Co-Authored-By: Claude ...`, "Generated with Claude Code") để agent không xuất hiện trong Contributors; tác giả commit là người dùng.
 
 ## 6. Kiểm chứng và định nghĩa hoàn thành
 
