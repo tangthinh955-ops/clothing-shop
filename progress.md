@@ -22,6 +22,48 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 28/10/2026 — M3.2.1: sửa phạm vi E2E của CI
+
+**Người dùng đã duyệt bản sửa CI riêng, chưa duyệt triển khai M3.3.** Đã sửa cấu hình và kiểm tra local; CI mới chưa commit/push/chạy lại trên GitHub. Mốc sản phẩm vẫn dừng ở M3.2.
+
+### Nguyên nhân đã xác nhận
+
+- Commit `d5953cf` đã push thành công. API Actions xác nhận run `40665722000` thất bại ở bước `npm run test:e2e`; typecheck/build/unit/integration và cài browser đều thành công.
+- Người dùng cung cấp log chi tiết: 6 E2E đạt, `catalog.spec.ts` thất bại tại dòng 54 chờ link Sản phẩm chưa có. Ca này kiểm tra toàn M3, vượt UI đang triển khai đến M3.2. Cấu hình CI đã chạy ca chấp nhận toàn M3 quá sớm.
+- `.env.test not found` không phải nguyên nhân lỗi này vì CI cấp biến môi trường trực tiếp. Các cảnh báo Node/Ubuntu không thay thế lỗi locator đã nêu.
+
+### File thực tế và thay đổi
+
+| File | Mục đích |
+|---|---|
+| `package.json` | Thêm `test:e2e:implemented` chọn auth.spec.ts + categories.spec.ts; giữ nguyên test:e2e chạy toàn bộ |
+| `.github/workflows/ci.yml` | Bước E2E chạy lệnh implemented và ghi rõ tên auth + categories through M3.2 |
+| `README.md` | Phân biệt 6 ca implemented với 7 ca toàn bộ; yêu cầu mở rộng phạm vi khi triển khai tính năng tiếp theo |
+| `progress.md` | Ghi lỗi gốc, kết quả kiểm tra mới, giới hạn CI và điểm dừng |
+
+Danh sách đúng kế hoạch đã duyệt. Không thay `catalog.spec.ts`, test runner/guard `_test`, Playwright config, schema, dependency hoặc lockfile; không xóa/skip test, không thêm continue-on-error. Index Git và dữ liệu local giữ nguyên; E2E chỉ ghi/dọn fixture riêng trên `_test`.
+
+**Luồng chạy:** CI → `npm run test:e2e:implemented` → `tools/test-e2e.mjs` kiểm tra NODE_ENV/test database rồi chuyển hai tên file tới Playwright → khởi động API/FE test → chạy auth và danh mục. `npm run test:e2e` vẫn không có filter và còn nguyên ca catalog.
+
+### Kiểm tra mới trong phiên
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Gọi script mới trước sửa | Thất bại Missing script, xác nhận script chưa tồn tại |
+| Parse package.json và đối chiếu scripts | JSON hợp lệ; script đầy đủ giữ nguyên, script mới đúng phạm vi |
+| Liệt kê implemented bằng `--list` | 6 ca / 2 file, đúng auth + categories |
+| Liệt kê full bằng `--list` | 7 ca / 3 file, vẫn có catalog.spec.ts; đây chỉ là discovery, không phải 7 ca đạt |
+| `./tools/npm.ps1 run test:e2e:implemented` | 6/6 đạt thực tế trên `_test`, 41.2 giây |
+| Review/diff | `review_ci_e2e_scope` review độc lập script/workflow/README: không Critical/Important/Minor, không hành vi bị bỏ qua đánh giá; agent rà progress sau cập nhật, diff/đường dẫn tài liệu đạt |
+
+Khi thử discovery qua wrapper PowerShell, `--list` bị npm nhận như config nên đã dừng lượt đó; dùng npm native với Node24 local và mảng tham số để chuyển nguyên `--`/`--list`. Không sửa wrapper ngoài phạm vi. Lượt chạy chính thức của lệnh implemented phía trên không có tham số discovery, hoàn tất exit0.
+
+Không chạy lại root typecheck/build/unit/integration cho bản sửa chỉ cấu hình/tài liệu này; không nhận kết quả M3.2/CI cũ là vừa chạy local. E2E tự build backend khi khởi động theo cấu hình hiện có. Full E2E chưa đạt vì UI các phần M3 sau chưa triển khai; CI xanh của implemented không đại diện nghiệm thu toàn M3.
+
+**Key:** không có key dữ liệu nghiệp vụ mới. `test:e2e:implemented` là bộ tính năng đã triển khai; `test:e2e` là bộ đầy đủ; tên bước E2E trong CI công khai phạm vi kiểm tra đến M3.2. Khi thêm phần mới phải bổ sung ca đã sẵn sàng vào bộ implemented, khi toàn M3 đủ thì CI cần chạy bộ đầy đủ.
+
+**Chạy thử:** `./tools/npm.ps1 run test:e2e:implemented` từ root, DB test và browser theo README. Người dùng có thể review/commit/push bản sửa để CI tạo run mới; agent chưa stage/commit/push và chưa xác nhận CI mới đạt. Dừng sau bản sửa CI; M3.3 còn chờ duyệt kế hoạch riêng.
+
 ## Ngày 28/10/2026 — M3.2: admin sửa/bật/tắt danh mục
 
 **Trạng thái:** người dùng đã duyệt kế hoạch M3.2 trong chat. Đã viết, agent đã kiểm tra local và review độc lập không finding cần sửa; **chờ người dùng thử/xác nhận**. Không tự coi yêu cầu tiếp tục là nghiệm thu toàn M3 hoặc các phần trước.

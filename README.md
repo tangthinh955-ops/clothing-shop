@@ -92,10 +92,19 @@ Trước khi commit, kiểm tra `git status --short`, `git diff --cached --stat`
 .\tools\npm.ps1 test
 .\tools\npm.ps1 run test:integration
 .\tools\npm.ps1 run test:e2e:install
-.\tools\npm.ps1 run test:e2e
+.\tools\npm.ps1 run test:e2e:implemented
 ```
 
-Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy cleanup trên DB khác. E2E chạy API cổng 3001 và frontend 5174 riêng; Chromium tải vào `.local/ms-playwright`, không điều khiển browser cá nhân. Test chỉ xóa các tài khoản do lần chạy đó tạo. CI được khai báo trong `.github/workflows/ci.yml`; chưa được coi là đã chạy trên GitHub khi chưa có run thực tế.
+Hai phạm vi E2E được giữ tường minh:
+
+| Lệnh từ root | Phạm vi |
+|---|---|
+| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories đã triển khai đến M3.2, hiện 6 ca; CI dùng lệnh này và ghi rõ tên bước |
+| `./tools/npm.ps1 run test:e2e` | Toàn bộ E2E, gồm `catalog.spec.ts` kiểm tra sản phẩm/ảnh/kho/public catalog toàn M3; hiện chưa đạt vì các UI đó chưa có |
+
+Không xóa hoặc skip test catalog. Khi triển khai thêm các phần M3, phải cập nhật phạm vi E2E đã triển khai; khi toàn M3 sẵn sàng, CI cần chạy bộ đầy đủ. Kết quả xanh của bộ implemented không phải nghiệm thu toàn M3.
+
+Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy cleanup trên DB khác. E2E chạy API cổng 3001 và frontend 5174 riêng; Chromium tải vào `.local/ms-playwright`, không điều khiển browser cá nhân. Test chỉ dọn fixture do lần chạy đó tạo. CI được khai báo trong `.github/workflows/ci.yml`. Commit `d5953cf` đã chạy trên GitHub: typecheck/build/unit/integration đạt, E2E toàn M3 thất bại ở link Sản phẩm chưa có; kết quả cấu hình CI mới chỉ được xác nhận sau khi commit/push và có lượt chạy mới.
 
 Build độc lập: `npm run build -w @clothing/backend` hoặc `npm run build -w @clothing/frontend`, sau khi generate Prisma ở môi trường build backend. Backend không tự migration/seed khi startup. Không dùng `prisma migrate reset` hoặc `docker compose down -v` với dữ liệu cần giữ.
 
