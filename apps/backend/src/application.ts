@@ -13,7 +13,8 @@ import { SessionResources } from './modules/auth/session.resources.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 
 export async function createApplication(config: AppConfig): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(config), { logger: false });
+  // Keep errors/warnings (500 causes, mail delivery failures); skip Nest's startup/route noise.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(config), { logger: ['error', 'warn'] });
   if (config.trustProxy) app.set('trust proxy', 1);
   app.use(helmet());
   app.use((req: Request, res: Response, next: NextFunction) => {

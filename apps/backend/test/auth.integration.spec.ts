@@ -3,7 +3,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import path from 'node:path';
 import supertest, { type Agent } from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApplication } from '../dist/application.js';
 import { readEnvironment } from '../dist/config/environment.js';
 import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
@@ -37,8 +38,9 @@ async function register(agent: Agent, extra: Record<string, unknown> = {}): Prom
   return email;
 }
 
-async function mailToken(email: string, kind: 'verify-email' | 'reset-password'): Promise<string> {
-  for (const filename of (await readdir(mailbox)).reverse()) {
+async function findMailToken(email: string, kind: 'verify-email' | 'reset-password'): Promise<string | undefined> {
+  const filenames = await readdir(mailbox).catch(() => []);
+  for (const filename of filenames.reverse()) {
     const mail = record(JSON.parse(await readFile(path.join(mailbox, filename), 'utf8')) as unknown);
     if (mail['to'] !== email || typeof mail['text'] !== 'string') continue;
     const url = mail['text'].split(/\s/).find((word) => word.startsWith(`${origin}/${kind}#`));
@@ -46,6 +48,17 @@ async function mailToken(email: string, kind: 'verify-email' | 'reset-password')
       const token = new URLSearchParams(new URL(url).hash.slice(1)).get('token');
       if (token) return token;
     }
+  }
+  return undefined;
+}
+
+// Mail is sent after the HTTP response, so wait briefly for the preview file.
+async function mailToken(email: string, kind: 'verify-email' | 'reset-password'): Promise<string> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const token = await findMailToken(email, kind);
+    if (token) return token;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error('Expected a real preview email for this test');
 }
@@ -74,6 +87,14 @@ afterAll(async () => {
 });
 
 describe('auth HTTP + real PostgreSQL + local email adapter', () => {
+  it('keeps server error logging enabled in the running application', () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    new Logger('LoggingProbe').error('logging-probe');
+    const output = write.mock.calls.map(([chunk]) => String(chunk)).join('');
+    write.mockRestore();
+    expect(output).toContain('logging-probe');
+  });
+
   it('does not accept a forged role or unlisted field on registration', async () => {
     const agent = supertest.agent(server);
     const token = await csrf(agent);
