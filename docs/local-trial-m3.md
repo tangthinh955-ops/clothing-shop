@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI sửa biến thể/ảnh/điều chỉnh tồn/lịch sử kho. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI ảnh/điều chỉnh tồn/lịch sử kho/xuất bản. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -138,14 +138,14 @@ Tên 2–120 ký tự; slug tối đa 120 ký tự theo dạng `ao-cotton`; mô 
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductCreatePage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Test các phần đã làm: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products). Ca catalog toàn M3 giữ nguyên, chưa coi là đạt khi UI ảnh/kho/public chưa có.
 
-**Điểm dừng hiện tại: M3.4.1, chờ người dùng chạy thử.** M3.4.2 (sửa biến thể/thêm tắt) và các phần ảnh/kho/xuất bản cần kế hoạch riêng được duyệt. M3.4.1 chưa có UI sửa SKU/size/màu/giá, ảnh, điều chỉnh kho hoặc xuất bản.
+**Điểm dừng hiện tại: M3.4.2 (Người A) và M3.7.1 (Người B), chờ người dùng chạy thử.** Ảnh, điều chỉnh/lịch sử kho và xuất bản cần kế hoạch riêng được duyệt.
 
 ## M3.4.1 — admin sửa thông tin sản phẩm nháp
 
 Giữ backend/frontend local hoạt động theo phần chuẩn bị, đăng nhập ADMIN, có ít nhất một danh mục và một sản phẩm nháp tạo ở M3.3 (hoặc tạo mới). Không cần dependency hoặc migration mới.
 
 1. Mở **http://127.0.0.1:5173/admin/products** → hàng sản phẩm nháp (nhãn **Nháp**) có nút **Sửa** → trang `/admin/products/<id>`.
-2. Form điền sẵn tên/đường dẫn/danh mục/mô tả đang lưu. Biến thể hiện ở dạng chỉ đọc (SKU/size/màu/giá) kèm lời nhắc chưa cho sửa ở phần này.
+2. Form điền sẵn tên/đường dẫn/danh mục/mô tả đang lưu. Từ M3.4.2 biến thể là các ô nhập được (xem mục M3.4.2).
 3. Đổi tên và mô tả → **Lưu thay đổi** → về danh sách, báo "Đã cập nhật sản phẩm nháp …" và thấy tên mới; refresh vẫn còn.
 4. Bấm **Tải dữ liệu mới** (có lời nhắc ngay trên trang): thay toàn bộ nội dung đang nhập bằng bản mới nhất trên máy chủ; tải lỗi thì giữ nguyên phần đang nhập.
 
@@ -154,12 +154,12 @@ Giữ backend/frontend local hoạt động theo phần chuẩn bị, đăng nh�
 | Thao tác | Kết quả mong đợi |
 |---|---|
 | Sửa tên/mô tả, lưu, refresh | Thay đổi còn nguyên; biến thể/tồn kho giữ nguyên (Khả dụng vẫn 0) |
-| Đổi đường dẫn trùng sản phẩm khác hoặc để tab cũ lưu sau | Báo "Sản phẩm đã thay đổi hoặc đường dẫn sản phẩm bị trùng…", giữ input; không đoán riêng lỗi slug |
+| Đổi đường dẫn trùng sản phẩm khác hoặc để tab cũ lưu sau | Báo "Sản phẩm đã thay đổi, hoặc đường dẫn, SKU hoặc tổ hợp size/màu bị trùng…", giữ input; không đoán riêng lỗi slug |
 | Sửa ở hai tab cùng sản phẩm | Tab lưu sau bằng version cũ bị từ chối, dữ liệu tab trước không bị ghi đè; Tải dữ liệu mới mới đồng bộ bản mới |
 | Bấm Lưu liên tiếp khi đang lưu | Nút và các trường khóa, chỉ một PATCH đang chờ |
 | Bấm Tải dữ liệu mới khi mạng chậm rồi thử Lưu | Các trường và Lưu bị khóa đến khi tải xong; không gửi PATCH chồng với explicit reload |
 | Đang lưu rồi thử Tải dữ liệu mới | Tải dữ liệu mới bị khóa; nếu lưu lỗi thì form/input/thông báo lỗi vẫn còn và thao tác được mở lại |
-| SKU hiện có dài64 ký tự liền, mở trang sửa ở390px | SKU tự xuống dòng, không kéo rộng trang hoặc che nút |
+| SKU hiện có dài 64 ký tự liền, mở trang sửa ở 390px | Từ M3.4.2 SKU nằm trong ô nhập (cuộn trong ô), không kéo rộng trang hoặc che nút |
 | Chỉnh dang dở rồi sang tab khác quay lại | Refetch nền không xóa phần đang nhập và không đổi version đang giữ |
 | Mở Sửa sản phẩm không phải Nháp | Không hiển thị form sửa; thông báo chỉ nháp được sửa ở phần này |
 | CUSTOMER/khách vào URL `/admin/products/<id>` | Chuyển về tài khoản/đăng nhập; PATCH API vẫn bị 403/401 |
@@ -210,3 +210,39 @@ UI chỉ đọc, không tạo dữ liệu mẫu vào DB local và không ghi t�
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/inventory/pages/InventoryPage.test.tsx`. E2E đã triển khai: `./tools/npm.ps1 run test:e2e:implemented`.
 
 **Dừng M3.7.1 để người dùng thử.** Điều chỉnh tồn và lịch sử là M3.7.2/M3.7.3, chưa được triển khai.
+
+## M3.4.2 — admin sửa, thêm và tắt biến thể của sản phẩm nháp
+
+Giữ backend/frontend local như M3.4.1, đăng nhập ADMIN và có một sản phẩm **Nháp**. Không cần dependency hoặc migration mới; backend không đổi.
+
+1. Mở **http://127.0.0.1:5173/admin/products** → **Sửa** một sản phẩm nháp.
+2. Mục **Biến thể** hiện mỗi biến thể là một khung "Biến thể 1, 2…" với SKU, Size, Màu, Giá (VND) và ô **Bật biến thể**.
+3. Đổi giá biến thể 1 → bấm **Thêm biến thể** → điền SKU mới, size L, màu, giá → **Lưu thay đổi** → về danh sách; mở Sửa lại thấy đủ hai biến thể, refresh vẫn còn.
+4. Bỏ chọn **Bật biến thể** của một dòng → lưu → biến thể vẫn còn trong form ở trạng thái tắt, không bị xóa.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Sửa giá/size/màu/SKU biến thể đã lưu | Lưu được; ID biến thể và tồn kho (Khả dụng) giữ nguyên |
+| Thêm biến thể mới rồi lưu | Biến thể mới có tồn kho 0; giá thấp nhất của các biến thể đang bật thành "giá từ" trong danh sách |
+| Thêm một dòng rồi bấm **Bỏ dòng này** trước khi lưu | Dòng mới biến mất, không gửi lên server. Biến thể đã lưu không có nút này |
+| Hai dòng cùng SKU (không phân biệt hoa/thường, khoảng trắng) | Báo lỗi ngay ở dòng sau, không gửi request |
+| Hai dòng cùng size và cùng màu | Báo "Đã có biến thể khác cùng size và màu." ở dòng sau |
+| Giá 0, số lẻ hoặc trên 100.000.000 | Báo lỗi giá ở đúng dòng |
+| SKU đã thuộc sản phẩm khác | Server trả 409; báo "…đường dẫn, SKU hoặc tổ hợp size/màu bị trùng…", giữ toàn bộ dữ liệu đang nhập; DB không đổi |
+| Đổi chéo size/màu giữa hai biến thể trong một lần lưu | Có thể bị 409 (giới hạn đã biết, xem dưới); lưu thành hai lần qua một màu tạm |
+| Màn hình 390px | Các ô xếp dọc, SKU dài nằm trong ô nhập, không kéo ngang trang |
+
+Giới hạn đã biết: backend cập nhật lần lượt từng biến thể trong một transaction, còn DB có ràng buộc unique (sản phẩm, size, màu), nên đổi chéo size/màu giữa hai biến thể trong cùng một lần lưu bị từ chối (cả transaction rollback, không mất dữ liệu). Chỉ sản phẩm nháp sửa được biến thể; tồn kho vẫn chưa điều chỉnh được trên UI (M3.7).
+
+### Luồng dữ liệu / key M3.4.2
+
+Admin sửa/thêm/tắt dòng biến thể → `validateVariants` kiểm tra SKU/size–màu/giá theo dòng → PATCH `/api/v1/admin/products/<id>`: biến thể cũ kèm `id`, biến thể mới không có `id` → `ProductsService.update` kiểm tra version, chặn xóa biến thể, cập nhật hoặc tạo biến thể + inventory 0, tính lại `priceFrom` trong transaction → FE invalidate `admin-products` và về danh sách.
+
+- `VariantDraft`: state một dòng biến thể trong form (`components/variantDrafts.ts`); giá giữ dạng chuỗi khi đang gõ.
+- `id` có/không: có `id` là cập nhật biến thể đã lưu, không có là tạo mới; backend từ chối nếu thiếu `id` của biến thể đã có.
+- `active`: tắt thay cho xóa; sản phẩm và biến thể đã có lịch sử không bị xóa.
+- `variants.<index>.<field>`: khóa lỗi theo dòng để báo đúng ô.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented`.

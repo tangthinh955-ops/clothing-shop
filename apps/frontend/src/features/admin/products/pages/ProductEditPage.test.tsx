@@ -43,7 +43,7 @@ function renderPage(user: User | null = admin) {
 }
 
 describe('edit a draft product', () => {
-  it('pre-fills saved data, keeps variants frozen, and sends only the update DTO with the captured version', async () => {
+  it('pre-fills saved data and variants, and sends only the update DTO with the captured version', async () => {
     const { spy, stubs } = stubApi();
     stubs.patch = { ...detail, name: 'Áo cotton đã sửa', version: 4 };
     stubs.list = { items: [stubs.patch], page: 1, pageSize: 24, total: 1 };
@@ -52,10 +52,11 @@ describe('edit a draft product', () => {
     expect(screen.getByLabelText('Đường dẫn sản phẩm')).toHaveValue('ao-cotton');
     expect(screen.getByLabelText('Danh mục')).toHaveValue(category.id);
     expect(screen.getByLabelText('Mô tả')).toHaveValue('Cotton mềm');
-    expect(screen.getByText('COTTON-M')).toBeVisible();
-    expect(screen.getByText(/M · đen/)).toBeVisible();
-    expect(screen.getByText(/250\.000/)).toBeVisible();
-    expect(screen.getByText('Phần này chưa cho sửa SKU, size, màu, giá hoặc thêm/tắt biến thể.')).toBeVisible();
+    expect(screen.getByLabelText('SKU 1')).toHaveValue('COTTON-M');
+    expect(screen.getByLabelText('Size 1')).toHaveValue('M');
+    expect(screen.getByLabelText('Màu 1')).toHaveValue('đen');
+    expect(screen.getByLabelText('Giá 1 (VND)')).toHaveValue(250000);
+    expect(screen.getByLabelText('Bật biến thể 1')).toBeChecked();
     fireEvent.change(screen.getByLabelText('Tên sản phẩm'), { target: { value: expectedPatchBody.name } });
     fireEvent.change(screen.getByLabelText('Mô tả'), { target: { value: expectedPatchBody.description } });
     await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
@@ -73,7 +74,7 @@ describe('edit a draft product', () => {
     fireEvent.change(name, { target: { value: 'Tên đang nhập' } });
     stubs.patch = new client.ApiError('CONFLICT', 'Trùng đường dẫn sản phẩm.', 409);
     await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
-    expect(await screen.findByText('Sản phẩm đã thay đổi hoặc đường dẫn sản phẩm bị trùng. Hãy tải dữ liệu mới, kiểm tra đường dẫn và thử lại.'))
+    expect(await screen.findByText('Sản phẩm đã thay đổi, hoặc đường dẫn, SKU hoặc tổ hợp size/màu bị trùng. Hãy tải dữ liệu mới, kiểm tra lại rồi thử lại.'))
       .toBeVisible();
     expect(screen.getByLabelText('Tên sản phẩm')).toHaveValue('Tên đang nhập');
     expect(screen.getByLabelText('Đường dẫn sản phẩm')).not.toHaveAttribute('aria-invalid', 'true');
@@ -94,6 +95,8 @@ describe('edit a draft product', () => {
     fireEvent.submit(form);
     expect(screen.getByRole('button', { name: 'Đang lưu…' })).toBeDisabled();
     expect(screen.getByLabelText('Tên sản phẩm')).toBeDisabled();
+    expect(screen.getByLabelText('Giá 1 (VND)')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Thêm biến thể' })).toBeDisabled();
     await waitFor(() => expect(spy.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(1));
     await act(async () => { fail(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)); });
     expect(await screen.findByText('Không thể kết nối.')).toBeVisible();

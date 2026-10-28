@@ -1,12 +1,13 @@
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Category } from '../../categories/api/categories.api';
 import { ApiError } from '../../../../shared/api/client';
 import type { Product, ProductUpdateInput } from '../api/products.api';
 import { ProductInfoFields, type ProductInfoValues } from './ProductInfoFields';
+import { VariantFields } from './VariantFields';
+import { maxVariants, newVariantDraft, toVariantDraft, toVariantInput, validateVariants, type VariantDraft } from './variantDrafts';
 
-const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
-const conflictMessage = 'Sản phẩm đã thay đổi hoặc đường dẫn sản phẩm bị trùng. Hãy tải dữ liệu mới, kiểm tra đường dẫn và thử lại.';
+const conflictMessage = 'Sản phẩm đã thay đổi, hoặc đường dẫn, SKU hoặc tổ hợp size/màu bị trùng. Hãy tải dữ liệu mới, kiểm tra lại rồi thử lại.';
 
 interface Props {
   product: Product;
@@ -16,13 +17,15 @@ interface Props {
 }
 
 export function ProductEditForm({ product, categories, onSubmit, disabled = false }: Props) {
-  // Snapshot freezes the variant list and version of this edit session; the page remounts this form (key=revision) after an explicit reload.
+  // Snapshot freezes the version of this edit session; the page remounts this form (key=revision) after an explicit reload.
   const [snapshot] = useState(product);
   const [info, setInfo] = useState<ProductInfoValues>({ name: product.name, slug: product.slug, description: product.description, categoryId: product.categoryId });
+  const [variants, setVariants] = useState<VariantDraft[]>(() => product.variants.map(toVariantDraft));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [fields, setFields] = useState<Record<string, string>>({});
   const busy = useRef(false);
+  const nextNewKey = useRef(0);
   const errorSummary = useRef<HTMLDivElement>(null);
   const id = useId();
   const locked = pending || disabled;
@@ -31,17 +34,36 @@ export function ProductEditForm({ product, categories, onSubmit, disabled = fals
     if (error) errorSummary.current?.focus();
   }, [error]);
 
+  function changeVariant(key: string, next: VariantDraft) {
+    setVariants((rows) => rows.map((row) => row.key === key ? next : row));
+  }
+
+  function addVariant() {
+    nextNewKey.current += 1;
+    setVariants((rows) => [...rows, newVariantDraft(`new-${nextNewKey.current}`)]);
+  }
+
+  function removeVariant(key: string) {
+    setVariants((rows) => rows.filter((row) => row.key !== key));
+    // Row errors are keyed by position, so they would point at the wrong row once later rows shift up.
+    setFields({});
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy.current || disabled) return;
     setError('');
-    setFields({});
+    const problems = validateVariants(variants);
+    setFields(problems);
+    if (Object.keys(problems).length) {
+      setError('Kiểm tra lại các biến thể được đánh dấu.');
+      return;
+    }
     busy.current = true;
     setPending(true);
     try {
       await onSubmit({ name: info.name, slug: info.slug, description: info.description, categoryId: info.categoryId,
-        expectedVersion: snapshot.version,
-        variants: snapshot.variants.map((variant) => ({ id: variant.id, sku: variant.sku, size: variant.size, color: variant.color, price: variant.price, active: variant.active })) });
+        expectedVersion: snapshot.version, variants: variants.map(toVariantInput) });
     } catch (cause: unknown) {
       if (cause instanceof ApiError && cause.status === 409) setError(conflictMessage);
       else setError(cause instanceof ApiError ? cause.message : 'Chưa cập nhật được sản phẩm. Vui lòng thử lại.');
@@ -58,14 +80,16 @@ export function ProductEditForm({ product, categories, onSubmit, disabled = fals
       <Typography component="h2" variant="h5">Thông tin sản phẩm</Typography>
       <ProductInfoFields idPrefix={id} categories={categories} values={info} fields={fields} disabled={locked} onChange={setInfo} />
       <Box component="fieldset" sx={{ m: 0, p: 0, border: 0, minWidth: 0 }}>
-        <Typography component="legend" variant="h5" sx={{ mb: 2.5 }}>Biến thể hiện có</Typography>
-        <Stack spacing={1.5}>
-          {snapshot.variants.map((variant) => <Paper key={variant.id} variant="outlined" sx={{ p: 2, overflowWrap: 'anywhere' }}>
-            <Typography component="span" sx={{ fontWeight: 600 }}>{variant.sku}</Typography>
-            <Typography variant="body2">{variant.size} · {variant.color} · {money.format(variant.price)}{variant.active ? '' : ' · Đang tắt'}</Typography>
-          </Paper>)}
+        <Typography component="legend" variant="h5" sx={{ mb: 1 }}>Biến thể</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+          Biến thể đã lưu không xóa được; bỏ chọn “Bật biến thể” để ngừng dùng. Biến thể mới có tồn kho ban đầu bằng 0.
+        </Typography>
+        <Stack spacing={2}>
+          {variants.map((variant, index) => <VariantFields key={variant.key} idPrefix={id} position={index + 1} values={variant}
+            fields={fields} disabled={locked} onChange={(next) => changeVariant(variant.key, next)}
+            {...(variant.id ? {} : { onRemove: () => removeVariant(variant.key) })} />)}
         </Stack>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>Phần này chưa cho sửa SKU, size, màu, giá hoặc thêm/tắt biến thể.</Typography>
+        <Button variant="outlined" sx={{ mt: 2 }} disabled={locked || variants.length >= maxVariants} onClick={addVariant}>Thêm biến thể</Button>
       </Box>
       <Button type="submit" variant="contained" disabled={locked}>{pending ? 'Đang lưu…' : 'Lưu thay đổi'}</Button>
     </Stack>

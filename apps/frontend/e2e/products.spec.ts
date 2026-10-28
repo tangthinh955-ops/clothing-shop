@@ -8,12 +8,14 @@ const prefix = `products-${randomUUID()}`;
 const adminEmail = `${prefix}-admin@example.test`;
 const customerEmail = `${prefix}-customer@example.test`;
 const password = 'products-e2e-only-password-123!';
-const slugs = [`${prefix}-one`, `${prefix}-two`, `${prefix}-edit`, `${prefix}-tab`, `${prefix}-blocked`] as const;
+const slugs = [`${prefix}-one`, `${prefix}-two`, `${prefix}-edit`, `${prefix}-tab`, `${prefix}-blocked`, `${prefix}-sku-owner`] as const;
 const sku = `M33-${randomUUID()}`;
 // Valid boundary: 64 characters without hyphens or other natural wrap points.
 const editSku = 'W'.repeat(32) + randomUUID().replaceAll('-', '').toUpperCase();
 const publishedSku = `M341P-${randomUUID()}`.toUpperCase();
 const tabSku = `M341T-${randomUUID()}`.toUpperCase();
+const addedSku = `M342A-${randomUUID()}`.toUpperCase();
+const takenSku = `M342T-${randomUUID()}`.toUpperCase();
 let categoryId = '';
 let db: PrismaService | undefined;
 
@@ -154,11 +156,13 @@ test('anonymous and CUSTOMER cannot list or create admin products', async ({ pag
   })).status()).toBe(403);
 });
 
-test('admin edits a draft product while variants, inventory and id stay frozen', async ({ page }, info) => {
+test('admin edits draft variants: keeps ids and stock, adds a variant, turns one off and gets server conflicts for taken SKUs', async ({ page }, info) => {
   test.setTimeout(60000);
   if (!db) throw new Error('Missing test DB');
   const draft = await db.product.create({ data: { name: 'Áo cotton cần sửa thử', slug: slugs[2], description: 'Mô tả trước khi sửa', categoryId,
     priceFrom: 250000, variants: { create: { sku: editSku, size: 'M', color: 'đen', price: 250000, active: true, inventory: { create: {} } } } } });
+  await db.product.create({ data: { name: 'Sản phẩm giữ SKU thử', slug: slugs[5], description: '', categoryId,
+    priceFrom: 100000, variants: { create: { sku: takenSku, size: 'M', color: 'xám', price: 100000, active: true, inventory: { create: {} } } } } });
   const variant = await db.variant.findUniqueOrThrow({ where: { sku: editSku } });
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(adminEmail);
@@ -172,15 +176,29 @@ test('admin edits a draft product while variants, inventory and id stay frozen',
   await expect(page.getByLabel('Đường dẫn sản phẩm', { exact: true })).toHaveValue(slugs[2]);
   await expect(page.getByLabel('Danh mục', { exact: true })).toHaveValue(categoryId);
   await expect(page.getByLabel('Mô tả', { exact: true })).toHaveValue('Mô tả trước khi sửa');
-  await expect(page.getByText(editSku, { exact: true })).toBeVisible();
-  await expect(page.getByText(/M · đen · 250\.000/)).toBeVisible();
-  await expect(page.getByText('Phần này chưa cho sửa SKU, size, màu, giá hoặc thêm/tắt biến thể.')).toBeVisible();
-  await expect(page.getByLabel('SKU 1', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('SKU 1', { exact: true })).toHaveValue(editSku);
+  await expect(page.getByLabel('Giá 1 (VND)', { exact: true })).toHaveValue('250000');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel('Tên sản phẩm', { exact: true }).fill('Áo cotton đã sửa thử');
   await page.getByLabel('Mô tả', { exact: true }).fill('Mô tả đã sửa thử');
+  await page.getByLabel('Giá 1 (VND)', { exact: true }).fill('199000');
+  await page.getByRole('button', { name: 'Thêm biến thể', exact: true }).click();
+  await page.getByLabel('SKU 2', { exact: true }).fill(takenSku);
+  await page.getByLabel('Size 2', { exact: true }).selectOption('L');
+  await page.getByLabel('Màu 2', { exact: true }).fill('đen');
+  await page.getByLabel('Giá 2 (VND)', { exact: true }).fill('260000');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: info.outputPath('product-edit-mobile.png'), fullPage: true });
+  await page.screenshot({ path: info.outputPath('product-edit-variants-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(page.getByText('Sản phẩm đã thay đổi, hoặc đường dẫn, SKU hoặc tổ hợp size/màu bị trùng. Hãy tải dữ liệu mới, kiểm tra lại rồi thử lại.')).toBeVisible();
+  await expect(page.getByLabel('SKU 2', { exact: true })).toHaveValue(takenSku);
+  await expect(page.getByLabel('Giá 1 (VND)', { exact: true })).toHaveValue('199000');
+  const unchanged = await db.product.findUniqueOrThrow({ where: { id: draft.id }, include: { variants: true } });
+  expect(unchanged.version).toBe(0);
+  expect(unchanged.variants).toHaveLength(1);
+  expect(Number(unchanged.variants[0]?.price)).toBe(250000);
+  await page.getByLabel('SKU 2', { exact: true }).fill(addedSku);
+  await page.getByLabel('Bật biến thể 1', { exact: true }).uncheck();
   await page.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/products$/);
   await expect(page.getByText('Đã cập nhật sản phẩm nháp “Áo cotton đã sửa thử”.')).toBeVisible();
@@ -188,10 +206,18 @@ test('admin edits a draft product while variants, inventory and id stay frozen',
   await expect(page.getByRole('heading', { name: 'Áo cotton đã sửa thử', exact: true })).toBeVisible();
   const saved = await db.product.findUniqueOrThrow({ where: { id: draft.id }, include: { variants: { include: { inventory: true } } } });
   expect(saved).toMatchObject({ name: 'Áo cotton đã sửa thử', description: 'Mô tả đã sửa thử', status: 'DRAFT', version: 1, slug: slugs[2] });
-  expect(saved.variants).toHaveLength(1);
-  expect(saved.variants[0]).toMatchObject({ id: variant.id, sku: editSku, size: 'M', color: 'đen', active: true,
-    inventory: { onHand: 0, reserved: 0 } });
-  expect(Number(saved.variants[0]?.price)).toBe(250000);
+  expect(Number(saved.priceFrom)).toBe(260000);
+  expect(saved.variants).toHaveLength(2);
+  const original = saved.variants.find((row) => row.id === variant.id);
+  expect(original).toMatchObject({ sku: editSku, size: 'M', color: 'đen', active: false, inventory: { onHand: 0, reserved: 0 } });
+  expect(Number(original?.price)).toBe(199000);
+  const added = saved.variants.find((row) => row.sku === addedSku);
+  expect(added).toMatchObject({ size: 'L', color: 'đen', active: true, inventory: { onHand: 0, reserved: 0 } });
+  expect(Number(added?.price)).toBe(260000);
+  await page.goto(`/admin/products/${draft.id}`);
+  await expect(page.getByLabel('SKU 1', { exact: true })).toHaveValue(addedSku);
+  await expect(page.getByLabel('Bật biến thể 2', { exact: true })).not.toBeChecked();
+  await expect(page.getByRole('button', { name: /Bỏ biến thể mới/ })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -218,7 +244,7 @@ test('two tabs editing the same draft: the stale one is rejected and only rebase
     await expect(other).toHaveURL(/\/admin\/products$/);
     await page.bringToFront();
     await first.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
-    await expect(page.getByText('Sản phẩm đã thay đổi hoặc đường dẫn sản phẩm bị trùng. Hãy tải dữ liệu mới, kiểm tra đường dẫn và thử lại.')).toBeVisible();
+    await expect(page.getByText('Sản phẩm đã thay đổi, hoặc đường dẫn, SKU hoặc tổ hợp size/màu bị trùng. Hãy tải dữ liệu mới, kiểm tra lại rồi thử lại.')).toBeVisible();
     await expect(first.getByLabel('Tên sản phẩm', { exact: true })).toHaveValue('Bản nhập tab một');
     expect(await db.product.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({ name: 'Tab hai đã lưu', version: 1 });
     await page.getByRole('button', { name: 'Tải dữ liệu mới', exact: true }).click();

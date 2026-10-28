@@ -16,11 +16,61 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.4.1 đã có sửa thông tin nháp cho DRAFT; Người B bổ sung M3.7.1 xem/tìm tồn kho, kết quả ở mục riêng bên dưới; chờ người dùng thử. Chưa có UI sửa biến thể/ảnh/điều chỉnh tồn/lịch sử/xuất bản |
+| M3 Catalog/ảnh/kho | M3.4.2 (Người A) đã có sửa/thêm/tắt biến thể của sản phẩm nháp; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có ảnh, điều chỉnh tồn/lịch sử kho, xuất bản, catalog khách |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
+
+## Ngày 29/10/2026 — M3.4.2 (Người A): sửa, thêm và tắt biến thể
+
+**Phạm vi:** người dùng yêu cầu bắt đầu phần Người A theo kế hoạch M3.4.2 đã gửi; giữ quy tắc chỉ sản phẩm DRAFT. Nhánh `feat/m3.4.2-variants`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push.
+
+### File thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/api/products.api.ts` | `VariantUpdateInput.id` thành tùy chọn để gửi biến thể mới |
+| `apps/frontend/src/features/admin/products/components/variantDrafts.ts` (mới) | Kiểu `VariantDraft`, chuyển đổi sang input PATCH, `validateVariants` theo dòng |
+| `apps/frontend/src/features/admin/products/components/VariantFields.tsx` (mới) | Một khung biến thể: SKU/size/màu/giá/bật, nút Bỏ dòng này cho dòng mới |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | Danh sách dòng biến thể, thêm/bỏ dòng mới, kiểm tra trước gửi, thông báo 409 nêu cả SKU/size–màu |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.test.tsx` (mới) | 6 test: sửa giữ ID/tắt thay xóa, thêm không có id, bỏ dòng mới, lỗi theo dòng, 409 giữ input, khóa khi page bận |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.test.tsx` | Cập nhật kỳ vọng từ biến thể chỉ đọc sang ô nhập, thông báo 409 mới, khóa ô biến thể khi lưu |
+| `apps/frontend/e2e/products.spec.ts` | Thay ca sửa nháp: sửa giá, thêm biến thể, SKU của sản phẩm khác bị 409 và DB không đổi, tắt biến thể, mobile; cập nhật thông báo ca hai tab |
+| `.github/workflows/ci.yml` | Tên bước E2E ghi phạm vi đến M3.4.2 |
+| `README.md`, `docs/local-trial-m3.md`, `docs/architecture.md`, `docs/m3-implementation-plan.md`, `docs/plan.md` | Trạng thái, hướng dẫn thử và tổ chức code M3.4.2 |
+
+So với kế hoạch: thêm `variantDrafts.ts` để tách logic thuần (kiểm tra/chuyển đổi) khỏi component. Backend, schema, migration, dependency không đổi.
+
+### Data flow / key
+
+Admin sửa/thêm/tắt dòng → `validateVariants` chặn SKU trùng, size+màu trùng, giá sai ngay trên form → PATCH `/admin/products/:id` (biến thể cũ kèm `id`, mới không có `id`) → `ProductsService.update` kiểm tra version, chặn xóa, cập nhật/tạo biến thể + inventory 0, tính lại `priceFrom` trong transaction → FE invalidate `admin-products`, về danh sách.
+
+- `VariantDraft`: state một dòng; giá giữ chuỗi khi đang gõ.
+- `id` có/không: cập nhật hay tạo mới; biến thể đã lưu chỉ tắt bằng `active`.
+- `variants.<index>.<field>`: khóa lỗi theo dòng; bỏ một dòng mới thì xóa lỗi cũ vì vị trí dịch chuyển.
+
+### Kiểm tra thực tế
+
+| Lệnh | Kết quả |
+|---|---|
+| Test component mới trước khi viết code | 6/6 thất bại vì chưa có ô biến thể/nút Thêm (RED đúng) |
+| `npm run typecheck` | Backend/frontend đạt |
+| `npm test` | 8 tools + 9 backend + 80 frontend đạt |
+| `npm run build` | Hai app đạt; cảnh báo chunk Vite có sẵn |
+| `npm run test:integration` | 29/29 đạt trên PostgreSQL `_test` (backend không đổi) |
+| `npm run test:e2e:implemented` | 11/11 đạt, khoảng 33 giây |
+| Ảnh mobile 390px | Agent đã xem: ô xếp dọc, SKU 64 ký tự trong ô nhập, không tràn ngang |
+
+Các lệnh chạy bằng npm trực tiếp với Node 24.15.0 vì `tools/npm.ps1` từ chối Node dưới 24.22.1 và máy chưa có runtime `.local`; cần chạy lại bằng Node 24.22.1+ trước khi coi là khớp CI. Hai lỗi trong chính test mới đã sửa: assertion focus nhắm vào phần chữ thay vì khung Alert; ca 409 tạo biến thể trùng size/màu nên bị chặn trước khi gửi.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Đổi chéo size/màu giữa hai biến thể trong một lần lưu bị 409 (unique product+size+color, cập nhật tuần tự); transaction rollback, không mất dữ liệu.
+- Chỉ DRAFT sửa được; tồn kho chưa chỉnh trên UI (M3.7).
+- Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m342--admin-sửa-thêm-và-tắt-biến-thể-của-sản-phẩm-nháp).
+
+**Dừng ở M3.4.2 chờ người dùng thử.** M3.5 (ảnh) cần kế hoạch riêng được duyệt.
 
 ## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.1: xem và tìm tồn kho
 
