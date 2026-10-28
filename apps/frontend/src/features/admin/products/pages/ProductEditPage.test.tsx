@@ -17,14 +17,23 @@ const detail = { id: 'product-test', name: 'Áo cotton', slug: 'ao-cotton', desc
 const expectedPatchBody = { name: 'Áo cotton đã sửa', slug: 'ao-cotton', description: 'Mô tả mới', categoryId: category.id, expectedVersion: 3,
   variants: [{ id: 'variant-test', sku: 'COTTON-M', size: 'M', color: 'đen', price: 250000, active: true }] };
 
+const withImage = { ...detail, images: [{ id: 'asset-1', url: '/api/v1/admin/uploads/images/asset-1' }] };
+
 afterEach(() => vi.restoreAllMocks());
 
 function stubApi() {
   const stubs: Record<string, unknown> = { categories: [category], detail, patch: { ...detail, version: 4 },
-    list: { items: [], page: 1, pageSize: 24, total: 0 } };
+    list: { items: [], page: 1, pageSize: 24, total: 0 },
+    upload: { id: 'asset-new', width: 300, height: 400, url: '/api/v1/admin/uploads/images/asset-new' },
+    images: { ...detail, version: 4, images: [{ id: 'asset-new', url: '/api/v1/admin/uploads/images/asset-new' }] },
+    publish: { ...withImage, status: 'PUBLISHED', version: 4 }, hide: { ...withImage, status: 'HIDDEN', version: 5 } };
   const spy = vi.spyOn(client, 'request').mockImplementation(async (path: string, options?: client.RequestOptions) => {
     const respond = (value: unknown) => { if (value instanceof Error) throw value; return value; };
     if (path === '/admin/categories') return respond(stubs.categories);
+    if (path === '/admin/uploads/images' && options?.method === 'POST') return respond(stubs.upload);
+    if (path === '/admin/products/product-test/images' && options?.method === 'PUT') return respond(stubs.images);
+    if (path === '/admin/products/product-test/publish' && options?.method === 'POST') return respond(stubs.publish);
+    if (path === '/admin/products/product-test/hide' && options?.method === 'POST') return respond(stubs.hide);
     if (path === '/admin/products/product-test' && options?.method === 'PATCH') return respond(stubs.patch);
     if (path === '/admin/products/product-test') return respond(stubs.detail);
     if (path.startsWith('/admin/products?page=')) return respond(stubs.list);
@@ -162,6 +171,72 @@ describe('edit a draft product', () => {
       expect((patch?.[1]?.body as Record<string, unknown>)?.['expectedVersion']).toBe(3);
       expect((patch?.[1]?.body as Record<string, unknown>)?.['name']).toBe('Bản đang nhập');
     });
+  });
+
+  it('attaches an image with the captured version, then saves info with the version returned by that image save', async () => {
+    const { spy, stubs } = stubApi();
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Tên sản phẩm'), { target: { value: 'Bản đang nhập' } });
+    await userEvent.upload(screen.getByLabelText('Tải ảnh sản phẩm'), new File(['png'], 'ao.png', { type: 'image/png' }));
+    let finishImages: (value: unknown) => void = () => { throw new Error('Image save not started'); };
+    stubs.images = new Promise((resolve) => { finishImages = resolve; });
+    await userEvent.click(await screen.findByRole('button', { name: 'Lưu thứ tự ảnh' }));
+    const put = spy.mock.calls.find(([, options]) => options?.method === 'PUT');
+    expect(put?.[0]).toBe('/admin/products/product-test/images');
+    expect(put?.[1]?.body).toEqual({ assetIds: ['asset-new'], expectedVersion: 3 });
+    expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Tải dữ liệu mới' })).toBeDisabled();
+    await act(async () => {
+      finishImages({ ...detail, version: 4, images: [{ id: 'asset-new', url: '/api/v1/admin/uploads/images/asset-new' }] });
+    });
+    expect(await screen.findByText('Đã lưu ảnh sản phẩm.')).toBeVisible();
+    expect(screen.getByRole('img', { name: 'Ảnh 1 của Áo cotton' })).toBeVisible();
+    expect(screen.getByLabelText('Tên sản phẩm')).toHaveValue('Bản đang nhập');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => {
+      const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
+      expect(patch?.[1]?.body).toMatchObject({ name: 'Bản đang nhập', expectedVersion: 4 });
+    });
+  });
+
+  it('publishes a ready draft with the captured version, then shows status management without the edit form', async () => {
+    const { spy, stubs } = stubApi();
+    stubs.detail = withImage;
+    renderPage();
+    await screen.findByLabelText('Tên sản phẩm');
+    await userEvent.click(await screen.findByRole('button', { name: 'Xuất bản' }));
+    expect(await screen.findByText('Đã xuất bản sản phẩm.')).toBeVisible();
+    const publish = spy.mock.calls.find(([path]) => path === '/admin/products/product-test/publish');
+    expect(publish?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 3 } });
+    expect(screen.getByRole('heading', { name: 'Quản lý sản phẩm', level: 1 })).toBeVisible();
+    expect(screen.queryByLabelText('Tên sản phẩm')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ẩn sản phẩm' }));
+    expect(await screen.findByText('Đã ẩn sản phẩm.')).toBeVisible();
+    const hide = spy.mock.calls.find(([path]) => path === '/admin/products/product-test/hide');
+    expect(hide?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 4 } });
+  });
+
+  it('locks Xuất bản while product info is unsaved and unlocks when the edit is reverted', async () => {
+    const { stubs } = stubApi();
+    stubs.detail = withImage;
+    renderPage();
+    const name = await screen.findByLabelText('Tên sản phẩm');
+    expect(await screen.findByRole('button', { name: 'Xuất bản' })).toBeEnabled();
+    fireEvent.change(name, { target: { value: 'Tên chưa lưu' } });
+    expect(screen.getByRole('button', { name: 'Xuất bản' })).toBeDisabled();
+    expect(screen.getByText('Lưu hoặc hủy các thay đổi đang nhập trước khi xuất bản.')).toBeVisible();
+    fireEvent.change(name, { target: { value: 'Áo cotton' } });
+    expect(screen.getByRole('button', { name: 'Xuất bản' })).toBeEnabled();
+  });
+
+  it('locks Xuất bản while the image list has unsaved changes', async () => {
+    const { stubs } = stubApi();
+    stubs.detail = withImage;
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Gỡ ảnh 1' }));
+    expect(screen.getByRole('button', { name: 'Xuất bản' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Hủy thay đổi ảnh' }));
+    expect(screen.getByRole('button', { name: 'Xuất bản' })).toBeEnabled();
   });
 
   it('keeps the draft when a background category refetch fails and recovers', async () => {

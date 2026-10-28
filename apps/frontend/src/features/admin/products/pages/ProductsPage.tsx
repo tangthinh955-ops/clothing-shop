@@ -60,6 +60,8 @@ export function ProductsPage() {
               </Stack>
               {product.status === 'DRAFT' && <Button component={Link} to={`/admin/products/${product.id}`} aria-label={`Sửa ${product.name}`}
                 variant="outlined" size="small" sx={{ mt: 2 }}>Sửa</Button>}
+              {product.status !== 'DRAFT' && <Button component={Link} to={`/admin/products/${product.id}`} aria-label={`Quản lý ${product.name}`}
+                variant="outlined" size="small" sx={{ mt: 2 }}>Quản lý</Button>}
             </Paper>)}
           </Stack>}
         {products.data.total > 24 && <Pagination count={Math.ceil(products.data.total / 24)} page={page}

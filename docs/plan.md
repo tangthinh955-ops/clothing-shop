@@ -85,7 +85,7 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 
 ### M3 — Sản phẩm, ảnh và kho
 
-Điểm dừng hiện tại và kế hoạch tiếp tục theo phần: [m3-implementation-plan.md](m3-implementation-plan.md). **M3.4.2 — admin sửa/thêm/tắt biến thể của nháp** (Người A) đã triển khai; kết quả kiểm tra ở progress, chờ người dùng chạy thử theo [hướng dẫn M3.1–M3.4.2](local-trial-m3.md). Chưa triển khai ảnh/kho/xuất bản/catalog khách (M3.5 trở đi) và chưa nghiệm thu toàn M3.
+Điểm dừng hiện tại và kế hoạch tiếp tục theo phần: [m3-implementation-plan.md](m3-implementation-plan.md). **M3.8 — admin xuất bản và ẩn sản phẩm** (Người A) đã triển khai sau M3.4.2/M3.5/M3.6; kết quả kiểm tra ở progress, chờ người dùng chạy thử theo [hướng dẫn M3.1–M3.8](local-trial-m3.md). Chưa có UI kho (M3.7, Người B), catalog khách (M3.9 trở đi) và chưa nghiệm thu toàn M3.
 
 - [ ] [CREATE] backend categories/products/inventory/uploads; frontend catalog và admin sản phẩm/danh mục/kho.
 - [ ] [MODIFY] schema/migrations/routes; thêm seed giả chạy tường minh.

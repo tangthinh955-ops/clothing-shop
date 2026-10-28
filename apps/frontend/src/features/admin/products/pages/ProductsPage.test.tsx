@@ -47,6 +47,16 @@ describe('admin product list', () => {
     expect(screen.queryByRole('link', { name: `Sửa ${published.name}` })).not.toBeInTheDocument();
   });
 
+  it('links status management for published and hidden products', async () => {
+    const published = { ...product, id: 'published-list', name: 'Áo đã xuất bản', slug: 'ao-da-xuat-ban', status: 'PUBLISHED' };
+    const hidden = { ...product, id: 'hidden-list', name: 'Áo đã ẩn', slug: 'ao-da-an', status: 'HIDDEN' };
+    vi.spyOn(client, 'request').mockResolvedValue({ items: [product, published, hidden], total: 3, page: 1, pageSize: 24 });
+    renderPage();
+    expect(await screen.findByRole('link', { name: `Quản lý ${published.name}` })).toHaveAttribute('href', '/admin/products/published-list');
+    expect(screen.getByRole('link', { name: `Quản lý ${hidden.name}` })).toHaveAttribute('href', '/admin/products/hidden-list');
+    expect(screen.queryByRole('link', { name: `Quản lý ${product.name}` })).not.toBeInTheDocument();
+  });
+
   it('offers retry after a failed list request', async () => {
     vi.spyOn(client, 'request').mockRejectedValueOnce(new client.ApiError('NETWORK_ERROR', 'Chưa tải được sản phẩm.', 0))
       .mockResolvedValueOnce({ items: [product], total: 1, page: 1, pageSize: 24 });
