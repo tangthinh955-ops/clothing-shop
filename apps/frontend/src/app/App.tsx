@@ -5,6 +5,7 @@ import { VerifyPage } from '../features/auth/pages/VerifyPage';
 import { AccountPage } from '../features/account/AccountPage';
 import { AdminPage } from '../features/admin/AdminPage';
 import { CategoriesPage } from '../features/admin/categories/pages/CategoriesPage';
+import { InventoryPage } from '../features/admin/inventory/pages/InventoryPage';
 import { ProductsPage } from '../features/admin/products/pages/ProductsPage';
 import { ProductCreatePage } from '../features/admin/products/pages/ProductCreatePage';
 import { ProductEditPage } from '../features/admin/products/pages/ProductEditPage';
@@ -27,6 +28,7 @@ export function App() {
       <Route path="account" element={<PrivateRoute>{(user) => <AccountPage user={user} />}</PrivateRoute>} />
       <Route path="admin" element={<PrivateRoute admin>{() => <AdminPage />}</PrivateRoute>} />
       <Route path="admin/categories" element={<PrivateRoute admin>{() => <CategoriesPage />}</PrivateRoute>} />
+      <Route path="admin/inventory" element={<PrivateRoute admin>{() => <InventoryPage />}</PrivateRoute>} />
       <Route path="admin/products" element={<PrivateRoute admin>{() => <ProductsPage />}</PrivateRoute>} />
       <Route path="admin/products/new" element={<PrivateRoute admin>{() => <ProductCreatePage />}</PrivateRoute>} />
       <Route path="admin/products/:productId" element={<PrivateRoute admin>{() => <ProductEditPage />}</PrivateRoute>} />

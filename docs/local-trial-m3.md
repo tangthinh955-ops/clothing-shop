@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI sửa biến thể/ảnh/kho. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI sửa biến thể/ảnh/điều chỉnh tồn/lịch sử kho. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -177,4 +177,36 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 - `admin-products`: invalidate sau lưu để list và chi tiết đọc lại dữ liệu server.
 - 409: API dùng chung cho version cũ và slug trùng; thông báo nêu cả hai khả năng.
 
-Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products, 11 ca trên `_test`).
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
+
+## M3.7.1 — Người B: xem và tìm tồn kho
+
+Giữ hai terminal backend/frontend như phần Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở Kho | Mỗi SKU hiển thị tên sản phẩm, SKU, size/màu và ba lượng: tồn thực có, đang giữ, còn bán |
+| DB local chưa có sản phẩm/biến thể | Hiện hướng dẫn tạo sản phẩm; có thể tạo nháp một biến thể bằng UI M3.3 rồi quay lại Kho |
+| Tạo một SKU mới rồi mở Kho | Tồn thực có = 0, đang giữ = 0, còn bán = 0; phần này chưa có nút nhập kho |
+| Nhập một phần SKU hoặc tên → Tìm kiếm / Enter | Tìm không phân biệt hoa thường; URL có `q=...&page=1`; gõ chưa submit không gọi API mỗi phím |
+| Refresh hoặc copy URL sang tab ADMIN khác | Giữ từ khóa và trang |
+| Có hơn 24 SKU khớp → sang trang 2, Back/Forward | URL và kết quả theo đúng trang; ô tìm kiếm khớp lại URL |
+| Nhập từ khóa không tồn tại | Thông báo không có kết quả; Xóa tìm kiếm quay lại trang 1 |
+| Mở `?page=abc` hoặc `?page=0` | Báo số trang sai; Về trang đầu phục hồi |
+| Mở trang vượt số kết quả, ví dụ `?page=99999` | Báo trang không có SKU, có nút Về trang đầu |
+| Tắt kết nối API rồi tải trang; bật lại và bấm Tải lại tồn kho | Thông báo lỗi rồi tải được dữ liệu; refetch nền lỗi giữ số cũ kèm cảnh báo |
+| Màn hình 390px với SKU dài 64 ký tự | Nội dung xuống dòng, các lượng tồn xếp dọc, không kéo ngang trang |
+| Chưa đăng nhập / đăng nhập CUSTOMER | Chuyển tới login / account; GET API trực tiếp bị 401 / 403 |
+
+UI chỉ đọc, không tạo dữ liệu mẫu vào DB local và không ghi tồn. Trong E2E `_test`, fixture có tồn 12, đang giữ 2, còn bán 10 và 25 SKU để kiểm tra phân trang; fixture được dọn sau lượt chạy, không xuất hiện ở DB local.
+
+**Data flow:** nhập từ khóa → URL → TanStack Query → `inventoryApi.list` → GET `/api/v1/admin/inventory` → backend đọc PostgreSQL → thẻ SKU hiển thị số liệu server trả.
+
+- `q/page`: từ khóa và trang chia sẻ được qua URL, tìm mới reset trang 1.
+- `inventoryKey` (`admin-inventory`): cache được tách theo từ khóa/trang; tải lỗi nền vẫn giữ dữ liệu đọc trước đó.
+- `onHand/reserved/available`: tồn thực có / đang giữ / còn bán; UI không tự cập nhật kho.
+- `PrivateRoute admin`: bảo vệ trang phía frontend; quyền thật tiếp tục được guard ở backend kiểm tra.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/inventory/pages/InventoryPage.test.tsx`. E2E đã triển khai: `./tools/npm.ps1 run test:e2e:implemented`.
+
+**Dừng M3.7.1 để người dùng thử.** Điều chỉnh tồn và lịch sử là M3.7.2/M3.7.3, chưa được triển khai.

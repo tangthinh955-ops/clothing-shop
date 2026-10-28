@@ -1,6 +1,6 @@
 # M3 local — kế hoạch tiếp tục theo từng phần
 
-> Cập nhật 28/10/2026. Lộ trình dưới đây cần duyệt từng phần, không phải cho phép code liên tiếp. Mỗi phần: gửi kế hoạch → chờ duyệt → triển khai/kiểm tra → bàn giao → chờ người dùng thử. Không chuyển sang M4.
+> Cập nhật 29/10/2026. Lộ trình dưới đây cần duyệt từng phần, không phải cho phép code liên tiếp. Mỗi phần: gửi kế hoạch → chờ duyệt → triển khai/kiểm tra → bàn giao → chờ người dùng thử. Không chuyển sang M4.
 
 **Mục tiêu:** admin đăng hàng và ảnh thật, chỉnh kho có lịch sử; khách lọc và xem hàng đã xuất bản.
 **Kiến trúc:** giữ Nest modules Categories/Products/Inventory/Uploads và React feature catalog/admin; PostgreSQL là nguồn dữ liệu chính.
@@ -12,7 +12,8 @@
 - M3.0.1: sửa import Prisma/Inventory sau thay đổi thư mục, agent đã kiểm tra.
 - M3.0.2: refactor backend, giữ UsersController/AdminAccessController chung file theo lựa chọn người dùng, agent đã kiểm tra.
 - M3.0.3: sửa API client FE multipart/idempotency, vòng đời token và tách router/page; typecheck/build toàn repo đạt, 32 test công cụ/unit/UI và 2 E2E auth đạt. Đang chờ người dùng thử/xác nhận; không coi là đã nghiệm thu.
-- Backend Categories/Products/Inventory/Uploads và migration local/test đã có; chưa kết luận tất cả ngoại lệ M3 được nghiệm thu. UI danh mục M3.1–M3.2 và sửa auth M3.1.1 đã có. M3.3 thêm danh sách quản trị và tạo sản phẩm nháp với một biến thể. M3.4.1 thêm sửa thông tin nháp (tên/slug/danh mục/mô tả) cho sản phẩm DRAFT; chưa có UI sửa biến thể/ảnh/kho M3.4.2 trở đi, `/shop` vẫn là intro empty state.
+- Backend Categories/Products/Inventory/Uploads và migration local/test đã có; chưa kết luận tất cả ngoại lệ M3 được nghiệm thu. UI danh mục M3.1–M3.2 và sửa auth M3.1.1 đã có. M3.3 thêm danh sách quản trị và tạo sản phẩm nháp với một biến thể. M3.4.1 thêm sửa thông tin nháp (tên/slug/danh mục/mô tả) cho sản phẩm DRAFT; chưa có UI sửa biến thể/ảnh, `/shop` vẫn là intro empty state. Kho mới có list/search M3.7.1 ở dòng dưới.
+- M3.7.1 (Người B) bổ sung trang Kho `/admin/inventory`: xem và tìm tồn thật theo SKU/tên, phân trang `q/page` trên URL; chưa có điều chỉnh/lịch sử UI. Kết quả kiểm tra và trạng thái chờ người dùng thử ghi riêng trong progress.
 - `e2e/catalog.spec.ts` là ca chấp nhận cho toàn luồng M3 đã viết trước, còn thiếu UI để đạt. Các ca auth/categories đã chạy đạt được ghi riêng trong progress; không che/skip ca catalog để gọi toàn M3 hoàn thành.
 
 ## Bảng chia phần đề xuất
@@ -32,7 +33,7 @@
 | M3.11 | Có bộ dữ liệu demo chạy tường minh | Seed CLI có kiểm soát, không ghi đè dữ liệu người dùng | Chạy lại không tạo trùng/nhập kho lặp; không tự seed khi startup | Các model/luồng M3 đã thử; duyệt cách tạo dữ liệu trước khi code |
 | M3.12 | Chạy thử toàn luồng và chốt M3 local | E2E catalog, quyền, mobile, restart/ảnh, checklist | Admin đăng hàng → ảnh → kho → publish → khách xem; báo ca đạt/chưa đạt và giới hạn | Các phần trước đã được người dùng thử |
 
-Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ liệu. Nếu lúc lập kế hoạch chi tiết một phần còn quá lớn, tách thành M3.x.1/M3.x.2 trước khi triển khai. Bảng phụ thuộc không thay thế bước duyệt; điểm dừng hiện tại là M3.4.1, không tự bắt đầu M3.4.2.
+Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ liệu. Nếu lúc lập kế hoạch chi tiết một phần còn quá lớn, tách thành M3.x.1/M3.x.2 trước khi triển khai. Bảng phụ thuộc không thay thế bước duyệt; điểm dừng là M3.4.1 và M3.7.1 (Người B), không tự bắt đầu M3.4.2 hoặc M3.7.2.
 
 ## Phân công hai người (29/10/2026)
 
@@ -49,6 +50,27 @@ Người dùng đồng ý chia phần còn lại cho hai người. Lý do chia: 
 - File dùng chung (`app/App.tsx`, `features/admin/AdminPage.tsx`, script `test:e2e:implemented` trong `package.json`, `.github/workflows/ci.yml`, `progress.md`, tài liệu): sửa tối thiểu, mỗi người ghi mục có ngày và mã phần riêng trong `progress.md`; khi xung đột giữ cả hai bên.
 - Migration Prisma: tại mỗi thời điểm chỉ một PR có migration; rebase `main` trước khi tạo; không sửa migration đã áp dụng.
 - Điều kiện bắt đầu: người dùng đã thử M3.4.1; cả hai máy có Node 24.22.1+ (`tools/npm.ps1` từ chối Node thấp hơn).
+
+## M3.7 — Kho admin (Người B)
+
+M3.7 được chia nhỏ theo bảng đã gửi trong chat. Chỉ **M3.7.1** đã được người dùng duyệt triển khai; M3.7.2/M3.7.3 phải có kế hoạch riêng và chờ duyệt. Không sửa `features/admin/products/`, backend/schema/migration/dependency.
+
+| Mã | Thay đổi người dùng thấy được | Phạm vi chính | Cách thử / mong đợi | Phụ thuộc |
+|---|---|---|---|---|
+| M3.7.1 | Mở Kho, tìm và xem tồn | List, tìm SKU/tên, URL q/page, PrivateRoute ADMIN | Refresh giữ tìm kiếm/trang; thấy tồn thực có/đang giữ/còn bán; khách/CUSTOMER bị chặn | API kho hiện có |
+| M3.7.2 | Điều chỉnh tồn an toàn | Dialog delta/lý do, key/version, mạng/409 | +5; replay không cộng hai lần; xuất quá tồn bị chặn | Người dùng thử M3.7.1 và duyệt kế hoạch M3.7.2 |
+| M3.7.3 | Xem lịch sử từng SKU | Thời gian, actor, before/after, lý do và phân trang | Thấy giao dịch 0 → 5 cùng tên admin | Người dùng thử M3.7.2 và duyệt kế hoạch M3.7.3 |
+
+### M3.7.1 — xem và tìm tồn
+
+- `api/inventory.api.ts`: kiểu stock/pagination, `inventoryKey`, `inventoryApi.list(q, page)` gọi qua shared client.
+- `pages/InventoryPage.tsx`: query key gồm từ khóa và trang; tìm bằng nút/Enter, trim từ khóa, reset trang 1, giữ query khác; Back/Forward khôi phục ô tìm kiếm theo URL. GET không tự retry, có nút tải lại; lỗi refetch nền giữ dữ liệu cũ kèm cảnh báo. Hiển thị đúng ba lượng server trả, không tự ghi kho.
+- URL page phải là số nguyên 1–100000; từ khóa tối đa 80 ký tự. URL không hợp lệ không gọi API, có cách xóa tìm kiếm/về trang đầu. Mỗi trang 24 dòng, thẻ xếp dọc ở mobile, SKU64 không tràn ngang.
+- `app/App.tsx` thêm route qua `PrivateRoute admin`; `AdminPage.tsx` thêm link Kho; `InventoryPage.test.tsx` và `e2e/inventory.spec.ts` kiểm tra UI/API thật. E2E có fixture riêng 25 biến thể để kiểm tra trang 2, SKU64 và reserved > 0; chỉ dùng `_test`, cleanup theo ID fixture.
+- Script `test:e2e:implemented` và tên bước CI thêm riêng phạm vi **inventory list/search M3.7.1**, không đưa ca catalog chưa hoàn chỉnh vào kết luận đã đạt.
+- Hướng dẫn: mục M3.7.1 trong [local-trial-m3.md](local-trial-m3.md). Kết quả thực tế ở [progress.md](../progress.md). Điểm dừng là M3.7.1, chờ người dùng chạy thử.
+
+M3.7.2 sẽ tạo key cho mỗi lần mở dialog, chốt version từ dòng lúc mở, khóa form khi chưa biết kết quả do lỗi mạng và chỉ replay đúng key/body/version hoặc đóng/tải lại. Không tự retry 409. M3.7.3 thêm `components/MovementHistory.tsx`; M3.7.2 thêm `components/AdjustmentDialog.tsx`. Đây là kế hoạch, chưa phải tính năng đã dùng được.
 
 ## M3.1 — admin xem và thêm danh mục
 

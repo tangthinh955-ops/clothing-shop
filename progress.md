@@ -16,11 +16,67 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.4.1 đã có sửa thông tin sản phẩm nháp (tên/slug/danh mục/mô tả) cho DRAFT; kết quả kiểm tra ở mục M3.4.1, chờ người dùng thử; chưa triển khai M3.4.2 (biến thể/ảnh/kho/xuất bản) |
+| M3 Catalog/ảnh/kho | M3.4.1 đã có sửa thông tin nháp cho DRAFT; Người B bổ sung M3.7.1 xem/tìm tồn kho, kết quả ở mục riêng bên dưới; chờ người dùng thử. Chưa có UI sửa biến thể/ảnh/điều chỉnh tồn/lịch sử/xuất bản |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
+
+## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.1: xem và tìm tồn kho
+
+**Phạm vi đã duyệt:** người dùng duyệt bảng kế hoạch M3.7.1 bằng "triển khai". Chỉ làm trang đọc/tìm tồn; chưa triển khai M3.7.2 điều chỉnh hoặc M3.7.3 lịch sử. Nhánh `feat/m3.7-inventory` từ `main` tại `568d4af`; runtime local Node24.22.1/npm11.19.1, không đổi Node toàn máy.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/inventory/api/inventory.api.ts` | Mới: kiểu inventory/list, query key, API list qua shared client; encode từ khóa và phân trang24 |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.tsx` | Mới: tìm SKU/tên theo URL q/page, thẻ SKU và ba lượng tồn, phân trang, loading/empty/error/retry và phục hồi URL sai |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.test.tsx` | Mới:19 UI test, gồm route/ACL, tìm bằng submit, Back, phân trang, giữ cache khi lỗi nền và URL không hợp lệ |
+| `apps/frontend/src/app/App.tsx` | Thêm route `/admin/inventory` qua `PrivateRoute admin` |
+| `apps/frontend/src/features/admin/AdminPage.tsx` | Thêm link Kho; sửa tối thiểu file dùng chung |
+| `apps/frontend/e2e/inventory.spec.ts` | Mới:3 E2E thật, fixture25 SKU/biên SKU64, tồn12/giữ2/còn10, tìm kiếm/URL/mobile/retry/401/403, kiểm tra DB chỉ đọc UI không đổi kho |
+| `package.json` | Thêm inventory.spec.ts vào bộ E2E đã triển khai, giữ bộ catalog đầy đủ riêng |
+| `.github/workflows/ci.yml` | Tên bước ghi rõ kho mới có list/search M3.7.1 |
+| `README.md` | Route Kho và phạm vi E2E hiện hành |
+| `docs/local-trial-m3.md` | Hướng dẫn chạy thử M3.7.1 và giải thích key |
+| `docs/m3-implementation-plan.md` | Tách M3.7.1/.2/.3, ghi phạm vi và điểm dừng |
+| `progress.md` | Ghi bằng chứng và trạng thái của riêng Người B |
+
+Danh sách đúng kế hoạch đã duyệt; không sửa backend/schema/migration/dependency/lockfile hoặc `features/admin/products/` của Người A. Không stage/commit/push. Ledger thao tác tạm ở `.local/m371-20261029/progress.md` được Git bỏ qua.
+
+### Data flow / key quan trọng
+
+ADMIN bấm Kho → PrivateRoute kiểm tra phiên/role → nhập SKU/tên rồi Tìm kiếm/Enter → page trim từ khóa, cập nhật `q/page` trên URL (tìm mới về trang1) → TanStack Query gọi `inventoryApi.list` → GET `/api/v1/admin/inventory` → guard backend kiểm tra ADMIN, service đọc PostgreSQL → UI hiển thị nguyên `onHand/reserved/available` server trả. Không có POST/PATCH hay optimistic update tồn trong phần này.
+
+- `q/page`: nguồn bộ lọc/trang là URL, refresh và Back/Forward giữ đúng tìm kiếm; gõ chưa submit không gọi API mỗi phím.
+- `inventoryKey`: cache `admin-inventory` tách theo q/page, không trộn kết quả các lượt tìm kiếm.
+- `onHand/reserved/available`: tồn thực có / đang giữ / còn bán; chỉ đọc, kho ban đầu của SKU mới là0.
+- `retry: false`: GET không tự retry; nút Tải lại tồn kho là thao tác tường minh. Refetch nền lỗi vẫn giữ số cũ và hiện cảnh báo.
+- `PrivateRoute admin`: bảo vệ giao diện, không thay guard quyền tại API.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| UI trước implementation | 19/19 thất bại vì route/trang Kho chưa có; xác nhận RED |
+| UI sau implementation | 19/19 đạt; xác nhận GREEN |
+| `./tools/npm.ps1 run typecheck` | Backend/frontend đạt; đã sửa option test không đúng kiểu trước khi chạy lại |
+| `./tools/npm.ps1 run build` | Hai app đạt; Vite còn cảnh báo chunk598.21kB/gzip183.75kB |
+| `./tools/npm.ps1 test` | Lượt tuần tự đạt8 công cụ +9 backend +93 frontend =110 test;19 ca Kho nằm trong93 frontend |
+| `./tools/npm.ps1 run test:integration` | 29/29 đạt trên clothing_test; cảnh báo pg về query đồng thời, không sửa ngoài phạm vi |
+| `./tools/npm.ps1 run test:e2e:implemented` | 14/14 đạt, khoảng1.3phút:2 auth +4 categories +5 products +3 inventory; API/proxy/DB thật |
+| Mobile390px | E2E xác nhận không tràn ngang; agent đã xem ảnh inventory-mobile-390.png, SKU64 xuống dòng và tồn12/giữ2/còn10 hiển thị đủ |
+| Review cấu trúc độc lập | Không phát hiện Critical/Important/Minor trong phạm vi M3.7.1; agent chính đã xác nhận E2E/ảnh |
+| Rà phạm vi/diff/liên kết tài liệu | Không sửa phần Người A/backend; diff whitespace và liên kết file đạt |
+
+Lượt `npm test` đầu dừng ở test công cụ Prisma do tiến trình con timeout15s khi chạy kiểm tra đồng thời; chạy lại tuần tự đạt, không tăng timeout/bỏ test. Lượt E2E đầu không chạy ca nào vì Docker engine mất kết nối (`ECONNREFUSED`/readiness timeout); đã khởi động lại Docker Desktop và container DB hiện có, giữ nguyên volume/dữ liệu. Lượt kế tiếp11 ca cũ đạt nhưng fixture mới thiếu `Product.priceFrom`, một ca lỗi setup và hai ca chưa chạy; đã bổ sung `priceFrom=100000` vào fixture và chạy lại toàn bộ14/14 đạt, không sửa backend.
+
+### Chạy thử / điểm dừng
+
+Giữ Docker DB, chạy `./tools/npm.ps1 run dev:backend` và `./tools/npm.ps1 run dev:frontend` ở hai terminal. Đăng nhập ADMIN tại http://127.0.0.1:5173/login → Kho hoặc mở http://127.0.0.1:5173/admin/inventory. Thử SKU/tên, Enter, refresh, phân trang, từ khóa không có kết quả, URL page sai và màn hình390px theo [hướng dẫn M3.7.1](docs/local-trial-m3.md). Nếu DB trống, tạo một nháp bằng UI M3.3 rồi quay lại Kho; phần này không tự seed và chưa có nhập kho.
+
+**Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử/xác nhận. Dừng ở M3.7.1.** Điều chỉnh/lịch sử (M3.7.2/.3) cần duyệt riêng; không coi toàn M3 đã hoàn thành. Chưa kiểm chứng GitHub CI hoặc deploy.
 
 ## Ngày 29/10/2026 — Đánh giá repo và phân công hai người
 
