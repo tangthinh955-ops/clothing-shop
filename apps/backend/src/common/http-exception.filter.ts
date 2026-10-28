@@ -17,7 +17,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : status === 404 ? 'NOT_FOUND' : status === 429 ? 'RATE_LIMITED' : status === 413 ? 'PAYLOAD_TOO_LARGE' : 'SYSTEM_ERROR';
     const defaultMessage = status === 429 ? 'Thao tác quá nhanh. Vui lòng thử lại sau.' : status < 500 ? 'Yêu cầu chưa hợp lệ.' : 'Dịch vụ gặp lỗi. Vui lòng thử lại sau.';
     const requestId = typeof res.locals['requestId'] === 'string' ? res.locals['requestId'] as string : randomUUID();
-    if (status >= 500) this.logger.error(JSON.stringify({ requestId, code: defaultCode, method: req.method }));
+    if (status >= 500) {
+      // Unexpected errors keep their stack in the server log only; the response stays generic.
+      const cause = error instanceof HttpException ? undefined : error instanceof Error ? error.stack : String(error);
+      this.logger.error(JSON.stringify({ requestId, code: defaultCode, method: req.method }), cause);
+    }
     res.status(status).json({ code: typeof body['code'] === 'string' ? body['code'] : defaultCode,
       message: typeof body['message'] === 'string' ? body['message'] : defaultMessage,
       fieldErrors: Array.isArray(body['fieldErrors']) ? body['fieldErrors'] : [], requestId });

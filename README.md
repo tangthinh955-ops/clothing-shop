@@ -8,7 +8,7 @@ Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản 
 
 Điểm dừng hiện tại: **M3.4.1 — admin sửa thông tin sản phẩm nháp (tên/slug/danh mục/mô tả), chờ người dùng chạy thử**. Xem [hướng dẫn M3.1–M3.4.1](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai sửa SKU/size/màu/giá, thêm/tắt biến thể, ảnh và kho (M3.4.2 trở đi).
 
-Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật. Không sửa fastLock/LiveOrder.
+Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật.
 
 ## Tài liệu
 
