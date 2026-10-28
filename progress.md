@@ -16,12 +16,200 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.2 admin sửa/bật/tắt danh mục đã kiểm tra local và review, chờ người dùng chạy thử; chưa triển khai UI sản phẩm M3.3 |
+| M3 Catalog/ảnh/kho | M3.4.1 đã có sửa thông tin sản phẩm nháp (tên/slug/danh mục/mô tả) cho DRAFT; kết quả kiểm tra ở mục M3.4.1, chờ người dùng thử; chưa triển khai M3.4.2 (biến thể/ảnh/kho/xuất bản) |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 28/10/2026 — M3.4.1: sửa hai finding P2 từ review
+
+**Người dùng đã duyệt sửa đúng hai lỗi review.** Đã sửa và kiểm tra local, chờ người dùng chạy thử; không bắt đầu M3.4.2. Chỉ nhận các chỉnh sửa dưới đây của lượt này, không nhận code M3.4.1 do OpenCode tạo là phần mới của agent.
+
+### Đã sửa / file thực tế
+
+| File | Thay đổi của riêng bản sửa review |
+|---|---|
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Đặt khóa operationRef ở cấp page, begin/end chung cho save và explicit reload, nhả trong finally; truyền trạng thái khóa xuống form |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | Kết hợp disabled từ page với pending cục bộ, chặn submit khi bị khóa; overflowWrap:anywhere cho nội dung biến thể |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.test.tsx` | Thêm hai regression deferred GET/PATCH: reload khóa save/field, save khóa reload và giữ input/error qua cập nhật cache |
+| `apps/frontend/e2e/products.spec.ts` | Dùng SKU64 hợp lệ không có điểm ngắt trong ca sửa/mobile; tách SKU fixture published để vẫn đúng giới hạn64 |
+| `docs/architecture.md` | Ghi khóa chung save/reload ở page và cách xử lý SKU dài |
+| `docs/local-trial-m3.md` | Thêm bước thử mạng chậm/khóa hai chiều và SKU64 trên mobile |
+| `docs/m3-implementation-plan.md` | Cập nhật kết quả bản sửa, số test và phạm vi regression |
+| `progress.md` | Ghi nguyên nhân, RED→GREEN, kết quả và điểm dừng |
+
+Không sửa backend/schema/migration/dependency/package/CI hoặc logic biến thể/kho. Snapshot trước bản sửa ở `.local/m341-review-fix-before-20261028`; giữ nguyên index và mọi thay đổi sẵn có của OpenCode, không stage/commit/push.
+
+### Data flow / key quan trọng
+
+Bấm Lưu hoặc Tải dữ liệu mới → page kiểm tra/đặt khóa đồng bộ trước khi bắt đầu request → các trường và nút nhận trạng thái khóa → PATCH hoặc GET hoàn tất/thất bại → finally nhả khóa. Reload thành công mới thay snapshot/revision; không thể remount form giữa một PATCH đang chờ. Endpoint/DTO/version và kiểm tra quyền giữ nguyên.
+
+- `operationRef`: khóa tức thời ở page, không bị mất khi form remount; chỉ một save hoặc explicit reload được bắt đầu.
+- `operation`: state phản ánh loại thao tác đang chạy lên UI và trạng thái disabled/loading.
+- `locked`: pending của form kết hợp khóa ngoài, vừa khóa trường/nút vừa chặn programmatic submit.
+- `overflowWrap: anywhere`: SKU64 không có dấu gạch vẫn xuống dòng trong vùng biến thể; không đổi SKU được lưu.
+
+### Kiểm tra thực tế
+
+| Lệnh/kiểm tra | Kết quả |
+|---|---|
+| Unit regression trước sửa | 1 thất bại / 13 đạt; input/Save chưa khóa trong explicit reload chậm |
+| E2E sửa/mobile với SKU64 trước CSS fix | 1/1 thất bại đúng assertion không tràn ngang ở390px; không phải fixture/schema lỗi |
+| `./tools/npm.ps1 run typecheck` sau sửa | Backend/frontend đạt |
+| `./tools/npm.ps1 test` sau sửa | 88/88 đạt: 8 công cụ + 6 backend unit + 74 frontend unit/UI, gồm 14 ca editor |
+| `./tools/npm.ps1 run build` sau sửa | Hai app đạt; cảnh báo Vite chunk593.74kB/gzip182.79kB, không tối ưu bundle ngoài phạm vi |
+| `./tools/npm.ps1 run test:e2e:implemented` sau sửa | 11/11 đạt, khoảng1.3phút; giữ nguyên bộ auth/categories/products và biên SKU64 thật |
+| Ảnh mobile sau sửa | Agent đã xem ảnh trang sửa: SKU64 xuống dòng trong vùng nội dung, không tràn ngang |
+| Rà diff bản sửa so với snapshot | Chỉ khóa hai thao tác và wrap SKU trong source; giữ snapshot/version/DTO/variantID như trước |
+
+Không chạy lại integration riêng trong bản sửa chỉ frontend này; 28/28 là kết quả review trước, backend không đổi. Không claim toàn M3 hoặc catalog E2E đã đạt, chưa xác nhận CI GitHub mới/deploy. Test hiện có không bị bỏ/skip hay tăng timeout để che lỗi. Source được sửa sau khi đã quan sát cả unit và E2E tái hiện lỗi, rồi xác nhận lại GREEN.
+
+### Chạy thử / điểm dừng
+
+Giữ/chạy backend và frontend ở hai terminal theo README. ADMIN mở http://127.0.0.1:5173/admin/products → Sửa một nháp. Có thể dùng Network throttling để thấy nút/trường khóa trong lúc Tải dữ liệu mới; thao tác Lưu bị chặn đến khi tải xong. Khi đang Lưu, nút tải mới cũng bị khóa; nếu lỗi, input/error còn và các nút mở lại. SKU dài64 ký tự liền trên màn hình390px phải xuống dòng, không kéo ngang trang. Hướng dẫn chi tiết ở [local-trial-m3.md](docs/local-trial-m3.md).
+
+**Đã viết/agent đã kiểm tra; chờ người dùng thử/xác nhận. Dừng ở M3.4.1, không triển khai phần tiếp theo, chưa commit/push.**
+
+## Ngày 28/10/2026 — M3.4.1: admin sửa thông tin sản phẩm nháp
+
+**Phạm vi được duyệt:** người dùng duyệt trực tiếp M3.4.1 trong chat kèm điều kiện luồng (snapshot/version, PATCH DTO đúng, chỉ DRAFT, không gửi trường quản trị). Chỉ sửa tên/slug/danh mục/mô tả; chưa cho sửa SKU/size/màu/giá, thêm/tắt biến thể, ảnh, kho hoặc xuất bản; không triển khai M3.4.2 trở đi. **Đã viết, agent đã kiểm tra; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### Thay đổi và file thực tế
+
+- Danh sách sản phẩm có nút Sửa cho hàng **Nháp** (`aria-label` kèm tên sản phẩm), dẫn tới `/admin/products/:id` qua PrivateRoute ADMIN; backend guard/DTO độc lập.
+- Trang sửa điền sẵn tên/slug/danh mục/mô tả; biến thể hiển thị chỉ đọc kèm lời nhắc "Phần này chưa cho sửa SKU, size, màu, giá hoặc thêm/tắt biến thể.".
+- Snapshot chốt lúc mở form quyết định `expectedVersion` và biến thể gửi lại; refetch nền (kể cả khi lỗi) không rebase snapshot và không xóa phần đang nhập. Nút **Tải dữ liệu mới** là thao tác duy nhất chủ động thay draft: thành công mới thay snapshot và remount form (có lời nhắc giải thích trên trang); tải lỗi giữ draft và hiện lỗi.
+- PATCH gửi đúng `{name, slug, description, categoryId, variants[{id,sku,size,color,price,active}], expectedVersion}` — không gửi inventory/available/images/status. Lỗi 409 (version cũ hoặc slug trùng) hiện thông báo chung nêu cả hai khả năng, giữ input, không tự retry. Thành công invalidate `admin-products`, về danh sách, báo "Đã cập nhật sản phẩm nháp …". Busy ref chặn gửi lặp cùng nhịp và khi đang chờ.
+- Tách `ProductInfoFields` dùng chung cho form tạo và sửa; hành vi tạo giữ nguyên (hồi quy 9 test tạo đạt).
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/products/api/products.api.ts` | Thêm `VariantUpdateInput`/`ProductUpdateInput`, `productsApi.detail/update`; thu hẹp `ProductVariant.size` về allowlist vì DTO backend luôn chuẩn hóa, giúp gửi lại biến thể có kiểu đúng |
+| `apps/frontend/src/features/admin/products/components/ProductInfoFields.tsx` | Nhóm trường tên/slug/danh mục/mô tả dùng chung tạo/sửa, giữ label/helper/validation cũ |
+| `apps/frontend/src/features/admin/products/components/ProductCreateForm.tsx` | Dùng nhóm trường chung, gom state info; giữ nguyên giá, biến thể, busy và thông báo |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | Form sửa: state/lỗi/focus/busy, snapshot chốt lúc mount, map đúng 6 trường biến thể, thông báo 409 riêng |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Tải chi tiết+danh mục, snapshot/revision, reload tường minh (chỉ `isSuccess` mới rebase), save + invalidate + điều hướng |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.tsx` | Link Sửa chỉ cho DRAFT và alert "Đã cập nhật sản phẩm nháp …" đọc từ navigation state |
+| `apps/frontend/src/app/App.tsx` | Route `admin/products/:productId` qua PrivateRoute ADMIN |
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.test.tsx` | 12 test sửa: điền sẵn/DTO đúng, 409/mạng giữ input, gửi lặp, refetch nền không rebase, lỗi danh mục nền, Tải dữ liệu mới, non-DRAFT, retry tải lỗi, ACL khách/CUSTOMER |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.test.tsx` | Thêm test link Sửa chỉ có cho DRAFT (7 test list) |
+| `apps/frontend/e2e/products.spec.ts` | Thêm 3 E2E: sửa thật (biến thể/tồn kho/ID đóng băng, DB kiểm chứng, mobile), hai tab thật (bản cũ bị chặn, chỉ rebase qua Tải dữ liệu mới), non-DRAFT không có form; bổ sung PATCH 401/403 vào ca ACL |
+| `.github/workflows/ci.yml` | Tên bước E2E công khai phạm vi đến M3.4.1 |
+| `README.md` | Trạng thái, bộ 11 E2E implemented, URL trang sửa |
+| `docs/architecture.md` | Ghi tổ chức M3.4.1 và quy tắc snapshot/revision/DTO PATCH |
+| `docs/local-trial-m3.md` | Hướng dẫn thử M3.4.1, hai tab, các lỗi và key |
+| `docs/m3-implementation-plan.md` | Ghi phạm vi duyệt/kết quả/điểm dừng M3.4.1 |
+| `docs/plan.md` | Cập nhật điểm dừng M3.4.1, chưa hoàn thành toàn M3 |
+| `progress.md` | Ghi kết quả thật và các file của riêng phần này |
+
+`package.json` không đổi vì `products.spec.ts` đã nằm trong `test:e2e:implemented`. Backend/schema/migration/dependency/lockfile không đổi. Không reset DB, không tạo admin, không seed; không stage/commit/push. Nhánh `feat/catalog-inventory` giữ nguyên các thay đổi đã có. E2E tạo fixture riêng trên PostgreSQL `_test` và dọn đúng product/variant/inventory/category/user UUID của lượt chạy.
+
+### Data flow / key quan trọng
+
+Nút Sửa → GET `/api/v1/admin/products/:id` + GET admin/categories → `ProductEditPage` chốt snapshot → `ProductEditForm` điền sẵn → PATCH `/api/v1/admin/products/:id` với DTO đúng qua cookie/CSRF → SessionGuard/RolesGuard + `ProductUpdateDto` → `ProductsService.update` kiểm tra version trong transaction (từ chối nếu DB đã đổi hoặc thiếu/thừa biến thể), tăng version → trả dữ liệu → FE invalidate `admin-products`, về danh sách GET đọc lại server.
+
+- `snapshot`: bản gốc chốt lúc mở form, nằm ở page (`ProductEditPage`) — quyết định `expectedVersion` và biến thể gửi lại; refetch nền không đổi.
+- `revision`: đếm remount `ProductEditForm`; chỉ tăng khi Tải dữ liệu mới thành công, là thao tác duy nhất bỏ draft.
+- `isSuccess` của refetch: phản hồi lỗi vẫn giữ `data` cũ trong TanStack Query nên phải kiểm tra thành công trước khi rebase — đã bắt bằng test và sửa.
+- `ProductUpdateInput`: kiểu PATCH cho phép đúng 6 trường biến thể (không `available`/inventory) để type chặn gửi thừa.
+- 409 dùng chung version cũ/slug trùng; thông báo nêu cả hai, không gán nhầm lỗi slug.
+
+### Kiểm tra thực tế
+
+| Lệnh/kiểm tra | Kết quả |
+|---|---|
+| Test draft ban đầu (sửa lỗi cú pháp JSX của nháp) | 12/12 thất bại vì route/trang chưa có (404), đúng loại RED; không phải missing import |
+| `./tools/npm.ps1 test --workspace=@clothing/frontend -- ...ProductEditPage.test.tsx ...ProductsPage.test.tsx ...ProductCreatePage.test.tsx` cuối | 28/28 đạt (12 sửa + 7 list + 9 tạo) |
+| `./tools/npm.ps1 run typecheck` cuối | Backend/frontend đạt |
+| `./tools/npm.ps1 run build` cuối | Hai app đạt; cảnh báo Vite chunk có sẵn, không tối ưu bundle ngoài phạm vi |
+| `./tools/npm.ps1 test` cuối | 86/86 đạt: 8 công cụ + 6 backend unit + 72 frontend unit/UI |
+| `./tools/npm.ps1 run test:integration` | 28/28 đạt trên PostgreSQL `_test` (backend không đổi) |
+| `./tools/npm.ps1 run test:e2e:implemented` cuối | 11/11 đạt, khoảng 1,5 phút: 2 auth + 4 categories + 5 products (tạo, ACL PATCH 401/403, sửa thật, hai tab, non-DRAFT) |
+| Ảnh E2E mobile trang sửa 390px | Agent đã xem: label/focus rõ, form xếp dọc, biến thể chỉ đọc, không tràn ngang |
+
+Bốn lỗi thật đã bị test bắt và xử lý trong phạm vi: (1) nháp test có cú pháp JSX đóng nhầm thẻ và vài stub chưa thực tế — chỉnh stub PATCH echo tên mới, thêm lỗi ban đầu cho ca retry, bỏ hàm chết `patchBody`, đổi `getByRole` đồng bộ sang `await findByRole`; (2) khi refetch lỗi TanStack vẫn trả `data` cũ khiến trang sửa tưởng thành công và remount mất draft — sửa kiểm tra `fresh.isSuccess` trước khi rebase; (3) fixture E2E tạo thẳng qua Prisma nên SKU chứa UUID chữ thường vi phạm CHECK `variant_fields_valid` (DTO thường uppercase) — uppercase fixture, không đổi ràng buộc; (4) Prisma trả `price` dạng chuỗi Decimal — assertion dùng `Number()` như ca tạo hiện có. Một lỗi locator E2E tìm nút Tải dữ liệu mới trong scope form trong khi nút ở page — đưa về scope trang.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Chỉ DRAFT được sửa; sản phẩm PUBLISHED/HIDDEN mở URL sửa sẽ thấy thông báo và không có form (E2E phủ). Backend vẫn cho PATCH PUBLISHED theo API hiện có — phần này không thay nghiệp vụ backend.
+- Chưa sửa được SKU/size/màu/giá, thêm/tắt biến thể, ảnh, kho, xuất bản; chưa có public catalog. Lỗi validation biến thể lồng nhau backend chưa flatten fieldErrors (giữ nguyên từ M3.3); lỗi 409 hiện thông báo chung.
+- Chưa kiểm chứng CI GitHub với thay đổi M3.4.1 (chưa commit/push); chưa deploy.
+- Hướng dẫn: [chạy thử M3.4.1](docs/local-trial-m3.md#m341--admin-sửa-thông-tin-sản-phẩm-nháp). Giữ `./tools/npm.ps1 run dev:backend` và `./tools/npm.ps1 run dev:frontend`. ADMIN mở http://127.0.0.1:5173/admin/products → Sửa một sản phẩm Nháp → đổi tên/mô tả → Lưu thay đổi → refresh; thử hai tab cùng sản phẩm để xem bản cũ bị chặn; thử Tải dữ liệu mới sau khi tab kia đã lưu.
+
+**Dừng ở M3.4.1 cho người dùng chạy thử/xác nhận.** M3.4.2 — sửa biến thể/thêm tắt — và các phần sau cần kế hoạch riêng được duyệt; chưa triển khai.
+
+## Ngày 28/10/2026 — M3.3: tạo sản phẩm nháp với một biến thể
+
+**Phạm vi được duyệt:** kế hoạch M3.3 đã gửi trong chat, người dùng yêu cầu tiếp tục M3 sau bản sửa CI. Chỉ danh sách quản trị và tạo nháp với một biến thể; không triển khai M3.4. Đã viết và agent đã kiểm tra local, xử lý finding review bằng RED→GREEN và xác nhận lại suite/E2E. **Chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### Thay đổi và file thực tế
+
+- Admin → Sản phẩm → danh sách `/admin/products` và form `/admin/products/new`, đều có PrivateRoute ADMIN và backend guard độc lập.
+- Form có tên/slug/danh mục/mô tả và một biến thể SKU/size/màu/giá nguyên VND. Loading/empty/error/retry khi tải danh mục; lỗi POST giữ input, field error nếu API cung cấp, busy ref chặn gửi lặp; không tự retry POST. Giá được kiểm tra UI và backend, không dùng any/ép kiểu mù.
+- Server tạo DRAFT + đúng một variant đang bật + Inventory onHand/reserved0 bằng nested create nguyên tử; client không gửi status hoặc tồn kho. SKU chuẩn hóa chữ hoa/màu chữ thường theo DTO hiện có.
+- Thành công invalidate query `admin-products`, về danh sách và đọc dữ liệu thật; list có trạng thái/giá/SKU/size/màu/khả dụng và phân trang24 trên URL. Nháp không xuất hiện qua list/detail public.
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/products/api/products.api.ts` | Thêm contract Product/Variant/Input/Page, allowlist size, query key và API GET/POST |
+| `apps/frontend/src/features/admin/products/components/ProductCreateForm.tsx` | Thêm form state/validation/error/focus/busy, chỉ một biến thể |
+| `apps/frontend/src/features/admin/products/pages/ProductCreatePage.tsx` | Tải danh mục, điều phối POST/cache/navigation, giữ draft khi refetch lỗi có cache |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.tsx` | Danh sách quản trị, phản hồi tạo thành công, trạng thái tải/lỗi/empty và phân trang URL |
+| `apps/frontend/src/features/admin/products/pages/ProductCreatePage.test.tsx` | Thêm 9 test tạo, danh mục loading/empty/retry, giữ input, giá, gửi lặp, quyền và lỗi refetch nền |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.test.tsx` | Thêm 6 test list/empty/error/URL pagination/trang sai/quyền |
+| `apps/frontend/e2e/products.spec.ts` | Thêm 2 E2E thật: tạo/refresh/unique/mobile/DRAFT+inventory0/public privacy và 401/403 UI/API |
+| `apps/frontend/src/app/App.tsx` | Thêm 2 route products qua PrivateRoute admin |
+| `apps/frontend/src/features/admin/AdminPage.tsx` | Thêm link Sản phẩm, các nút wrap trên mobile |
+| `package.json` | Thêm products.spec.ts vào test:e2e:implemented; lệnh full giữ nguyên |
+| `.github/workflows/ci.yml` | Tên bước CI công khai phạm vi auth+categories+draft products đến M3.3 |
+| `README.md` | Cập nhật trạng thái, URL và phạm vi 8 E2E implemented |
+| `docs/architecture.md` | Ghi tổ chức feature, query/form/API và trách nhiệm backend khi tạo nháp |
+| `docs/local-trial-m3.md` | Hướng dẫn thử M3.3, các lỗi, dữ liệu/key và giới hạn |
+| `docs/m3-implementation-plan.md` | Ghi phạm vi được duyệt/thực hiện và điểm dừng M3.3 |
+| `docs/plan.md` | Cập nhật điểm dừng, không đánh dấu hoàn thành toàn M3 |
+| `progress.md` | Ghi kết quả thật, review, giới hạn và các file của riêng phần này |
+
+Hai file config CI/package bổ sung so với bảng file ban đầu để thực hiện quy tắc đã thống nhất ở M3.2.1: có tính năng mới thì mở rộng bộ E2E implemented, không để CI chỉ kiểm tra 6 ca cũ. Không thay backend/schema/migration/dependency/lockfile hoặc test catalog. Không seed/tạo admin/reset dữ liệu local. E2E kiểm tra NODE_ENV/test PostgreSQL `_test` trước tạo và cleanup, chỉ dọn product/variant/inventory/category/user UUID do lượt chạy tạo. Không stage/commit/push; nhánh `feat/catalog-inventory`, baseline `06afd99` do người dùng đã push. Snapshot `.local/m3-3-before-20261028`, ledger `.local/m3-3-execution.md` bị Git bỏ qua.
+
+### Data flow / key quan trọng
+
+Admin mở tạo → GET `/api/v1/admin/categories` → form gửi `{name,slug,description,categoryId,variants:[{sku,size,color,price,active:true}]}` qua `productsApi.create` và client cookie/CSRF → SessionGuard/RolesGuard + ProductDto/VariantDto → ProductsService tạo Product/Variant/Inventory trong một nested write nguyên tử → trả dữ liệu đã chuẩn hóa → FE invalidate `admin-products`, về list GET `/api/v1/admin/products?page=1&pageSize=24`. Giá/status/tồn kho công khai lấy từ server, không dùng dữ liệu giả để báo đã lưu.
+
+- `SKU`: mã riêng duy nhất của biến thể; backend chuẩn hóa uppercase, khác ID sản phẩm.
+- `Variant`: tổ hợp size/màu cùng giá, M3.3 gửi đúng một variant active; UI quản lý thêm/sửa thuộc M3.4.
+- `DRAFT`: trạng thái nháp backend thiết lập, public list/detail không trả sản phẩm này.
+- `admin-products`: query key danh sách kèm trang từ URL; invalidate sau tạo để đọc lại dữ liệu server.
+- `available`: khả dụng do backend tính từ kho, variant mới có onHand/reserved/available0.
+
+### Kiểm tra thực tế và review
+
+| Lệnh/kiểm tra | Kết quả |
+|---|---|
+| 14 test UI mới trước implementation | 14 thất bại vì route/form/list chưa có (404), không phải missing module/import |
+| 14 test UI sau implementation ban đầu | 14/14 đạt riêng phần M3.3 |
+| Regression review trước fix | 1/9 thất bại: refetch danh mục lỗi làm mất input; 8 ca còn lại đạt |
+| `./tools/npm.ps1 run typecheck` cuối sau fix | Backend/frontend đạt |
+| `./tools/npm.ps1 test` cuối sau fix | 73/73 đạt: 8 công cụ + 6 backend unit + 59 frontend unit/UI, gồm 15 M3.3 |
+| `./tools/npm.ps1 run build` cuối sau fix | Hai app đạt; Vite cảnh báo chunk587.64kB/gzip181.72kB; không tối ưu bundle ngoài phần này |
+| `./tools/npm.ps1 run test:integration` | 28/28 đạt trên PostgreSQL `_test`, backend không đổi sau lượt kiểm tra |
+| `./tools/npm.ps1 run test:e2e:implemented` | Lượt cuối sau fix review: 8/8 đạt, 47.1 giây; 2auth + 4categories + 2products |
+| E2E discovery `--list` | Implemented8 ca/3file; full9 ca/4file còn catalog, không phải full9 ca đã đạt |
+| Ảnh E2E mobile | Agent đã xem form và list tại390px, label/error rõ và không tràn ngang |
+| Review độc lập `review_m3_3` | 1 Important mất draft khi background refetch lỗi; không Critical/Minor khác |
+
+**Finding review đã sửa:** query lỗi khi đã có cache không còn unmount ProductCreateForm; cảnh báo/retry tách khỏi form. Test tái hiện refetch lỗi rồi phục hồi đã RED→GREEN; suite73 đạt sau sửa. Không bỏ qua finding hoặc xin phép người dùng để né xử lý trong phạm vi.
+
+Hai vướng mắc kiểm tra đã xử lý đúng nguyên nhân: (1) một lượt tools/prisma-config.test.mjs timeout subprocess15s/statusnull khi máy bận, giữ nguyên test/timeout, rerun đạt; (2) helper UI gõ từng ký tự nhiều trường khiến một test chạm5s dưới tải tổng, đổi phần cấp dữ liệu test sang fireEvent.change hàng loạt và giữ select/click thực/assertions/timeout; E2E vẫn thao tác trình duyệt thật. Không tắt check hoặc tăng timeout toàn suite để che lỗi. Lượt cuối root suite đạt.
+
+### Giới hạn / chạy thử / điểm dừng
+
+- Backend hiện chưa flatten fieldErrors của variant lồng nhau; dữ liệu sai vẫn bị DTO chặn và UI báo lỗi chung/giữ input. Unit kiểm tra khả năng hiển thị nested path nếu API cung cấp, không nhận là backend đã serialize đủ; không mở rộng sửa backend trong phần này.
+- Chưa có UI sửa sản phẩm/ảnh/điều chỉnh kho/xuất bản hoặc public catalog; chưa chạy/nhận full catalog E2E đạt. Cảnh báo pg concurrent query và NO_COLOR/FORCE_COLOR không làm test thất bại. Chưa kiểm chứng CI GitHub với thay đổi M3.3, chưa deploy.
+- Hướng dẫn: [chạy thử M3.3](docs/local-trial-m3.md). Giữ/chạy `./tools/npm.ps1 run dev:backend` và `./tools/npm.ps1 run dev:frontend` ở hai terminal. ADMIN mở http://127.0.0.1:5173/admin/products → Thêm sản phẩm → tên/slug/danh mục + SKU/size/màu/giá → Lưu → refresh, phải còn Nháp/khả dụng0. Thử dùng lại SKU/slug để kiểm tra lỗi giữ input.
+
+**Dừng ở M3.3 cho người dùng thử/xác nhận.** M3.4 — sửa nháp và quản lý biến thể — cần kế hoạch riêng được duyệt; chưa triển khai.
+=======
 ## Ngày 28/10/2026 — Sửa theo review repo (nhánh `fix/review-findings`)
 
 **Trạng thái:** người dùng yêu cầu thực hiện các mục ưu tiên sau review. Đã viết và agent đã kiểm tra local; **chờ người dùng xem/merge**. Không thay đổi phạm vi M3, không bắt đầu M3.3.
