@@ -7,15 +7,24 @@ const identities = new Set<string>();
 const password = 'browser-test-password-123!';
 const base = 'http://127.0.0.1:5174';
 
-async function linkFor(email: string, page: 'verify-email' | 'reset-password'): Promise<string> {
-  for (const filename of await readdir(path.resolve('../../.local/test-mailbox'))) {
+async function findLink(email: string, page: 'verify-email' | 'reset-password'): Promise<string | undefined> {
+  const filenames = await readdir(path.resolve('../../.local/test-mailbox')).catch(() => []);
+  for (const filename of filenames) {
     if (!filename.endsWith('.json')) continue;
     const value: unknown = JSON.parse(await readFile(path.resolve('../../.local/test-mailbox', filename), 'utf8'));
     if (!value || typeof value !== 'object' || !('to' in value) || value.to !== email || !('text' in value) || typeof value.text !== 'string') continue;
     const link = value.text.split(/\s/).find((word) => word.startsWith(`${base}/${page}#`));
     if (link) return link;
   }
-  throw new Error('Preview email not found for test identity');
+  return undefined;
+}
+
+// The API sends mail after responding, so wait briefly for the preview file.
+async function linkFor(email: string, page: 'verify-email' | 'reset-password'): Promise<string> {
+  let link: string | undefined;
+  await expect.poll(async () => (link = await findLink(email, page)), { timeout: 5000 }).toBeDefined();
+  if (!link) throw new Error('Preview email not found for test identity');
+  return link;
 }
 
 test.afterAll(async () => {

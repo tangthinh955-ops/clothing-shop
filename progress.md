@@ -22,6 +22,23 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 28/10/2026 — Sửa theo review repo (nhánh `fix/review-findings`)
+
+**Trạng thái:** người dùng yêu cầu thực hiện các mục ưu tiên sau review. Đã viết và agent đã kiểm tra local; **chờ người dùng xem/merge**. Không thay đổi phạm vi M3, không bắt đầu M3.3.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/application.ts` | `logger: false` làm mọi log Nest bị tắt, kể cả lỗi 500 và lỗi gửi mail; đổi thành chỉ giữ `error`/`warn`. |
+| `apps/backend/src/common/http-exception.filter.ts` | Lỗi 500 ngoài dự kiến ghi stack vào log server; response cho client vẫn chung chung như cũ. |
+| `apps/backend/src/modules/auth/auth.service.ts` | Không chờ gửi mail trước khi trả response đăng ký/quên mật khẩu/gửi lại xác minh, để thời gian phản hồi không lộ email đã có tài khoản hay chưa. |
+| `apps/backend/src/common/http-exception.filter.spec.ts`, `apps/backend/src/modules/auth/auth.service.spec.ts` | Unit test mới: 500 ghi stack nhưng body an toàn; register/requestToken không chờ mail provider. |
+| `apps/backend/test/auth.integration.spec.ts`, `apps/frontend/e2e/auth.spec.ts` | Đọc hộp thư preview có chờ tối đa 5 giây vì mail gửi sau response; thêm ca kiểm tra app thật vẫn ghi log lỗi. |
+| `README.md`, `progress.md` | Bỏ câu "fastLock/LiveOrder" không thuộc dự án; xóa khối "Yêu cầu push GitHub" bị chép trùng, sửa tiêu đề bị cắt, bỏ đường dẫn máy cá nhân trong ghi chú Git. |
+
+**Kiểm tra (Node 24.15 với `--engine-strict=false`, PostgreSQL 18.6 Docker):** typecheck và build đạt; `npm test` 61/61 (8 tools, 9 backend unit, 44 frontend); integration 29/29; `test:e2e:implemented` 6/6 (catalog vẫn chờ UI theo M3.2.1). Ba unit test mới và ca log integration đã thấy thất bại trước khi sửa. Chưa chạy trên GitHub CI.
+
+**Còn lại:** rate limit đăng nhập vẫn theo IP+email (chưa theo tài khoản); backend vẫn listen `127.0.0.1` (cần đổi trước deploy M6); ESLint/Prettier hoãn tới sau khi merge nhánh catalog để tránh diff format toàn repo.
+
 ## Ngày 28/10/2026 — M3.2.1: sửa phạm vi E2E của CI
 
 **Người dùng đã duyệt bản sửa CI riêng, chưa duyệt triển khai M3.3.** Đã sửa cấu hình và kiểm tra local; CI mới chưa commit/push/chạy lại trên GitHub. Mốc sản phẩm vẫn dừng ở M3.2.
@@ -440,19 +457,9 @@ Khi gọi `POST /api/v1/admin/categories`, global CSRF/rate guard và SessionGua
 - Tìm phương án qua Plugin Management: GitHub có sẵn để kết nối nhưng chưa được cài/kết nối trong phiên. Đã hiển thị gợi ý kết nối; chưa dùng plugin để ghi repository.
 - Chưa xác minh được trạng thái repository từ xa, chưa push và chưa xác nhận CI. Cần phiên có quyền ghi Git và truy cập GitHub, hoặc kết nối GitHub phù hợp, để tiếp tục. Không thay đổi tiến độ M2/M3.
 
+### Kiểm tra file chuẩn bị đưa lên Git — 26/10/2026
 
-### Kiểm tra
-
-### Yêu cầu push GitHub — 26/10/2026
-
-- Người dùng yêu cầu push tới `https://github.com/tangthinh955-ops/clothing-shop.git`; nhánh local hiện là `feat/foundation`, chưa có commit.
-- Đã kiểm tra lại status, diff stat, index và `git ls-files -ci --exclude-standard`: không có file đang được theo dõi thuộc nhóm bị ignore. Chưa thay đổi phần staged; cấu hình riêng và dữ liệu local vẫn ngoài Git.
-- Bị chặn trước khi tạo commit/push: `git remote add origin` báo không thể ghi `.git/config` (Permission denied); `git ls-remote --symref ... HEAD` không kết nối được và báo `getaddrinfo() thread failed to start`. Phiên hiện tại chỉ có quyền đọc `.git`; không thay quyền, không tạo remote hoặc commit thành công.
-- Tìm phương án qua Plugin Management: GitHub có sẵn để kết nối nhưng chưa được cài/kết nối trong phiên. Đã hiển thị gợi ý kết nối; chưa dùng plugin để ghi repository.
-- Chưa xác minh được trạng thái repository từ xa, chưa push và chưa xác nhận CI. Cần phiên có quyền ghi Git và truy cập GitHub, hoặc kết nối GitHub phù hợp, để tiếp tục. Không thay đổi tiến độ M2/M3.
- file chuẩn bị đưa lên Git — 26/10/2026
-
-- Kiểm tra index, working tree và ignore bằng `git status --short`, `git diff --stat`, `git diff --cached --stat`, `git ls-files -ci --exclude-standard` và `git check-ignore -v --no-index`. Dùng `git -c safe.directory=C:/NAM4_2/ShopQuanAo_Codex ...` cho từng lệnh do khác owner Windows; không thay cấu hình Git toàn máy.
+- Kiểm tra index, working tree và ignore bằng `git status --short`, `git diff --stat`, `git diff --cached --stat`, `git ls-files -ci --exclude-standard` và `git check-ignore -v --no-index`. Dùng `git -c safe.directory=<thư mục dự án> ...` cho từng lệnh do khác owner Windows; không thay cấu hình Git toàn máy.
 - `.env` và `.env.test` thật, dependency, build, Prisma generated, runtime và mailbox local đã được ignore; không có file đang được theo dõi thuộc nhóm bị ignore. Giữ các `.env*.example` cần thiết, `package.json` và lockfile để cài lại dự án. `.gitignore` hiện đủ cho các file local đã kiểm tra nên giữ nguyên.
 - Quét 83 file tracked/untracked không bị ignore theo mẫu private key, token provider, URL chứa mật khẩu và secret gán trực tiếp; rà soát các vị trí khớp là cấu hình demo/test hoặc placeholder. Đối chiếu secret riêng đủ dài trong env local không thấy xuất hiện trong các file này. Kiểm tra thêm 9 file trong index không phát hiện token provider, private key hoặc secret local đã đối chiếu. Đây là kiểm tra theo mẫu và đối chiếu, không bảo đảm phát hiện mọi dạng secret.
 - Bổ sung hướng dẫn file đưa lên Git trong README. `git diff --check` và `git diff --cached --check` đều đạt sau cập nhật; đã đọc diff và xác nhận danh sách staged không đổi. Không chạy lại ứng dụng vì chỉ sửa tài liệu.

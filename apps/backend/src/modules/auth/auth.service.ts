@@ -30,7 +30,7 @@ export class AuthService implements OnModuleInit {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return;
       throw error;
     }
-    await this.mail.sendAuth(dto.email, 'verify-email', raw);
+    this.deliver(dto.email, 'verify-email', raw);
   }
 
   async login(dto: LoginDto): Promise<UserIdentity> {
@@ -50,7 +50,13 @@ export class AuthService implements OnModuleInit {
       await tx.authToken.updateMany({ where: { userId: user.id, kind, usedAt: null }, data: { usedAt: new Date() } });
       await this.addToken(tx, user.id, kind, raw);
     });
-    await this.mail.sendAuth(email, kind === 'VERIFY_EMAIL' ? 'verify-email' : 'reset-password', raw);
+    this.deliver(email, kind === 'VERIFY_EMAIL' ? 'verify-email' : 'reset-password', raw);
+  }
+
+  // Not awaited: response time must not reveal whether the email belongs to an account.
+  // MailService logs its own failures; the user can request the link again.
+  private deliver(email: string, kind: 'verify-email' | 'reset-password', raw: string): void {
+    this.mail.sendAuth(email, kind, raw).catch(() => undefined);
   }
 
   async verifyEmail(token: string): Promise<void> {
