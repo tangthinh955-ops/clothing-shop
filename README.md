@@ -6,7 +6,7 @@ Website một shop quần áo, phục vụ khách từ Instagram. React/Vite và
 
 Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản local. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng hiện tại: **M3.2 — admin sửa/bật/tắt danh mục, chờ người dùng chạy thử**. Xem [hướng dẫn M3.1–M3.2](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai giao diện sản phẩm M3.3.
+Điểm dừng hiện tại: **M3.4.1 — admin sửa thông tin sản phẩm nháp (tên/slug/danh mục/mô tả), chờ người dùng chạy thử**. Xem [hướng dẫn M3.1–M3.4.1](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai sửa SKU/size/màu/giá, thêm/tắt biến thể, ảnh và kho (M3.4.2 trở đi).
 
 Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật. Không sửa fastLock/LiveOrder.
 
@@ -99,7 +99,7 @@ Hai phạm vi E2E được giữ tường minh:
 
 | Lệnh từ root | Phạm vi |
 |---|---|
-| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories đã triển khai đến M3.2, hiện 6 ca; CI dùng lệnh này và ghi rõ tên bước |
+| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories + products (tạo và sửa nháp) đã triển khai đến M3.4.1, hiện 11 ca; CI dùng lệnh này và ghi rõ tên bước |
 | `./tools/npm.ps1 run test:e2e` | Toàn bộ E2E, gồm `catalog.spec.ts` kiểm tra sản phẩm/ảnh/kho/public catalog toàn M3; hiện chưa đạt vì các UI đó chưa có |
 
 Không xóa hoặc skip test catalog. Khi triển khai thêm các phần M3, phải cập nhật phạm vi E2E đã triển khai; khi toàn M3 sẵn sàng, CI cần chạy bộ đầy đủ. Kết quả xanh của bộ implemented không phải nghiệm thu toàn M3.
@@ -108,4 +108,4 @@ Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy 
 
 Build độc lập: `npm run build -w @clothing/backend` hoặc `npm run build -w @clothing/frontend`, sau khi generate Prisma ở môi trường build backend. Backend không tự migration/seed khi startup. Không dùng `prisma migrate reset` hoặc `docker compose down -v` với dữ liệu cần giữ.
 
-Hướng dẫn deploy/admin đầy đủ được tạo khi tới mốc cần dùng. Không đưa secret vào Git hoặc biến `VITE_*`. Admin hiện xem/tạo/sửa/bật tắt được danh mục thật tại `/admin/categories`, kiểm tra version để tránh ghi đè; `/shop` vẫn là intro empty state. Bản local chưa có đầy đủ giao diện sản phẩm/kho/đặt đơn/đổi trả.
+Hướng dẫn deploy/admin đầy đủ được tạo khi tới mốc cần dùng. Không đưa secret vào Git hoặc biến `VITE_*`. Admin hiện quản lý danh mục tại `/admin/categories`, xem sản phẩm tại `/admin/products`, tạo nháp với một biến thể tại `/admin/products/new` và sửa thông tin nháp tại `/admin/products/:id` (nút Sửa trên danh sách, chỉ sản phẩm nháp); `/shop` vẫn là intro empty state. Chưa có UI sửa biến thể/ảnh/kho/đặt đơn/đổi trả.

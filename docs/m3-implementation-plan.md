@@ -12,7 +12,7 @@
 - M3.0.1: sửa import Prisma/Inventory sau thay đổi thư mục, agent đã kiểm tra.
 - M3.0.2: refactor backend, giữ UsersController/AdminAccessController chung file theo lựa chọn người dùng, agent đã kiểm tra.
 - M3.0.3: sửa API client FE multipart/idempotency, vòng đời token và tách router/page; typecheck/build toàn repo đạt, 32 test công cụ/unit/UI và 2 E2E auth đạt. Đang chờ người dùng thử/xác nhận; không coi là đã nghiệm thu.
-- Backend Categories/Products/Inventory/Uploads và migration local/test đã có; chưa kết luận tất cả ngoại lệ M3 được nghiệm thu. M3.1 thêm UI admin xem/tạo danh mục, M3.1.1 sửa UI theo phiên, M3.2 thêm sửa/bật/tắt với version; agent đã kiểm tra local và chờ người dùng thử M3.2. Chưa có UI sản phẩm M3.3; `/shop` vẫn là intro empty state.
+- Backend Categories/Products/Inventory/Uploads và migration local/test đã có; chưa kết luận tất cả ngoại lệ M3 được nghiệm thu. UI danh mục M3.1–M3.2 và sửa auth M3.1.1 đã có. M3.3 thêm danh sách quản trị và tạo sản phẩm nháp với một biến thể. M3.4.1 thêm sửa thông tin nháp (tên/slug/danh mục/mô tả) cho sản phẩm DRAFT; chưa có UI sửa biến thể/ảnh/kho M3.4.2 trở đi, `/shop` vẫn là intro empty state.
 - `e2e/catalog.spec.ts` là ca chấp nhận cho toàn luồng M3 đã viết trước, còn thiếu UI để đạt. Các ca auth/categories đã chạy đạt được ghi riêng trong progress; không che/skip ca catalog để gọi toàn M3 hoàn thành.
 
 ## Bảng chia phần đề xuất
@@ -32,7 +32,7 @@
 | M3.11 | Có bộ dữ liệu demo chạy tường minh | Seed CLI có kiểm soát, không ghi đè dữ liệu người dùng | Chạy lại không tạo trùng/nhập kho lặp; không tự seed khi startup | Các model/luồng M3 đã thử; duyệt cách tạo dữ liệu trước khi code |
 | M3.12 | Chạy thử toàn luồng và chốt M3 local | E2E catalog, quyền, mobile, restart/ảnh, checklist | Admin đăng hàng → ảnh → kho → publish → khách xem; báo ca đạt/chưa đạt và giới hạn | Các phần trước đã được người dùng thử |
 
-Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ liệu. Nếu lúc lập kế hoạch chi tiết một phần còn quá lớn, tách thành M3.x.1/M3.x.2 trước khi triển khai. Bảng phụ thuộc không thay thế bước duyệt; điểm dừng hiện tại là M3.2, không tự bắt đầu M3.3.
+Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ liệu. Nếu lúc lập kế hoạch chi tiết một phần còn quá lớn, tách thành M3.x.1/M3.x.2 trước khi triển khai. Bảng phụ thuộc không thay thế bước duyệt; điểm dừng hiện tại là M3.4.1, không tự bắt đầu M3.4.2.
 
 ## M3.1 — admin xem và thêm danh mục
 
@@ -83,6 +83,40 @@ Các dòng có nhiều thao tác kiểm tra vẫn tập trung một luồng dữ
 File đã triển khai đúng danh sách duyệt: API categories, đổi `components/CategoryCreateForm.tsx` thành `components/CategoryForm.tsx` dùng chung, thêm `components/CategoryEditDialog.tsx`, sửa page/test categories, E2E categories; cập nhật hướng dẫn, architecture, README, plan và progress. Đường dẫn đầy đủ và mục đích từng file ở mục M3.2 trong [progress](../progress.md). Không thay backend, migration, dependency hoặc dữ liệu local; không commit/push.
 
 Key: `expectedVersion` so khớp bản đang sửa với DB; `snapshot` không bị query cache thay tự động; `revision` remount form sau reload tường minh; `busy` chặn thao tác trùng/đóng trong lúc chờ. Backend hiện dùng cùng 409 cho stale version và duplicate slug, UI thông báo cả hai khả năng thay vì đoán sai nguyên nhân.
+
+## M3.3 — tạo sản phẩm nháp với một biến thể
+
+**Phạm vi đã duyệt:** kế hoạch chi tiết đã gửi trong chat trước khi sửa CI; người dùng yêu cầu tiếp tục M3 sau bản sửa CI. Đã triển khai và kiểm tra local: typecheck/build, 73 tools/unit/UI, 28 integration và 8 E2E implemented đạt. Review phát hiện lỗi mất draft khi refetch danh mục thất bại; đã tái hiện RED, sửa và xác nhận GREEN cùng suite/E2E cuối. Chi tiết tại [progress](../progress.md). Chờ người dùng thử, không tự đánh dấu đã nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin tạo sản phẩm thật, thấy trong list và còn sau refresh |
+| UI | Mục Sản phẩm tại admin; `/admin/products` list/phân trang24 trên URL, `/admin/products/new` form thông tin + một biến thể |
+| Dữ liệu | Tên/slug/danh mục/mô tả; SKU/size/màu/giá nguyên VND. Không gửi status hoặc tồn kho; backend quyết định DRAFT và inventory0 |
+| API | GET admin/categories, GET admin/products?page=&pageSize=24, POST admin/products bằng client cookie/CSRF hiện có |
+| Data flow | Form → API typed → SessionGuard/RolesGuard/DTO → nested create Product + Variant + Inventory nguyên tử → invalidate admin-products → list đọc lại server |
+| Kiểm tra | Tạo/refresh, unique SKU/slug, giá, giữ input, submit lặp, list/URL/retry, ACL và nháp không lộ public; test thật trên `_test` |
+| Điểm dừng | Người dùng tạo thử một nháp rồi phản hồi; M3.4 sửa/biến thể và các phần ảnh/kho/publish cần duyệt riêng |
+
+File đã định trong kế hoạch: `apps/frontend/src/features/admin/products/api/products.api.ts`, `components/ProductCreateForm.tsx`, `pages/ProductCreatePage.tsx`, `pages/ProductsPage.tsx`, hai test page tương ứng; `apps/frontend/e2e/products.spec.ts`; sửa App.tsx/AdminPage.tsx và bộ tài liệu tiến độ/architecture/README/hướng dẫn. Danh sách đường dẫn đầy đủ/mục đích ở progress M3.3.
+
+Bổ sung kỹ thuật đi kèm: `package.json` thêm products.spec.ts vào script test:e2e:implemented và tên bước `.github/workflows/ci.yml` ghi phạm vi đến M3.3, theo yêu cầu cập nhật CI khi có phần mới. Giữ catalog.spec.ts và lệnh full E2E, không skip. Không dependency/backend/schema/migration/seed mới, không commit/push.
+
+## M3.4.1 — admin sửa thông tin sản phẩm nháp
+
+**Phạm vi đã duyệt:** người dùng duyệt trực tiếp trong chat ngày 28/10/2026 kèm điều kiện luồng chi tiết (snapshot/version, PATCH DTO đúng, chỉ DRAFT). Bản sửa sau review hai lỗi P2 đã qua typecheck/build, 88 tools/unit/UI và 11 E2E implemented. 28 integration đạt ở lượt review trước; backend không đổi trong bản sửa frontend này. Chi tiết tại [progress](../progress.md). Chờ người dùng chạy thử, chưa nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin sửa tên/slug/danh mục/mô tả của sản phẩm nháp đã tạo ở M3.3 và giữ dữ liệu sau refresh |
+| UI | Nút Sửa trên danh sách cho DRAFT → `/admin/products/:id` điền sẵn; Lưu thay đổi, Về danh sách, Tải dữ liệu mới có lời nhắc giải thích |
+| Dữ liệu | Snapshot/version chốt lúc mở form; PATCH gửi `{name,slug,description,categoryId,variants[{id,sku,size,color,price,active}],expectedVersion}`; không gửi inventory/available/images/status |
+| API | GET/PATCH `/api/v1/admin/products/:id` có sẵn; thêm hàm typed `productsApi.detail/update` phía FE; backend/schema/dependency không đổi |
+| Xung đột | Refetch nền không rebase snapshot; 409 (version cũ hoặc slug trùng) giữ input và báo cả hai khả năng; chỉ Tải dữ liệu mới chủ động thay draft; lỗi tải giữ draft |
+| Kiểm tra | 14 test UI sửa (gồm khóa reload/save hai chiều) + 1 test link Sửa, hồi quy tạo sau tách component; E2E sửa thật/hai tab/non-DRAFT/PATCH ACL và SKU64 không có điểm ngắt ở390px trên `_test` |
+| Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md); M3.4.2 quản lý biến thể cần kế hoạch riêng |
+
+File: `api/products.api.ts` thêm detail/update + `VariantUpdateInput`/`ProductUpdateInput` và thu hẹp kiểu `ProductVariant.size` về allowlist vì DTO backend luôn chuẩn hóa; `components/ProductInfoFields.tsx` mới dùng chung cho tạo/sửa; `components/ProductCreateForm.tsx` refactor giữ hành vi; `components/ProductEditForm.tsx` và `pages/ProductEditPage.tsx` mới; `pages/ProductsPage.tsx` thêm link Sửa + alert cập nhật; `app/App.tsx` route có PrivateRoute ADMIN; `pages/ProductEditPage.test.tsx`, `pages/ProductsPage.test.tsx`; `e2e/products.spec.ts`; `.github/workflows/ci.yml` ghi phạm vi M3.4.1. Không commit/push.
 
 ## Thiết kế kỹ thuật tham khảo
 

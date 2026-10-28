@@ -1,0 +1,88 @@
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
+import { ApiError } from '../../../../shared/api/client';
+import { categoriesApi } from '../../categories/api/categories.api';
+import { productsApi, productsKey, type Product, type ProductUpdateInput } from '../api/products.api';
+import { ProductEditForm } from '../components/ProductEditForm';
+
+export function ProductEditPage() {
+  const productId = useParams()['productId'] ?? '';
+  const categories = useQuery({ queryKey: ['admin-categories'], queryFn: categoriesApi.list, retry: false });
+  const detail = useQuery({ queryKey: [...productsKey, 'detail', productId], queryFn: () => productsApi.detail(productId), enabled: productId !== '', retry: false });
+  const update = useMutation({ mutationFn: (input: ProductUpdateInput) => productsApi.update(productId, input), retry: false });
+  // Snapshot freezes the product/version this edit session started from; background refetches never rebase it.
+  const [snapshot, setSnapshot] = useState<Product | null>(null);
+  const [revision, setRevision] = useState(0);
+  const operationRef = useRef<'save' | 'reload' | null>(null);
+  const [operation, setOperation] = useState<'save' | 'reload' | null>(null);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  if (detail.data && snapshot === null) setSnapshot(detail.data);
+
+  function beginOperation(next: 'save' | 'reload') {
+    // The page owns this lock so a form remount cannot clear an in-flight operation.
+    if (operationRef.current !== null) return false;
+    operationRef.current = next;
+    setOperation(next);
+    return true;
+  }
+
+  function endOperation() {
+    operationRef.current = null;
+    setOperation(null);
+  }
+
+  async function save(input: ProductUpdateInput) {
+    if (!beginOperation('save')) return;
+    try {
+      const saved = await update.mutateAsync(input);
+      await queryClient.invalidateQueries({ queryKey: productsKey });
+      void navigate('/admin/products', { replace: true, state: { updatedName: saved.name } });
+    } finally { endOperation(); }
+  }
+
+  async function reloadLatest() {
+    if (!beginOperation('reload')) return;
+    try {
+      // A failed refetch keeps the previous data in fresh.data, so only isSuccess may rebase the snapshot.
+      const fresh = await detail.refetch();
+      if (fresh.isSuccess && fresh.data) {
+        setSnapshot(fresh.data);
+        setRevision((value) => value + 1);
+      }
+    } finally { endOperation(); }
+  }
+
+  const editing = snapshot?.status === 'DRAFT';
+
+  return <Box sx={{ maxWidth: 760, mx: 'auto', py: { xs: 4, md: 6 } }}>
+    <title>Sửa sản phẩm | Quản trị Clothing Shop</title>
+    <Button component={Link} to="/admin/products" sx={{ mb: 2 }}>Về danh sách sản phẩm</Button>
+    <Typography component="h1" variant="h3" sx={{ mb: 3 }}>Sửa sản phẩm nháp</Typography>
+    {detail.isPending && <Typography role="status">Đang tải sản phẩm…</Typography>}
+    {detail.isError && <Stack spacing={2} sx={{ mb: 3 }}>
+      <Alert severity="error">{detail.error instanceof ApiError ? detail.error.message : 'Chưa tải được sản phẩm. Vui lòng thử lại.'}</Alert>
+      <Button variant="outlined" disabled={detail.isFetching} onClick={() => { void detail.refetch(); }}>Tải lại sản phẩm</Button>
+    </Stack>}
+    {snapshot && !editing && <Alert severity="info">Chỉ sản phẩm nháp được sửa ở phần này. Sản phẩm đã xuất bản hoặc đã ẩn sẽ có luồng riêng sau.</Alert>}
+    {editing && snapshot && <Stack spacing={2.5}>
+      {categories.isError && <Stack spacing={2}>
+        <Alert severity="error">{categories.error instanceof ApiError ? categories.error.message : 'Chưa tải được danh mục. Vui lòng thử lại.'}</Alert>
+        <Button variant="outlined" disabled={categories.isFetching} onClick={() => { void categories.refetch(); }}>Tải lại danh mục</Button>
+      </Stack>}
+      {categories.isPending && <Typography role="status">Đang tải danh mục…</Typography>}
+      <Stack spacing={1}>
+        <Button variant="outlined" sx={{ alignSelf: 'flex-start' }} disabled={operation !== null || detail.isFetching}
+          onClick={() => { void reloadLatest(); }}>Tải dữ liệu mới</Button>
+        <Typography variant="body2" color="text.secondary">Tải dữ liệu mới sẽ thay toàn bộ nội dung đang nhập bằng bản mới nhất trên máy chủ.</Typography>
+        {operation === 'reload' && <Typography role="status">Đang tải dữ liệu mới…</Typography>}
+      </Stack>
+      <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
+        <ProductEditForm key={revision} product={snapshot} categories={categories.data ?? []} disabled={operation !== null} onSubmit={save} />
+      </Paper>
+    </Stack>}
+  </Box>;
+}

@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI sản phẩm/ảnh/kho. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp theo hướng dẫn phía dưới. Chưa có xóa danh mục hoặc UI sửa biến thể/ảnh/kho. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -97,4 +97,84 @@ Chọn Sửa → `CategoryEditDialog` giữ snapshot của danh mục và `versi
 
 Chạy test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/categories/pages/CategoriesPage.test.tsx` và `./tools/npm.ps1 run test:e2e -- categories.spec.ts auth.spec.ts` (chỉ PostgreSQL `_test`, fixture riêng).
 
-**Điểm dừng hiện tại: M3.2, chờ người dùng chạy thử.** Phần tiếp theo M3.3 dự kiến tạo sản phẩm nháp với một biến thể, cần kế hoạch riêng được duyệt.
+## M3.3 — tạo sản phẩm nháp với một biến thể
+
+Giữ backend/frontend local hoạt động theo phần chuẩn bị, đăng nhập ADMIN và có ít nhất một danh mục. Không cần dependency hoặc migration mới.
+
+1. Mở **http://127.0.0.1:5173/admin** → **Sản phẩm** → **Thêm sản phẩm**, hoặc vào **http://127.0.0.1:5173/admin/products/new**.
+2. Nhập tên `Áo cotton`, đường dẫn `ao-cotton`, chọn danh mục; mô tả không bắt buộc.
+3. Biến thể đầu tiên: SKU `COTTON-M-DEN`, size `M`, màu `Đen`, giá `250000` VND.
+4. Bấm **Lưu sản phẩm** → về danh sách, báo tạo nháp thành công. Thấy tên/danh mục/slug, nhãn **Nháp**, SKU, size/màu, giá và **Khả dụng: 0**.
+5. Refresh: bản vừa tạo vẫn còn. Danh sách có phân trang 24 sản phẩm, số trang ở URL `?page=2` để mở lại/chia sẻ; nếu URL trang sai, bấm **Về trang đầu**.
+
+Nếu SKU/slug trên đã tồn tại, dùng mã/đường dẫn khác. SKU được lưu chữ hoa, màu được chuẩn hóa chữ thường; không xem thay đổi đó là mất dữ liệu. Danh mục tắt được ghi `(Đang tắt)` trong lựa chọn, vẫn dùng để lưu nháp theo API hiện tại; xuất bản sau này yêu cầu danh mục bật.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Chưa có danh mục | Có thông báo và link Quản lý danh mục; không hiện form lưu sản phẩm không hợp lệ |
+| Tạo mới nhưng giữ SKU cũ, dùng slug mới | Báo trùng, giữ input; đổi SKU rồi thử lại |
+| Dùng SKU mới nhưng giữ slug cũ | Báo trùng, giữ input; đổi slug rồi lưu được |
+| Giá 0, số lẻ hoặc lớn hơn 100.000.000 | Không lưu; giá yêu cầu số nguyên 1..100.000.000 VND |
+| Bấm Lưu liên tiếp khi đang xử lý | Khóa input/nút và chỉ gửi một POST đang chờ; không tự retry tạo |
+| Lỗi mạng | Báo lỗi, giữ input. Kiểm tra danh sách trước khi gửi lại nếu server có thể đã lưu mà phản hồi bị mất |
+| Chuyển tab/quay lại và tải lại danh mục ở nền gặp lỗi | Cảnh báo/tải lại hiện riêng, dữ liệu sản phẩm đang nhập vẫn giữ khi cache danh mục còn dữ liệu |
+| CUSTOMER/khách vào URL quản trị | Chuyển về tài khoản/đăng nhập; gọi admin API vẫn bị 403/401 |
+| Xem API public `/api/v1/products/<slug-vừa-tạo>` | Không tìm thấy vì đang DRAFT; `/shop` vẫn chưa có danh sách hàng thật |
+| Mobile 390px và bàn phím | Label/focus rõ, form/list không tràn ngang |
+
+Tên 2–120 ký tự; slug tối đa 120 ký tự theo dạng `ao-cotton`; mô tả tối đa 5.000 ký tự. SKU tối đa 64 ký tự, chữ/số/`_`/`-` và bắt đầu bằng chữ/số. Size gồm XS/S/M/L/XL/XXL/3XL/FREESIZE; màu tối đa 40 ký tự. Backend vẫn kiểm tra tất cả dữ liệu gửi lên. Lỗi validation biến thể lồng nhau hiện có thể trả thông báo chung; form giữ input để chỉnh, chưa sửa cách serialize lỗi backend trong M3.3.
+
+### Luồng dữ liệu / key M3.3
+
+`ProductCreatePage` gọi GET admin categories → `ProductCreateForm` thu dữ liệu → `productsApi.create` POST `/api/v1/admin/products` qua cookie/CSRF → backend guards/DTO → `ProductsService.create` ghi Product/Variant/Inventory bằng nested create nguyên tử → trả sản phẩm → FE invalidate query `admin-products` và về danh sách, GET `/api/v1/admin/products?page=1&pageSize=24` đọc lại dữ liệu server.
+
+- `SKU`: mã duy nhất của biến thể, không phải ID sản phẩm.
+- `Variant`: tổ hợp size/màu kèm giá; M3.3 tạo đúng một biến thể đang bật.
+- `DRAFT`: nháp do backend thiết lập, chưa công khai; không phải hàng đã xuất bản.
+- `admin-products`: query key của danh sách, kèm số trang đọc từ URL.
+- `available`: số khả dụng backend trả về; biến thể mới có onHand/reserved bằng 0 nên available=0.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductCreatePage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Test các phần đã làm: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products). Ca catalog toàn M3 giữ nguyên, chưa coi là đạt khi UI ảnh/kho/public chưa có.
+
+**Điểm dừng hiện tại: M3.4.1, chờ người dùng chạy thử.** M3.4.2 (sửa biến thể/thêm tắt) và các phần ảnh/kho/xuất bản cần kế hoạch riêng được duyệt. M3.4.1 chưa có UI sửa SKU/size/màu/giá, ảnh, điều chỉnh kho hoặc xuất bản.
+
+## M3.4.1 — admin sửa thông tin sản phẩm nháp
+
+Giữ backend/frontend local hoạt động theo phần chuẩn bị, đăng nhập ADMIN, có ít nhất một danh mục và một sản phẩm nháp tạo ở M3.3 (hoặc tạo mới). Không cần dependency hoặc migration mới.
+
+1. Mở **http://127.0.0.1:5173/admin/products** → hàng sản phẩm nháp (nhãn **Nháp**) có nút **Sửa** → trang `/admin/products/<id>`.
+2. Form điền sẵn tên/đường dẫn/danh mục/mô tả đang lưu. Biến thể hiện ở dạng chỉ đọc (SKU/size/màu/giá) kèm lời nhắc chưa cho sửa ở phần này.
+3. Đổi tên và mô tả → **Lưu thay đổi** → về danh sách, báo "Đã cập nhật sản phẩm nháp …" và thấy tên mới; refresh vẫn còn.
+4. Bấm **Tải dữ liệu mới** (có lời nhắc ngay trên trang): thay toàn bộ nội dung đang nhập bằng bản mới nhất trên máy chủ; tải lỗi thì giữ nguyên phần đang nhập.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Sửa tên/mô tả, lưu, refresh | Thay đổi còn nguyên; biến thể/tồn kho giữ nguyên (Khả dụng vẫn 0) |
+| Đổi đường dẫn trùng sản phẩm khác hoặc để tab cũ lưu sau | Báo "Sản phẩm đã thay đổi hoặc đường dẫn sản phẩm bị trùng…", giữ input; không đoán riêng lỗi slug |
+| Sửa ở hai tab cùng sản phẩm | Tab lưu sau bằng version cũ bị từ chối, dữ liệu tab trước không bị ghi đè; Tải dữ liệu mới mới đồng bộ bản mới |
+| Bấm Lưu liên tiếp khi đang lưu | Nút và các trường khóa, chỉ một PATCH đang chờ |
+| Bấm Tải dữ liệu mới khi mạng chậm rồi thử Lưu | Các trường và Lưu bị khóa đến khi tải xong; không gửi PATCH chồng với explicit reload |
+| Đang lưu rồi thử Tải dữ liệu mới | Tải dữ liệu mới bị khóa; nếu lưu lỗi thì form/input/thông báo lỗi vẫn còn và thao tác được mở lại |
+| SKU hiện có dài64 ký tự liền, mở trang sửa ở390px | SKU tự xuống dòng, không kéo rộng trang hoặc che nút |
+| Chỉnh dang dở rồi sang tab khác quay lại | Refetch nền không xóa phần đang nhập và không đổi version đang giữ |
+| Mở Sửa sản phẩm không phải Nháp | Không hiển thị form sửa; thông báo chỉ nháp được sửa ở phần này |
+| CUSTOMER/khách vào URL `/admin/products/<id>` | Chuyển về tài khoản/đăng nhập; PATCH API vẫn bị 403/401 |
+
+Tên 2–120 ký tự; slug theo dạng `ao-cotton`; mô tả tối đa 5.000 ký tự. Backend tiếp tục kiểm tra DTO, version và quyền; FE chỉ điều hướng. SKU duy nhất toàn hệ thống và size+màu duy nhất trong cùng sản phẩm không thay đổi — phần này không gửi lại dữ liệu biến thể khác bản đang lưu.
+
+### Luồng dữ liệu / key M3.4.1
+
+Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditForm` điền sẵn từ snapshot → PATCH `/api/v1/admin/products/<id>` với `{name,slug,description,categoryId,variants[{id,sku,size,color,price,active}],expectedVersion}` qua cookie/CSRF → backend kiểm tra version/DTO trong transaction, tăng version → FE invalidate `admin-products` và về danh sách đọc lại dữ liệu server.
+
+- `snapshot`: bản gốc chốt lúc mở form, quyết định biến thể gửi lại và `expectedVersion`; refetch nền không đổi.
+- `revision`: đếm remount form; chỉ tăng khi bấm Tải dữ liệu mới thành công — thao tác duy nhất chủ động bỏ draft.
+- `Tải dữ liệu mới`: refetch tường minh; thành công thay snapshot/form, lỗi giữ draft.
+- `operationRef`/`operation`: khóa đồng bộ và trạng thái UI ở cấp page, ngăn lưu/tải mới chạy chồng nhau dù form có remount; lỗi cũng nhả khóa.
+- `admin-products`: invalidate sau lưu để list và chi tiết đọc lại dữ liệu server.
+- 409: API dùng chung cho version cũ và slug trùng; thông báo nêu cả hai khả năng.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products, 11 ca trên `_test`).

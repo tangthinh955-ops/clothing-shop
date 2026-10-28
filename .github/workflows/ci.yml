@@ -39,5 +39,5 @@ jobs:
       - run: npm test
       - run: npm run test:integration
       - run: npm run test:e2e:install -- --with-deps
-      - name: E2E implemented (auth + categories through M3.2)
+      - name: E2E implemented (auth + categories + products create/edit drafts through M3.4.1)
         run: npm run test:e2e:implemented

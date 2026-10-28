@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Paper, Typography } from '@mui/material';
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { request } from '../../shared/api/client';
@@ -14,7 +14,10 @@ export function AdminPage() {
         : access.isError ? <Alert severity="error">Không thể truy cập trang quản trị. Vui lòng đăng nhập lại.</Alert>
         : <>
           <Typography sx={{ mb: 2 }}>Chào bạn. Tài khoản quản trị đã sẵn sàng.</Typography>
-          <Button component={Link} to="/admin/categories" variant="contained">Danh mục</Button>
+          <Stack direction="row" useFlexGap sx={{ gap: 2, flexWrap: 'wrap' }}>
+            <Button component={Link} to="/admin/categories" variant="contained">Danh mục</Button>
+            <Button component={Link} to="/admin/products" variant="outlined">Sản phẩm</Button>
+          </Stack>
         </>}
     </Paper>
     <Button component={Link} to="/account" variant="outlined">Quản lý tài khoản / đăng xuất</Button>
