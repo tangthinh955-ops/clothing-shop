@@ -1,5 +1,5 @@
 import { Inject, Injectable, UnauthorizedException, type CanActivate, type ExecutionContext } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { identitySelect } from './identity.js';
 import { destroySession, type AuthRequest } from './session.types.js';
 

@@ -29,6 +29,7 @@
     "typescript": "5.9.3",
     "vitest": "5.0.5"
   },
+  "overrides": { "multer": "2.5.0" },
   "allowScripts": {
     "argon2@0.45.1": true,
     "prisma@7.10.1": true,

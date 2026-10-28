@@ -4,9 +4,9 @@ Website một shop quần áo, phục vụ khách từ Instagram. React/Vite và
 
 ## Trạng thái
 
-Dự án mới, đang thực hiện nền tảng/tài khoản. Đã được phép triển khai ngày 23/10/2026. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
+Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản local. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng hiện tại: **M2 local, chờ người dùng chạy thử**. Xem [hướng dẫn chạy thử từng bước](docs/local-trial-m2.md). Chưa chuyển sang M3.
+Điểm dừng hiện tại: **M3.2 — admin sửa/bật/tắt danh mục, chờ người dùng chạy thử**. Xem [hướng dẫn M3.1–M3.2](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai giao diện sản phẩm M3.3.
 
 Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật. Không sửa fastLock/LiveOrder.
 
@@ -47,6 +47,19 @@ Hai terminal:
 
 Mở **http://127.0.0.1:5173**; API http://127.0.0.1:3000/api/v1, Swagger local http://127.0.0.1:3000/api/docs. Frontend gọi `/api` qua proxy. `APP_ORIGIN` phải khớp địa chỉ mở trình duyệt, gồm host và port; `localhost` và `127.0.0.1` là hai origin khác nhau. Không bỏ CSRF hoặc mở wildcard CORS để chữa lỗi origin.
 
+## Xem database bằng Prisma Studio
+
+Giữ Docker database đang chạy. Với Node/npm tương thích như yêu cầu ở trên, mở terminal mới (CMD hoặc PowerShell):
+
+```shell
+cd C:\NAM4_2\ShopQuanAo_Codex\apps\backend
+npx prisma studio
+```
+
+Mở địa chỉ Studio được terminal hiển thị; chọn bảng `users` để xem tài khoản đã đăng ký. Nhấn Ctrl+C trong terminal này để dừng Studio.
+
+`prisma.config.ts` tự đọc `.env` nằm cạnh nó khi chưa có `DATABASE_URL` và không ở `NODE_ENV=test`. Biến môi trường đã cung cấp (kể cả từ `.env.test` hoặc CI) được ưu tiên; chế độ test không tự đọc cấu hình local. Không cần cài thêm thư viện hoặc nạp `.env` thủ công mỗi lần mở Studio. Việc mở Studio không chạy migration; chỉnh sửa dữ liệu trong Studio sẽ ghi trực tiếp vào database.
+
 ## Tài khoản và thư thử
 
 Đăng ký bằng email giả, ví dụ thuộc `example.test`. Khi MAIL_MODE=preview, thư xác minh/reset nằm trong `.local/mailbox/mail-*.json`: mở file và sao chép URL ở trường `text`. Không công khai thư mục này hoặc gửi token vào chat/log. Thư thử được dọn khi gửi tiếp sau hạn một giờ; token vẫn có hạn và dùng một lần. Preview chỉ local/test, startup production từ chối chế độ này.
@@ -86,4 +99,4 @@ Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy 
 
 Build độc lập: `npm run build -w @clothing/backend` hoặc `npm run build -w @clothing/frontend`, sau khi generate Prisma ở môi trường build backend. Backend không tự migration/seed khi startup. Không dùng `prisma migrate reset` hoặc `docker compose down -v` với dữ liệu cần giữ.
 
-Hướng dẫn deploy/admin đầy đủ được tạo khi tới mốc cần dùng. Không đưa secret vào Git hoặc biến `VITE_*`. Bản local hiện chưa có catalog/kho/đặt đơn/đổi trả hoàn chỉnh; giao diện danh mục là empty state, không phải dữ liệu hàng hóa giả có thể mua.
+Hướng dẫn deploy/admin đầy đủ được tạo khi tới mốc cần dùng. Không đưa secret vào Git hoặc biến `VITE_*`. Admin hiện xem/tạo/sửa/bật tắt được danh mục thật tại `/admin/categories`, kiểm tra version để tránh ghi đè; `/shop` vẫn là intro empty state. Bản local chưa có đầy đủ giao diện sản phẩm/kho/đặt đơn/đổi trả.

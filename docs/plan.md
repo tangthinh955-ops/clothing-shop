@@ -37,6 +37,14 @@ Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy
 | M6 | Deploy đầy đủ, restart, smoke test, backup/restore và rollback | 24–40 |
 | M7 | ASVS/ZAP/E2E, sửa và kiểm tra lại, nghiệm thu/bàn giao | 40–64 |
 
+## Nhịp triển khai và chạy thử từng phần
+
+- M1–M7 là các mốc tổng quan. Trước khi code mỗi mốc, lập bảng chia thành `Mx.1`, `Mx.2`, `Mx.3`... theo một thay đổi hoặc luồng nhỏ có thể chạy thử ngay; phần còn lớn tiếp tục chia thành `Mx.1.1`, `Mx.1.2`... .
+- Bảng chia phần ghi rõ thay đổi quan sát được, phạm vi, cách thử/kết quả mong đợi và phụ thuộc. Ưu tiên mỗi phần dùng được xuyên suốt FE–API–DB; phần nền tảng chưa có UI phải có cách kiểm tra và giới hạn rõ.
+- Trước từng phần: gửi kế hoạch riêng trong chat → dừng chờ duyệt → triển khai đúng phần → kiểm tra và cập nhật `progress.md` → bàn giao cách thử → dừng chờ phản hồi. Không code cả mốc rồi mới gửi hướng dẫn.
+- Duyệt lộ trình không đồng nghĩa cho phép tự chạy hết các phần. Chỉ chuyển phần khi người dùng yêu cầu và phần tiếp theo có kế hoạch cụ thể đã được duyệt; sửa lỗi phần đang thử trước khi đi tiếp.
+- Ghi riêng trạng thái đã viết, đã kiểm tra kỹ thuật và đã được người dùng chạy thử; giữ tiêu chí hoàn thành của mốc bên dưới. Các phần cụ thể cần đối chiếu working tree trước khi lập, không suy ra trạng thái từ tài liệu thiết kế.
+
 ## Bước thực hiện và điều kiện hoàn thành
 
 ### M1 — Thiết kế
@@ -62,6 +70,8 @@ Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy
 - Hoàn thành khi các ca auth quan trọng pass và giới hạn email được ghi rõ.
 
 ### M3 — Sản phẩm, ảnh và kho
+
+Điểm dừng hiện tại và kế hoạch tiếp tục theo phần: [m3-implementation-plan.md](m3-implementation-plan.md). **M3.2 — admin sửa/bật/tắt danh mục** đã được duyệt và triển khai; kết quả kiểm tra ở progress, chờ người dùng chạy thử theo [hướng dẫn M3.1–M3.2](local-trial-m3.md). Chưa triển khai UI sản phẩm M3.3 và chưa nghiệm thu toàn M3.
 
 - [ ] [CREATE] backend categories/products/inventory/uploads; frontend catalog và admin sản phẩm/danh mục/kho.
 - [ ] [MODIFY] schema/migrations/routes; thêm seed giả chạy tường minh.

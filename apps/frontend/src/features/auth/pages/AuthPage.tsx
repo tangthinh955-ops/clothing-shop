@@ -1,11 +1,11 @@
-import { Alert, Link, Stack, Typography } from '@mui/material';
+import { Alert, Button, CircularProgress, Link, Stack, Typography } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router';
+import { Link as RouterLink, Navigate, useNavigate } from 'react-router';
 import { AuthLayout } from '../../../layouts/AuthLayout';
 import { authApi } from '../api/auth.api';
 import { AuthForm, type AuthMode, type AuthValues } from '../components/AuthForm';
-import { currentUserKey } from '../hooks/useCurrentUser';
+import { currentUserKey, useCurrentUser } from '../hooks/useCurrentUser';
 import { useLinkToken } from '../hooks/useLinkToken';
 
 const copy = {
@@ -16,10 +16,33 @@ const copy = {
 } as const;
 
 export function AuthPage({ mode }: { mode: AuthMode }) {
+  const token = useLinkToken();
+  if (mode === 'login' || mode === 'register') return <EntryAuthPage mode={mode} />;
+  return <AuthContent key={mode === 'reset' ? token : mode} mode={mode} token={token} />;
+}
+
+// Only login/register require a guest; password and email recovery stay accessible.
+function EntryAuthPage({ mode }: { mode: 'login' | 'register' }) {
+  const user = useCurrentUser();
+  if (user.isPending || user.isError) {
+    return <AuthLayout title="Kiểm tra phiên đăng nhập" description="Vui lòng chờ xác nhận trạng thái tài khoản.">
+      {user.isPending ? <CircularProgress aria-label="Đang kiểm tra phiên" />
+        : <Stack spacing={2}>
+          <Alert severity="error">Chưa kiểm tra được phiên đăng nhập.</Alert>
+          <Button variant="outlined" disabled={user.isFetching} onClick={() => { void user.refetch(); }}>
+            Kiểm tra lại phiên
+          </Button>
+        </Stack>}
+    </AuthLayout>;
+  }
+  if (user.data) return <Navigate to={user.data.role === 'ADMIN' ? '/admin' : '/account'} replace />;
+  return <AuthContent key={mode} mode={mode} token="" />;
+}
+
+function AuthContent({ mode, token }: { mode: AuthMode; token: string }) {
   const [notice, setNotice] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const token = useLinkToken();
   async function submit(values: AuthValues): Promise<void> {
     if (mode === 'login') {
       const user = await authApi.login(values.email, values.password);

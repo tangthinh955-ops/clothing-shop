@@ -22,13 +22,31 @@ Returns đọc ExchangeLink và trạng thái replacement để suy ra needsReso
 
 ## Cấu trúc và trách nhiệm
 
-`apps/backend/{prisma,src/config,src/common,src/prisma,src/modules,test}`; module chỉ có controller khi cung cấp HTTP.
+`apps/backend/{prisma,src/config,src/common,src/modules,test}`; module chỉ có controller khi cung cấp HTTP. Vị trí source hiện tại: PrismaModule/PrismaService ở `src/modules/prisma`; InventoryModule/InventoryService ở `src/modules/inventory` sau refactor M3.0.2. Inventory giữ trách nhiệm nghiệp vụ độc lập; import phải khớp vị trí file thực tế.
 
 `apps/frontend/src/{app,layouts,features,shared,theme}`; features auth/catalog/cart/checkout/account/admin. Trong feature: pages/components/hooks/api/types chỉ được tạo khi có nội dung.
 
 Page kết nối dữ liệu/bố cục; component tương tác phạm vi rõ; hook logic React; API file gọi HTTP; controller nhận input/guard; service giữ nghiệp vụ; DTO allowlist không dùng Prisma input; response select rõ không password hash/token.
 
 File nhiều trách nhiệm hoặc khoảng trên 300 dòng cần đánh giá tách, không máy móc. Không effect/hook khổng lồ hoặc memo hàng loạt.
+
+### Tổ chức backend sau M3.0.2
+
+- `*.module.ts` đăng ký imports/controllers/providers; controller nằm trong `*.controller.ts`. Categories và Products có controller public/admin riêng; Uploads tách admin upload và public media; Inventory có controller quản trị riêng.
+- CategoriesService chứa truy vấn/transaction danh mục; UsersService cập nhật hồ sơ theo ID lấy từ phiên đã xác thực. Controller không thao tác Prisma cho các nghiệp vụ này. HealthController chỉ đọc `SELECT 1` để kiểm tra hạ tầng, không phải nghiệp vụ cần thêm lớp service.
+- DTO thuộc feature đặt trong `modules/<feature>/dto`; `common/dto/request.dto.ts` giữ phân trang/version, `common/dto/transforms.ts` giữ chuẩn hóa chuỗi dùng chung. Categories/Inventory không phụ thuộc DTO của Products.
+- `Roles` và `CurrentUser` ở `modules/auth/decorators`; RolesGuard đọc cùng metadata key `auth:roles`, tiếp tục chạy sau SessionGuard.
+- Theo lựa chọn người dùng, UsersController và AdminAccessController vẫn là hai class trong `modules/users/users.controller.ts`; mỗi class có route/guard riêng. Không tạo `auth/admin-access.controller.ts`.
+- Refactor này giữ HTTP contract, validation và nghiệp vụ; không đồng nghĩa frontend M3 đã hoàn thành. Danh sách file và kết quả kiểm tra ở [M3.0.2 trong progress](../progress.md).
+
+### Tổ chức frontend sau M3.0.3
+
+- `app/App.tsx` khai báo route; `app/router/PrivateRoute.tsx` xử lý trạng thái phiên/role và đưa user đã đọc cho nội dung route. Backend vẫn kiểm tra quyền độc lập.
+- `features/catalog/pages/CatalogIntroPage.tsx` chỉ là intro empty state hiện có, chưa phải catalog API. Trang thông tin ở `features/information/pages/PolicyPage.tsx`, nội dung tại `features/information/content/policies.ts`; trang không tìm thấy ở `app/pages/NotFoundPage.tsx`.
+- `shared/api/client.ts` gửi JSON hoặc FormData, không tự đặt Content-Type cho multipart để browser tạo boundary; nhận Idempotency-Key từ caller và giữ CSRF/no automatic mutation retry.
+- Link token chỉ lưu trong memory. Chỉ fragment có tham số `token` mới cập nhật token và bị xóa khỏi URL; query được giữ, anchor như `#main-content` vẫn hoạt động. Nội dung form/kết quả verify/reset có vòng đời theo token để kết quả cũ không chồng lên link mới.
+- M3.1–M3.2 có `/admin/categories` tại `features/admin/categories`: `pages/CategoriesPage.tsx` giữ Query/list/create/update flow; `components/CategoryForm.tsx` thay CategoryCreateForm, dùng chung field/state/validation cho tạo và sửa; `components/CategoryEditDialog.tsx` giữ snapshot/version của lần mở và điều khiển tải dữ liệu mới/đóng; `api/categories.api.ts` giữ contract GET/POST/PATCH. Đây là UI quản trị; module Categories ở backend vẫn độc lập. Form không tự quyết định quyền, backend guards/DTO/unique slug vẫn kiểm tra chính.
+- Query `admin-categories` được invalidate sau tạo/sửa để đọc lại dữ liệu server. Snapshot edit không tự đổi khi query refetch; lỗi 409 giữ draft và version ban đầu. Nút Tải dữ liệu mới thay snapshot/form sau khi tải thành công theo thao tác tường minh; lỗi tải giữ input. Khóa đồng bộ ngăn submit lặp và đóng/reload trong lúc lưu. Chưa có UI product/inventory hoặc public catalog M3. Kế hoạch từng phần ở [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ## Sitemap, UI và state
 

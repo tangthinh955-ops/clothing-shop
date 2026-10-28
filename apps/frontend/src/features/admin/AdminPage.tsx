@@ -12,7 +12,10 @@ export function AdminPage() {
     <Paper square elevation={0} sx={{ p: 4, my: 3 }}>
       {access.isPending ? <Typography>Đang kiểm tra phiên…</Typography>
         : access.isError ? <Alert severity="error">Không thể truy cập trang quản trị. Vui lòng đăng nhập lại.</Alert>
-        : <Typography>Chào bạn. Tài khoản quản trị đã sẵn sàng.</Typography>}
+        : <>
+          <Typography sx={{ mb: 2 }}>Chào bạn. Tài khoản quản trị đã sẵn sàng.</Typography>
+          <Button component={Link} to="/admin/categories" variant="contained">Danh mục</Button>
+        </>}
     </Paper>
     <Button component={Link} to="/account" variant="outlined">Quản lý tài khoản / đăng xuất</Button>
   </Box>;

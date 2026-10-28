@@ -10,6 +10,15 @@ import './styles.css';
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } });
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing application root');
-createRoot(root).render(<StrictMode><ThemeProvider theme={theme}><CssBaseline /><QueryClientProvider client={queryClient}>
-  <BrowserRouter><App /></BrowserRouter>
-</QueryClientProvider></ThemeProvider></StrictMode>);
+createRoot(root).render(
+  <StrictMode>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
+  </StrictMode>,
+);

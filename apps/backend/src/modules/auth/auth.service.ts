@@ -3,7 +3,7 @@ import argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '../../generated/prisma/client.js';
 import type { TokenKind } from '../../generated/prisma/enums.js';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { MailService } from '../mail/mail.service.js';
 import type { LoginDto, RegisterDto, ResetPasswordDto } from './dto/auth.dto.js';
 import { identitySelect, type UserIdentity } from './identity.js';
