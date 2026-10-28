@@ -16,8 +16,9 @@ export interface ProductInput {
   categoryId: string;
   variants: VariantInput[];
 }
+// Saved variants keep their id; a new variant omits it so the backend creates it with inventory 0.
 export interface VariantUpdateInput extends VariantInput {
-  id: string;
+  id?: string;
 }
 export interface ProductUpdateInput {
   name: string;

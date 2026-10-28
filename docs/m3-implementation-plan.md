@@ -156,6 +156,19 @@ Bổ sung kỹ thuật đi kèm: `package.json` thêm products.spec.ts vào scri
 
 File: `api/products.api.ts` thêm detail/update + `VariantUpdateInput`/`ProductUpdateInput` và thu hẹp kiểu `ProductVariant.size` về allowlist vì DTO backend luôn chuẩn hóa; `components/ProductInfoFields.tsx` mới dùng chung cho tạo/sửa; `components/ProductCreateForm.tsx` refactor giữ hành vi; `components/ProductEditForm.tsx` và `pages/ProductEditPage.tsx` mới; `pages/ProductsPage.tsx` thêm link Sửa + alert cập nhật; `app/App.tsx` route có PrivateRoute ADMIN; `pages/ProductEditPage.test.tsx`, `pages/ProductsPage.test.tsx`; `e2e/products.spec.ts`; `.github/workflows/ci.yml` ghi phạm vi M3.4.1. Không commit/push.
 
+## M3.4.2 — admin sửa, thêm và tắt biến thể (Người A)
+
+**Phạm vi đã duyệt:** người dùng yêu cầu bắt đầu phần của Người A ngày 29/10/2026 theo kế hoạch đã gửi; giữ quy tắc chỉ sản phẩm DRAFT được sửa. Đã triển khai và kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.
+
+| Nội dung | Phạm vi |
+|---|---|
+| Mục tiêu | Admin sửa SKU/size/màu/giá, bật/tắt và thêm biến thể của sản phẩm nháp |
+| UI | Mỗi biến thể một khung "Biến thể n"; nút Thêm biến thể; dòng mới có Bỏ dòng này; biến thể đã lưu chỉ tắt được |
+| Dữ liệu | PATCH như M3.4.1, biến thể cũ kèm `id`, mới không có `id`; không gửi tồn kho/ảnh/trạng thái |
+| Kiểm tra | 6 test component biến thể, 14 test trang sửa cập nhật; E2E sửa giá/thêm/tắt, SKU trùng sản phẩm khác bị 409 và DB không đổi, mobile 390px |
+| Giới hạn | Đổi chéo size/màu giữa hai biến thể trong một lần lưu bị 409 do unique (product,size,color) và cập nhật tuần tự; backend không đổi |
+| Điểm dừng | Chờ người dùng thử theo [local-trial-m3.md](local-trial-m3.md#m342--admin-sửa-thêm-và-tắt-biến-thể-của-sản-phẩm-nháp); M3.5 cần kế hoạch riêng |
+
 ## Thiết kế kỹ thuật tham khảo
 
 Các mục Task 1–3 phía dưới là bản thiết kế M3 ban đầu, dùng tra cứu contract/test; không phải lịch chạy nối tiếp và checkbox không đại diện tiến độ. Bảng chia phần ở trên và [progress](../progress.md) là điểm theo dõi hiện tại.
