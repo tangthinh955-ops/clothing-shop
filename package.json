@@ -19,6 +19,7 @@
     "test": "node --test tools/*.test.mjs && npm run test --workspaces",
     "test:integration": "npm run test:integration -w @clothing/backend",
     "test:e2e": "node tools/test-e2e.mjs",
+    "test:e2e:implemented": "node tools/test-e2e.mjs auth.spec.ts categories.spec.ts",
     "test:e2e:install": "node tools/test-e2e.mjs install",
     "db:generate": "npm run db:generate -w @clothing/backend",
     "db:migrate": "npm run db:migrate -w @clothing/backend",
@@ -29,6 +30,7 @@
     "typescript": "5.9.3",
     "vitest": "5.0.5"
   },
+  "overrides": { "multer": "2.5.0" },
   "allowScripts": {
     "argon2@0.45.1": true,
     "prisma@7.10.1": true,

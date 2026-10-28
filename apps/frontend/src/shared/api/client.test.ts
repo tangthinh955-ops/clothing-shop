@@ -4,6 +4,23 @@ import { ApiError, request } from './client';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('API boundary', () => {
+  it('preserves a JSON mutation and its caller-provided idempotency key', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ csrfToken: 'csrf-json' })).mockResolvedValueOnce(Response.json({ onHand: 10 }));
+    vi.stubGlobal('fetch', fetcher);
+    const body = { variantId: 'variant-id', delta: 10, reason: 'Nhập thử', expectedVersion: 0 };
+    await request('/admin/inventory/adjustments', { method: 'POST', body, idempotencyKey: 'same-operation-123456789' });
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ body: JSON.stringify(body), headers: {
+      'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-json', 'Idempotency-Key': 'same-operation-123456789',
+    } });
+  });
+  it('sends multipart with CSRF without overriding the browser boundary and preserves an idempotency key', async () => {
+    const body = new FormData(); body.append('file', new Blob(['image']), 'image.png');
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ csrfToken: 'csrf-token' })).mockResolvedValueOnce(Response.json({ id: 'uploaded' }));
+    vi.stubGlobal('fetch', fetcher);
+    await request('/admin/uploads/images', { method: 'POST', body, idempotencyKey: 'operation-123456789' });
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ body, headers: { 'X-CSRF-Token': 'csrf-token', 'Idempotency-Key': 'operation-123456789' } });
+    expect(fetcher.mock.calls[1]?.[1].headers).not.toHaveProperty('Content-Type');
+  });
   it('does not turn a cold-start HTML response into a successful JSON result', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>starting</html>', { status: 503 })));
     await expect(request('/me')).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE', status: 503 });

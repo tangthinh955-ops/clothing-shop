@@ -10,6 +10,10 @@ import { currentUserKey } from '../hooks/useCurrentUser';
 
 export function VerifyPage() {
   const token = useLinkToken();
+  return <VerificationContent key={token} token={token} />;
+}
+
+function VerificationContent({ token }: { token: string }) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState('');

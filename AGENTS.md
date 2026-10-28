@@ -26,19 +26,38 @@ Nếu code và đặc tả mâu thuẫn, xác định nguyên nhân trước khi
 
 ## 3. Quy trình bắt buộc theo từng giai đoạn
 
+### Chia nhỏ để người dùng kiểm soát và chạy thử
+
+- Mỗi mốc lớn phải chia thành các phần có mã `Mx.1`, `Mx.2`, `Mx.3`... trước khi triển khai, ví dụ `M3.1`. Không gom toàn bộ M3 thành một lần code rồi mới bàn giao.
+- Gửi bảng chia phần với các cột: mã phần, thay đổi người dùng thấy được, phạm vi chính, cách chạy thử/kết quả mong đợi và phụ thuộc. Bảng tổng quan chỉ là lộ trình; duyệt lộ trình không tự cho phép code mọi phần liên tiếp.
+- Mỗi phần chỉ tập trung một thay đổi hoặc một luồng nhỏ có thể kiểm chứng ngay. Ưu tiên lát cắt FE–API–DB đủ để người dùng thao tác thật; nếu bắt buộc làm nền tảng riêng, nêu cách kiểm tra cụ thể và giới hạn chưa có UI, không báo tính năng đã dùng được.
+- Nếu phần vẫn gồm nhiều luồng hoặc cần quá nhiều thao tác để thử, tiếp tục tách thành `Mx.1.1`, `Mx.1.2`...; không chia theo số file hoặc tạo bước chỉ có giao diện giả.
+- Trước mỗi phần, gửi kế hoạch chi tiết của riêng phần đó trong chat và chờ duyệt theo mục dưới. Chỉ code phần đã được duyệt; không tranh thủ triển khai phần tiếp theo.
+- Sau mỗi phần, chạy kiểm tra phù hợp, ghi tiến độ theo mã phần, hướng dẫn người dùng thử đúng thay đổi vừa làm rồi dừng. Phân biệt rõ: đã viết, agent đã kiểm tra, chờ người dùng thử và người dùng đã xác nhận.
+- Chỉ chuyển phần tiếp theo khi người dùng đã phản hồi và yêu cầu tiếp tục; vẫn gửi kế hoạch phần tiếp theo để duyệt nếu chưa được duyệt cụ thể. Nếu có lỗi trong phần vừa bàn giao, xử lý trong phạm vi đó trước khi chuyển phần.
+
 ### Trước khi làm
 
-Gửi kế hoạch ngắn trong chat, thường 4–6 dòng:
+Trước mỗi nhiệm vụ/phần code, gửi bảng kế hoạch ngắn ngay trong chat để người dùng xem và duyệt:
 
-> - **Giai đoạn/phần:** Mx — tên phần đang làm.
-> - **Mục tiêu:** người dùng sẽ làm được gì.
-> - **Thay đổi:** chức năng và nhóm file/module chính sẽ thêm hoặc sửa.
-> - **Kiểm tra:** cách chứng minh phần này hoạt động.
-> - **Điểm dừng:** phần nào bàn giao để người dùng chạy thử.
+| Nội dung | Kế hoạch |
+|---|---|
+| Giai đoạn/phần | Mx.y — tên phần nhỏ đang làm |
+| Mục tiêu | Người dùng sẽ làm được gì |
+| Thay đổi | Chức năng nhỏ sẽ triển khai |
+| File dự kiến | Đường dẫn từng file sẽ thêm/sửa/xóa hoặc di chuyển; mỗi file ghi ngắn thay đổi gì và vì sao |
+| Data flow | 1–3 câu mô tả dữ liệu đầu vào, nơi xử lý/lưu và kết quả trả về giao diện của phần này |
+| Kiểm tra | Cách chứng minh phần này hoạt động |
+| Điểm dừng | Phần bàn giao để người dùng chạy thử |
+
+- Danh sách file dùng đường dẫn cụ thể của phần đang làm, gồm cả test, migration và tài liệu nếu có; không chỉ ghi chung tên module. File mới chưa chốt tên phải ghi rõ là dự kiến.
+- Data flow bám thao tác cụ thể: người dùng nhập/bấm gì → frontend gửi dữ liệu tới API nào → backend kiểm tra/xử lý gì → đọc/ghi dữ liệu nào → trả kết quả và cập nhật UI ra sao. Nêu tên file/hàm chính khi giúp lần theo code; phần không đi qua FE/API/DB thì mô tả luồng thực tế, không thêm bước giả. Giải thích ngắn, không lặp lại định nghĩa module/service/controller đã biết.
+- **Sau khi gửi bảng kế hoạch, dừng lượt và chờ người dùng duyệt rồi mới code.** Không gửi kế hoạch rồi tự triển khai ngay; không coi im lặng là đồng ý. Nếu người dùng đã duyệt rõ kế hoạch cụ thể trong hội thoại thì triển khai đúng phạm vi đó, không yêu cầu duyệt lại.
+- Trước khi duyệt, chỉ đọc/khảo sát cần thiết để lập kế hoạch; không sửa code, cài dependency hoặc chạy migration. File kế hoạch và hướng dẫn chạy thử không thay thế việc gửi bảng kế hoạch trong chat trước khi code.
 
 - Bám phạm vi người dùng yêu cầu. Nếu giai đoạn lớn, chia thành phần có thể chạy thử và nói rõ ranh giới.
-- Khi đã được yêu cầu triển khai, tự xử lý các lựa chọn kỹ thuật thông thường trong phạm vi đó; không hỏi lại quyền cho từng bước.
-- Chỉ hỏi khi thiếu quyết định ảnh hưởng nghiệp vụ/phạm vi, thay đổi kiến trúc ngoài thiết kế, hoặc hành động vượt quyền đã được giao.
+- Sau khi kế hoạch được duyệt, tự xử lý các lựa chọn kỹ thuật thông thường trong phạm vi đó; không hỏi lại quyền cho từng bước.
+- Ngoài bước duyệt kế hoạch trước khi code, chỉ hỏi khi thiếu quyết định ảnh hưởng nghiệp vụ/phạm vi, thay đổi kiến trúc ngoài thiết kế, hoặc hành động vượt quyền đã được giao. Nếu cần mở rộng phạm vi đã duyệt, gửi kế hoạch điều chỉnh và chờ duyệt trước khi làm phần mở rộng.
 - Không tự mở rộng tính năng, đổi stack, nâng major dependency hoặc refactor phần không liên quan.
 
 ### Trong khi làm
@@ -56,6 +75,8 @@ Gửi kế hoạch ngắn trong chat, thường 4–6 dòng:
 4. Bàn giao ngắn trong chat theo mẫu:
 
 > - **Đã xong:** những thay đổi chính.
+> - **File đã đổi:** đường dẫn các file thực tế thêm/sửa/xóa hoặc di chuyển trong phần này, mỗi file giải thích một câu; nêu khác biệt với dự kiến nếu có, không nhận các thay đổi có sẵn là do mình làm.
+> - **Data flow:** 1–3 câu tóm tắt luồng thực tế sau thay đổi, từ thao tác/đầu vào đến xử lý, lưu và hiển thị kết quả; tập trung phần mới.
 > - **Kiểm tra:** kết quả thật; mục chưa chạy phải ghi rõ.
 > - **Key quan trọng:** 3–5 khái niệm/biến/luồng mới thực sự liên quan, mỗi key giải thích một câu về tác dụng và vị trí sử dụng. Nếu không có key mới, nói rõ.
 > - **Chạy thử:** lệnh, URL, thao tác và kết quả mong đợi; dẫn tới hướng dẫn chi tiết nếu dài.
@@ -74,6 +95,15 @@ Gửi kế hoạch ngắn trong chat, thường 4–6 dòng:
 - Khi tới phần bán hàng: backend quyết định giá, phí, tổng, quyền sở hữu và chuyển trạng thái; không tin giá/quyền do client gửi.
 - Thay đổi kho qua Inventory; thao tác kho/đơn/tiền liên quan dùng transaction phù hợp, kiểm soát đồng thời và idempotency. Không gọi email/upload/provider bên trong transaction DB.
 - Thay đổi schema bằng migration có thể review. Không sửa migration đã áp dụng để làm lệch lịch sử database.
+
+### Clean code — tách trách nhiệm, tránh gom file
+
+- Mỗi file tập trung một trách nhiệm rõ ràng; tên file/hàm/biến mô tả đúng mục đích. Tách khi một file chứa nhiều phần thay đổi vì các lý do khác nhau, không đợi file dài mới xem xét. Không tách mọi hàm nhỏ thành file riêng hoặc thêm tầng trừu tượng khi chưa có nhu cầu.
+- Backend: `*.module.ts` chỉ khai báo và kết nối imports/controllers/providers/exports; không định nghĩa Controller, Service hoặc DTO trong file module. Controller nhận HTTP, gọi Service và trả response; nghiệp vụ, truy vấn Prisma và transaction nằm trong Service; DTO và Guard giữ trách nhiệm riêng.
+- Frontend: `App.tsx` tập trung ghép layout và route; nội dung trang nằm trong page của feature tương ứng. Khi route nhiều hoặc khó đọc, tách cấu hình route/thành phần bảo vệ route; không chỉ chuyển nguyên file đang nhiều trách nhiệm sang file khác.
+- Frontend: endpoint và hàm gọi API đặt trong `api/` của feature; page/hook gọi qua API đó. HTTP, cookie, CSRF và chuyển đổi lỗi dùng chung ở `shared/api`; không rải `fetch` hoặc endpoint trong component/page. Tách component/hook khi có trách nhiệm riêng hoặc logic cần tái sử dụng; không bắt buộc mọi page nhỏ phải có hook riêng.
+- Viết code dễ đọc: không nén nhiều câu lệnh, hàm hoặc khối JSX phức tạp vào một dòng. File khoảng trên 300 dòng cần đánh giá tách theo trách nhiệm, không coi số dòng là giới hạn cứng hoặc nén dòng để né đánh giá.
+- Trước bàn giao, rà các file đã thêm/sửa về trách nhiệm, vị trí, phụ thuộc và phần logic lặp. Test/typecheck/build đạt không thay thế review cấu trúc. Chỉ điều chỉnh trong phạm vi được duyệt; nếu cần refactor ngoài phạm vi, nêu rõ và chờ duyệt kế hoạch riêng.
 
 ## 5. Bảo mật, dữ liệu và môi trường
 

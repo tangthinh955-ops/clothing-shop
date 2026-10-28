@@ -21,7 +21,7 @@ async function linkFor(email: string, page: 'verify-email' | 'reset-password'): 
 test.afterAll(async () => {
   if (!process.env['DATABASE_URL'] || !new URL(process.env['DATABASE_URL']).pathname.endsWith('_test')) throw new Error('E2E cleanup requires a *_test database');
   // Node-only test code; backend modules/secrets are never part of the frontend bundle.
-  const { PrismaService } = await import('../../backend/dist/prisma/prisma.service.js');
+  const { PrismaService } = await import('../../backend/dist/modules/prisma/prisma.service.js');
   const { readEnvironment } = await import('../../backend/dist/config/environment.js');
   const db = new PrismaService(readEnvironment(process.env));
   try {
@@ -41,6 +41,9 @@ test('register, verify, login, refresh session, reset and logout through the rea
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('hướng dẫn sẽ được gửi');
   await page.goto(await linkFor(email, 'verify-email'));
+  await page.getByRole('link', { name: 'Đến nội dung chính' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#main-content$/);
   await page.getByRole('button', { name: 'Xác minh email', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Email đã được xác minh');
   await page.goto('/login');
@@ -51,11 +54,21 @@ test('register, verify, login, refresh session, reset and logout through the rea
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Tài khoản của bạn' })).toBeVisible();
   await expect(page.getByText('Email đã được xác minh.', { exact: true })).toBeVisible();
+  await page.goto('/shop');
+  await expect(page.getByRole('main').getByRole('link', { name: 'Tài khoản', exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('link', { name: 'Tạo tài khoản', exact: true })).toHaveCount(0);
+  await page.goto('/register');
+  await expect(page).toHaveURL(`${base}/account`);
+  await page.goto('/login');
+  await expect(page).toHaveURL(`${base}/account`);
   await page.goto('/forgot-password');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByRole('button', { name: 'Gửi hướng dẫn' }).click();
   await expect(page.getByRole('alert')).toContainText('hướng dẫn sẽ được gửi');
   await page.goto(await linkFor(email, 'reset-password'));
+  await page.getByRole('link', { name: 'Đến nội dung chính' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#main-content$/);
   await page.getByLabel('Mật khẩu mới', { exact: true }).fill('new-browser-password-456!');
   await page.getByRole('button', { name: 'Lưu mật khẩu mới' }).click();
   await expect(page.getByRole('alert')).toContainText('Mật khẩu đã được cập nhật');
@@ -68,6 +81,8 @@ test('register, verify, login, refresh session, reset and logout through the rea
   await expect(page).toHaveURL(`${base}/login`);
   await page.goto('/account');
   await expect(page).toHaveURL(`${base}/login`);
+  await page.goto('/shop');
+  await expect(page.getByRole('main').getByRole('link', { name: 'Tạo tài khoản', exact: true })).toBeVisible();
 });
 
 test('mobile login has labels, keyboard focus and no horizontal overflow', async ({ page }, info) => {

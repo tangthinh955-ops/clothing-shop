@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { readEnvironment } from '../config/environment.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../modules/prisma/prisma.service.js';
 import { hashPassword } from '../modules/auth/auth.service.js';
 
 const email = process.env['ADMIN_EMAIL']?.trim().toLowerCase();

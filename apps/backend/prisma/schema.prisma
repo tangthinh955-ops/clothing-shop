@@ -31,6 +31,8 @@ model User {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
   tokens AuthToken[]
+  uploads UploadAsset[]
+  movements InventoryMovement[]
   @@map("users")
 }
 
@@ -55,4 +57,106 @@ model Session {
   expire DateTime @db.Timestamptz(6)
   @@index([expire])
   @@map("sessions")
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+}
+
+model Category {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(80)
+  slug String @unique @db.VarChar(120)
+  active Boolean @default(true)
+  version Int @default(0)
+  products Product[]
+  @@map("categories")
+}
+
+model Product {
+  id String @id @default(uuid()) @db.Uuid
+  categoryId String @db.Uuid
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name String @db.VarChar(120)
+  slug String @unique @db.VarChar(120)
+  description String @db.VarChar(5000)
+  status ProductStatus @default(DRAFT)
+  priceFrom Decimal @db.Decimal(14, 0)
+  version Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  variants Variant[]
+  images ProductImage[]
+  @@index([status, categoryId, createdAt])
+  @@map("products")
+}
+
+model Variant {
+  id String @id @default(uuid()) @db.Uuid
+  productId String @db.Uuid
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sku String @unique @db.VarChar(64)
+  size String @db.VarChar(16)
+  color String @db.VarChar(40)
+  price Decimal @db.Decimal(14, 0)
+  active Boolean @default(true)
+  inventory Inventory?
+  movements InventoryMovement[]
+  @@unique([productId, size, color])
+  @@map("variants")
+}
+
+model Inventory {
+  variantId String @id @db.Uuid
+  variant Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  onHand Int @default(0)
+  reserved Int @default(0)
+  version Int @default(0)
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id String @id @default(uuid()) @db.Uuid
+  variantId String @db.Uuid
+  variant Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  actorId String @db.Uuid
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  key String @db.VarChar(120)
+  requestHash String @db.VarChar(64)
+  delta Int
+  reason String @db.VarChar(300)
+  before Int
+  after Int
+  reserved Int
+  version Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([actorId, key])
+  @@index([variantId, createdAt])
+  @@map("inventory_movements")
+}
+
+model UploadAsset {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  storageKey String @unique @db.VarChar(80)
+  width Int
+  height Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  image ProductImage?
+  @@index([createdAt])
+  @@map("upload_assets")
+}
+
+model ProductImage {
+  id String @id @default(uuid()) @db.Uuid
+  productId String @db.Uuid
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  assetId String @unique @db.Uuid
+  asset UploadAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  position Int
+  @@unique([productId, position])
+  @@map("product_images")
 }

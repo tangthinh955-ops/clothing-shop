@@ -6,7 +6,7 @@ import supertest, { type Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../dist/application.js';
 import { readEnvironment } from '../dist/config/environment.js';
-import { PrismaService } from '../dist/prisma/prisma.service.js';
+import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
 
 const origin = 'http://localhost:5173';
 const password = 'local-test-password-123!';
