@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU. Chưa có xóa danh mục hoặc trang khách (M3.9). Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU; M3.9 (Người B) thay trang giới thiệu `/shop` bằng catalog khách tìm/lọc/phân trang theo hướng dẫn phía dưới; M3.10 (Người B) bổ sung trang chi tiết `/products/:slug` và chọn biến thể theo hướng dẫn phía dưới; M3.11 (Người B) bổ sung lệnh `npm run seed:demo` nhập bộ dữ liệu demo. M3.12 ghép ca tổng `catalog.spec.ts` vào bộ E2E và có runbook toàn luồng phía dưới. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -178,6 +178,86 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 - 409: API dùng chung cho version cũ và slug trùng; thông báo nêu cả hai khả năng.
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
+
+## M3.9 — Người B: catalog khách tìm và lọc hàng công khai
+
+Phần này KHÔNG cần đăng nhập. Mở **http://127.0.0.1:5173/shop** với hai terminal dev như mục M3.1. Muốn thấy hàng, bấm hoặc chạy trước phần M3.8 để có sản phẩm Đã xuất bản.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả |
+|---|---|
+| Mở `/shop` | Lưới chỉ gồm hàng Đã xuất bản (danh mục bật, có ít nhất một biến thể bật); sản phẩm ẩn/nháp/không danh mục bật không xuất hiện. Card: ảnh hoặc khối 'Chưa có ảnh', tên danh mục, tên sản phẩm, 'Giá từ …' |
+| Gõ tên hoặc một phần SKU vào 'Tìm theo tên hoặc SKU' · Enter | Danh sách lọc; URL thành `/shop?q=...`; nút 'Xóa tìm kiếm' xuất hiện |
+| Chọn 'Danh mục' | Lọc theo danh mục; URL thêm `categoryId=...`; quay về trang 1 |
+| Đổi 'Thứ tự sắp xếp' | 'Mới nhất' / 'Giá thấp đến cao' / 'Giá cao đến thấp'; URL thêm `sort=...`; quay về trang 1 |
+| Dùng phân trang khi số hàng > 12 | Sang trang, URL thêm `page=...`; trong lúc tải, các sản phẩm trang cũ vẫn hiển thị kèm 'Đang cập nhật bộ sưu tập…' và thanh phân trang tạm khóa |
+| F5 hoặc Back/Diếp | Bộ lọc và trang còn nguyên, danh sách đúng trạng thái |
+| Dán `/shop?page=abc`, `/shop?sort=ten-gi-do` hoặc `categoryId` sai định dạng | Cảnh báo tương ứng ('Số trang không hợp lệ.'/'Bộ lọc không hợp lệ.'), không gọi API; nút 'Về trang đầu'/'Xóa lọc' đưa về trạng thái hợp lệ |
+| Mở `/shop?categoryId=<id danh mục vừa tắt ở admin>` (hoặc bấm breadcrumb danh mục cũ) | Cảnh báo 'Danh mục này không còn hiển thị.'; ô Danh mục ghi 'Danh mục không còn hiển thị' (không giả vờ 'Tất cả danh mục'); bấm 'Xóa lọc' về `/shop` |
+| Tìm từ khóa không khớp → 'Xóa lọc' | 'Chưa có sản phẩm phù hợp bộ lọc hiện tại.'; bấm 'Xóa lọc' về trạng thái mặc định |
+| Tắt backend (Ctrl+C ở Terminal 1), mở lại `/shop` | Alert 'Không thể kết nối…' và nút 'Tải lại bộ sưu tập'; bật backend lại, bấm nút → danh sách hiện |
+| Bấm tên sản phẩm | Tới `/products/<slug>` — chi tiết sản phẩm (M3.10) |
+| Thu hẹp cửa sổ về ~390px | Không tràn ngang; bộ lọc và card xếp dọc |
+
+### Luồng dữ liệu / key M3.9
+
+URL là nguồn sự thật: `q`/`categoryId`/`sort`/`page` được đọc và ghi qua `setSearch` trong `CatalogPage`; sai guard (`filtersUsable`) thì cả query sản phẩm lẫn danh mục đều không gọi API. Danh sách lấy `GET /api/v1/products?...&pageSize=12` — backend lọc cứng PUBLISHED + danh mục bật + biến thể bật và sort trên server; danh mục cho ô lọc từ `GET /api/v1/categories`. Giá hiển thị `priceFrom` qua `Intl.NumberFormat('vi-VN', VND)`.
+
+Kiểm tra tự động riêng phần này: 15 test UI + E2E `catalog-list.spec.ts` (4 ca; cả bộ implemented 9 spec 30/30) — chi tiết và giới hạn xem [progress.md](../progress.md).
+
+## M3.10 — Người B: chi tiết sản phẩm công khai và chọn biến thể
+
+Phần này KHÔNG cần đăng nhập. Giữ hai terminal dev như M3.1, mở **http://127.0.0.1:5173/shop** rồi bấm vào một sản phẩm Đã xuất bản. Muốn thấy ảnh thật, thumbnail và dòng tồn đúng con số, làm trước M3.5/M3.6 (ảnh), M3.7.2 (nhập kho) và M3.8 (xuất bản).
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả |
+|---|---|
+| Bấm tên sản phẩm từ `/shop` | Tới `/products/<slug>`; breadcrumb 'Bộ sưu tập › danh mục › tên sản phẩm'; tên hiện ở heading; mô tả hiện khi admin đã nhập |
+| Xem khi chưa chọn biến thể | Chỉ hiện 'Giá từ <mức thấp nhất>'; chưa có dòng tồn |
+| Chọn nút 'M · đen' | Giá đổi thành giá của biến thể; hiện 'Còn N sản phẩm' (N là còn bán server trả: tồn thực có − đang giữ) |
+| Chọn nút khác, ví dụ 'S · trắng' | Giá và 'Còn N sản phẩm' đổi theo biến thể mới, không gọi API thêm |
+| Chọn biến thể còn bán 0 | Thay 'Còn N sản phẩm' bằng 'Hết hàng' |
+| Bấm thumbnail 'Xem ảnh 2' | Ảnh chính đổi theo; nút đang chọn được đánh dấu `aria-pressed`; hàng không ảnh → khối 'Chưa có ảnh' |
+| F5 tại đường chi tiết | Vẫn đúng sản phẩm đó; 'Giá từ …' trở lại vì lựa chọn không giữ (deep link/refresh hoạt động, chỉ mất lựa chọn) |
+| Gõ slug lạ, ví dụ `/products/ao-o-la` | Alert 'Không tìm thấy sản phẩm.'; có 'Quay lại bộ sưu tập'; KHÔNG có nút 'Tải lại sản phẩm' (thử lại với 404 sẽ không hết) |
+| Tắt backend rồi mở một slug | Alert 'Không thể kết nối…' + nút 'Tải lại sản phẩm'; bật lại và bấm → trang hiện |
+| Bấm link danh mục trong breadcrumb | Về `/shop` đã lọc sẵn `categoryId` của danh mục đó |
+| Mở hàng chưa xuất bản theo slug | Alert 'Không tìm thấy sản phẩm.' — hàng ẩn/nháp như hàng không tồn tại với khách |
+| Thu hẹp cửa sổ ~390px | Gallery trên, thông tin dưới; nút biến thể xếp dọc wrap, không tràn ngang |
+
+### Luồng dữ liệu / key M3.10
+
+Từ `/shop` bấm link → `/products/<slug>` → `useQuery([...catalogDetailKey, slug])` gọi `GET /api/v1/products/:slug` → backend lọc `visible` (PUBLISHED + danh mục bật + biến thể bật) và trả 404 'Không tìm thấy sản phẩm.' khi hàng ẩn/slug sai → trang hiển thị ảnh (`/api/v1/media/<assetId>`), mô tả và variants sắp theo SKU tăng dần; bấm nút biến thể chỉ đổi `variantId` trong state cục bộ, giá và dòng tồn cập nhật ngay.
+
+- `catalogApi.detail(slug)` trong `features/catalog/api/catalog.api.ts`: gọi API chi tiết; slug đi qua `encodeURIComponent`.
+- Phân loại lỗi theo `ApiError.status`: 404 → chỉ 'Quay lại bộ sưu tập'; lỗi khác → thêm 'Tải lại sản phẩm' (refetch).
+- Nhãn nút là `size · màu` như server lưu (size viết hoa, màu viết thường) — chuẩn khớp kỳ vọng E2E tổng `catalog.spec.ts` ở M3.12.
+
+Kiểm tra tự động riêng phần này: 10 test UI + E2E `catalog-detail.spec.ts` (3 ca; cả bộ implemented giờ 10 spec 33/33) — chi tiết và giới hạn xem [progress.md](../progress.md).
+
+## M3.11 — Người B: bộ dữ liệu demo bằng lệnh seed
+
+Một lệnh, chạy từ root: `.\tools\npm.ps1 run seed:demo`. Điều kiện: backend đã build (lệnh tự build) và DB local hoạt động; cần ít nhất một tài khoản ADMIN (làm chủ ảnh demo — thông tin trong [README](../README.md#bộ-dữ-liệu-demo-m311)). Lệnh không đổi code ứng dụng và không tự seed khi server start.
+
+| Thao tác | Kết quả |
+|---|---|
+| Chạy `seed:demo` lần đầu | Dòng log 'Đã tạo danh mục…/Đã tạo sản phẩm…' theo từng mục; tổng kết 'Bộ dữ liệu demo đã sẵn sàng…' |
+| Chạy `seed:demo` lần 2 | Chỉ dòng 'Danh mục … đã có sẵn.'/'Sản phẩm … đã có sẵn.' + 'Toàn bộ bộ dữ liệu demo đã có sẵn. Không tạo sản phẩm/danh mục hay nhập kho thêm.' |
+| Mở `/shop` | Thấy 3 sản phẩm demo xuất bản (2 danh mục): một bản 2 ảnh, một bản 1 ảnh, 'Quần jean mỗi ngày' khối 'Chưa có ảnh'; giá 'Giá từ 250.000/320.000/500.000 ₫' tương ứng |
+| Bấm 'Áo cotton hợp ngày' | Chi tiết có 2 nút 'S · đen'/'M · đen'; chọn S 'Còn 13 sản phẩm' giá 250.000; M 'Còn 8' giá 290.000; bấm thumbnail đổi ảnh chính |
+| Bấm 'Áo cotton giới hạn demo' | Chọn 'M · trắng' → 'Còn 1 sản phẩm'; chọn 'L · hồng' → 'Hết hàng' (tồn thực có 0) |
+| Bấm 'Quần jean mỗi ngày' | Chi tiết không ảnh ('Chưa có ảnh'); 'M · xanh' 'Còn 10 sản phẩm'; 'S · xanh' 'Còn 10 sản phẩm' |
+| Lịch sử kho (M3.7.3) của biến thể demo | Mỗi biến thể có tồn có đúng một giao dịch '+N', `0 → N`, lý do 'Nhập kho demo', người thực hiện là admin chủ ảnh; biến thể hết hàng ('L · hồng') chưa có giao dịch |
+| Kho admin (M3.7.1) | SKU `DEMO-*` xuất hiện; đang giữ luôn là 0 vì demo không có đơn |
+| Mở `/products/demo-ao-an` | 'Không tìm thấy sản phẩm.' — sản phẩm demo ẩn |
+| Admin Danh mục | Thấy 'Áo thun demo'/'Quần jean demo'; có thể sửa/ẩn như dữ liệu thường |
+| Xóa dữ liệu demo | Dùng Prisma Studio theo slug `demo-*` (không có nút xóa sản phẩm trên admin UI); không ảnh hưởng dữ liệu khác |
+
+Chạy lại lệnh không tạo trùng và không cộng kho: skip theo slug; tồn kho và dòng lịch sử 'Nhập kho demo' chỉ ghi cùng lúc tạo sản phẩm lần đầu. Nếu bạn đã có sản phẩm trùng slug `demo-*`, seed bỏ qua bản đó (không ghi đè). Nếu một sản phẩm demo tạo lỗi (ví dụ SKU `DEMO-*` đã bị dùng), lệnh dừng với lỗi và xóa lại ảnh vừa tạo cho sản phẩm đó, không để file mồ côi.
+
+Kiểm tra tự động riêng phần này: 2 test integration spawn CLI trên `_test` — chạy hai lượt (số liệu bằng nhau, đang giữ 0, mỗi biến thể có tồn có một dòng lịch sử, ảnh webp tồn tại) và lượt lỗi giữa chừng không để lại ảnh/asset — đã vào `test:integration`; chi tiết xem [progress.md](../progress.md) § M3.11.
 
 ## M3.7.3 — Người B: lịch sử tồn kho của từng SKU
 
@@ -417,3 +497,25 @@ Bấm **Xuất bản** → `productsApi.publish` POST `/api/v1/admin/products/<i
 - `operation = 'status'`: dùng chung khóa với lưu, lưu ảnh và tải dữ liệu mới.
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products`. E2E: `./tools/npm.ps1 run test:e2e -- product-status.spec.ts`.
+
+## M3.12 — Người B: chốt M3 — ca chấp nhận toàn luồng và ảnh còn sau restart
+
+Ca này chạy đúng luồng E2E tổng `apps/frontend/e2e/catalog.spec.ts` (đã ghép vào `test:e2e:implemented`). Chuẩn bị backend + frontend như Chuẩn bị ở M3.1 và một tài khoản ADMIN. Ví dụ dưới chỉ là khuôn; tên/đường dẫn bạn tự đặt.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đăng nhập ADMIN → **Sản phẩm** → **Thêm sản phẩm** | Tạo nháp được: tên riêng (vd. 'Áo checklist'), đường dẫn, chọn danh mục, SKU viết hoa, màu, giá → 'Lưu sản phẩm' |
+| Sau lưu | Về danh sách sản phẩm với alert 'Đã tạo sản phẩm nháp "…".'; bấm **Sửa** trên hàng mới tạo được trang 'Sửa sản phẩm nháp' |
+| Tải một file ảnh thật từ máy (png/jpg/webp, dưới giới hạn) → **Lưu thứ tự ảnh** | Alert 'Đã lưu ảnh sản phẩm.'; khối ảnh hiện thumbnail và nút gỡ/sắp xếp |
+| **Kho** → tìm hoặc lọc theo SKU biến thể vừa tạo | Thẻ tồn xuất hiện với ba lượng 0; bấm **Điều chỉnh** |
+| Nhập `+10`, lý do bất kỳ → **Lưu điều chỉnh** | 'Khả dụng: 10' ngay trong dialog; thẻ tồn đổi theo; tự động ghi chuyển kho vào lịch sử M3.7.3 |
+| Về trang sửa nháp → **Xuất bản** | 'Đã xuất bản sản phẩm.'; trang đổi sang khuôn 'Quản lý sản phẩm' |
+| Mở **http://127.0.0.1:5173/shop**, tìm theo tên/lọc theo danh mục vừa tạo | Thấy đúng 1 sản phẩm vừa dùng (bộ lọc q + categoryId + sort trả lời như M3.9) |
+| Bấm tên sản phẩm ở danh sách | Vào chi tiết như M3.10: breadcrumb, ảnh chính (hoặc 'Chưa có ảnh'), chọn biến thể thấy 'Còn 10 sản phẩm' với giá đã nhập |
+| Co nhỏ cửa sổ còn ~390 px (devtools) | Không tràn ngang; reload trang chi tiết vẫn hiển thị (deep-link giữ) |
+| Về `/admin/products/<mã>` theo URL đúng mã → **Ẩn sản phẩm** | 'Đã ẩn sản phẩm.' |
+| Mở `/products/<đường dẫn sản phẩm>` | Trang báo 'Không tìm thấy sản phẩm.' với hướng dẫn quay lại |
+
+Kiểm tra ảnh còn sau restart: dừng backend (Ctrl+C ở terminal 1) và chạy lại `npm run dev:backend`; mở lại trang admin sản phẩm và trang chi tiết khách — ảnh đã gắn vẫn hiển thị (tệp nằm tại `.local/uploads`, bản ghi upload giữ nguyên; ảnh không biến thành 'Chưa có ảnh').
+
+Kiểm tra tự động: ca này chính là spec E2E tổng đã ghép vào `test:e2e:implemented` — toàn bộ hiện 34 ca trên 11 spec, đạt local 40s (chi tiết [progress.md](../progress.md) § M3.12). Câu lệnh: `./tools/npm.ps1 run test:e2e:implemented`.

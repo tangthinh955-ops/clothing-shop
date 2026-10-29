@@ -16,11 +16,236 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho, M3.7.2 (Người B) đã có dialog điều chỉnh tồn lọc theo biến thể, M3.7.3 (Người B) đã có lịch sử giao dịch của từng SKU; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có catalog khách (M3.9 trở đi) |
+| M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; kết quả ở các mục riêng bên dưới, chờ người dùng chạy thử và nghiệm thu toàn mốc |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
+
+## Ngày 29/10/2026 — Bản sửa sau review M3.9–M3.12
+
+Người dùng duyệt "làm hết" cho 6 điểm review:
+
+| Điểm | Sửa |
+|---|---|
+| Seed tạo `reserved` 2/3/2 không có đơn — trái quy tắc reserved chỉ tăng khi tạo đơn, sang M4 sẽ kẹt không giải phóng được | `seed-demo.ts`: bỏ `reserved`; biến thể hết hàng dùng `onHand: 0`. Còn bán giữ nguyên số cũ (13, 8, 1, 0, 10, 10, 5) |
+| Seed ghi thẳng `onHand`, lịch sử kho trống | Mỗi biến thể có tồn tạo kèm một `InventoryMovement` 'Nhập kho demo' (0 → N, actor = admin chủ ảnh, key `seed-demo-<SKU>`), inventory `version` 1 như sau một lần điều chỉnh thật |
+| Ghi file ảnh trong `$transaction` (AGENTS.md cấm), transaction lỗi để lại file mồ côi | Ảnh tạo ngoài transaction theo khuôn `uploads.service` (file → row, lỗi thì xóa lại); sản phẩm tạo bằng một nested create; tạo sản phẩm lỗi thì xóa asset/file vừa tạo. `ADMIN_EMAIL` bị khóa (`disabledAt`) không được chọn làm chủ ảnh |
+| `progress.md` mất tiêu đề mục M3.11 | Thêm lại tiêu đề |
+| `/shop?categoryId=<danh mục đã tắt>` hiện 'Tất cả danh mục' trong khi vẫn lọc | `CatalogPage.tsx`: cảnh báo 'Danh mục này không còn hiển thị.', ô Danh mục ghi 'Danh mục không còn hiển thị', nút 'Xóa lọc' về `/shop` |
+| Sang trang `/shop` làm lưới biến mất rồi hiện lại | `placeholderData: keepPreviousData`: giữ card trang cũ kèm 'Đang cập nhật bộ sưu tập…', thanh phân trang khóa trong lúc tải |
+
+Test mới, đều fail trước khi sửa đúng lý do rồi đạt sau khi sửa:
+- `seed-demo.integration.spec.ts`: thêm ca "lượt lỗi giữa chừng không để lại ảnh/asset" (RED: còn `demo-ao-cotton-1/2.webp`); ca hai lượt thêm kiểm tra đang giữ 0, lịch sử 'Nhập kho demo' và version (RED: `reserved` khác 0). Cleanup test xóa thêm `InventoryMovement` của hàng demo.
+- `CatalogPage.test.tsx`: +2 test danh mục đã tắt và giữ card khi tải trang 2.
+
+Tài liệu: `docs/local-trial-m3.md` mục M3.9 (2 dòng thử mới) và M3.11 (giữ 0, lịch sử kho, lượt lỗi), câu mở đầu không còn ghi "còn ghép M3.12"; README mục seed; `docs/plan.md` số test.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 182 frontend |
+| `npm run test:integration` | 31/31 |
+| `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (39.6s) |
+
+Chưa chạy `seed:demo` trên DB local (chờ người dùng). Chưa commit/push.
+
+## Ngày 29/10/2026 — M3.12 (Người B): ca chấp nhận toàn luồng ghép vào E2E implemented — chốt M3 về mặt kỹ thuật
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.12: đưa `catalog.spec.ts` vào `test:e2e:implemented` (kèm đổi tên bước CI), sửa spec cho khớp flow UI hiện hành ở mức tối thiểu (không đổi code runtime), cập nhật tài liệu chốt M3. **Đã viết, agent đã kiểm tra toàn bộ trên DB `_test`; chờ người dùng chạy thử theo mục M3.12 của local-trial. Chưa nghiệm thu toàn M3. Chưa commit/push.**
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/e2e/catalog.spec.ts` | 3 điều chỉnh khớp UI hiện hành: (1) đến khu Sản phẩm bằng `goto('/admin/products')` — các trang con admin không có nav 'Sản phẩm' (nút nav chỉ nằm trên landing `/admin`), trùng idiom `goto` của 10 spec còn lại; (2) sau 'Lưu sản phẩm' assert URL về `/admin/products` + alert 'Đã tạo sản phẩm nháp', lấy `productId` từ DB rồi `goto` trang sửa nháp, assert heading 'Sửa sản phẩm' (khớp 'Sửa sản phẩm nháp' vì getByRole string là substring) — luồng tạo nháp nay về danh sách, không còn nhảy thẳng trang sửa như spec cũ giả định; (3) assert chuyển trạng thái bằng text chính xác 'Đã xuất bản sản phẩm.'/'Đã ẩn sản phẩm.' như `product-status.spec.ts` — sau chuyển trạng thái trang hiển thị 2 alert cùng lúc nên `getByRole('alert')` vi phạm strict mode |
+| `package.json` (root) | `test:e2e:implemented` thêm `catalog.spec.ts` (chèn sau `catalog-detail`) → 11 spec |
+| `.github/workflows/ci.yml` | Tên bước E2E thêm 'full catalog M3.12' |
+| `docs/plan.md` | Đoạn tổng kết M3 ghi M3.1–M3.12 đã triển khai xong, chỉ còn nghiệm thu; tick 4 dòng tiêu chí với ba bằng chứng (unit/UI 197, integration 30, E2E implemented 34) |
+| `README.md` | Dòng điểm dừng: các phần M3.1–M3.12 xong, chờ chạy thử/nghiệm thu; bảng E2E: implemented = toàn bộ hiện hành 34 ca/11 spec, `test:e2e` trùng bộ implemented; ghi chú lịch sử CI `d5953cf` và tên bước mới chờ lượt chạy sau push |
+| `docs/local-trial-m3.md` | Mục M3.12: runbook toàn luồng (danh mục → nháp → ảnh thật → kho +10 → xuất bản → khách tìm/xem/chọn biến thể → mobile → reload → ẩn → 404) + bảng 'ảnh còn sau restart' + câu lệnh bộ E2E |
+| `progress.md` | Mục này + dòng trạng thái mốc M3 |
+
+### Data flow / key quan trọng
+
+Ca tự dựng dữ liệu bằng UI thật trên `_test` (đăng nhập → danh mục → nháp SKU `BROWSER-*` → upload ảnh sharp qua form → điều chỉnh kho +10 → Xuất bản), phía khách tìm `/shop?q&categoryId&sort` → chi tiết chọn 'M · đen' 'Còn 10 sản phẩm' → mobile 390 không tràn → reload → Ẩn → `/products/<slug>` 404; fixture tạo/xóa riêng của lượt chạy (beforeAll/afterAll).
+
+- Nav admin chỉ ở landing `/admin`: chuyển khu admin trong E2E đi bằng URL (`goto`), không còn link nav dùng được giữa các trang con.
+- Trang sửa sản phẩm sau chuyển trạng thái có nhiều alert: assert theo text chính xác thay vì `getByRole('alert')` chung.
+- 'Sửa sản phẩm' khớp substring với 'Sửa sản phẩm nháp'; sau lưu nháp, phần thông báo tạo thành công hiển thị trên danh sách thay vì điều hướng sang trang sửa.
+
+### Kiểm tra thực tế (Node 24.22.1; E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| `catalog.spec.ts` trước sửa (quan sát hiện trạng) | FAIL đúng điểm dự đoán trước: timeout chờ link 'Sản phẩm' không tồn tại trên trang con admin — ghi nhận RED trước khi sửa |
+| `catalog.spec.ts` sau điều chỉnh (1) | FAIL vì strict mode 2 alert sau xuất bản — mới phát hiện điểm (3), sửa xong đạt |
+| `catalog.spec.ts` riêng, cuối | 1 passed (2.4s, exit 0) |
+| `test:e2e:implemented` 11 spec | **34/34 passed (40.4s, exit 0, không flake** — webServer Vite còn sống cả lượt) |
+| `npm run typecheck` | Exit 0 |
+| `npm run build` | Exit 0 (cảnh báo chunk có sẵn) |
+| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 |
+| `test:integration` | 30/30, exit 0 |
+
+### Vấn đề gặp trong phần này
+
+- Spec cũ được viết trước khi UI admin có flow 'lưu → về danh sách' và trước khi nav con bị bỏ: 2 điểm lệch được phát hiện bằng lượt chạy quan sát (không chỉ đoán); còn 1 điểm strict-mode alert chỉ lộ khi luồng chạy đến bước xuất bản.
+- Log lượt integration ghi sai chỗ do chuyển cwd trong `cmd /c`; exit 0 và 30/30 xác nhận từ log thật (`C:\Users\Admin\.local\integration-m312.log`).
+
+### Chạy thử / điểm dừng
+
+- Chạy thử ca này thủ công theo bảng [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.12: toàn luồng ở trên + dừng/restart backend rồi kiểm ảnh vẫn hiển thị. Lệnh bộ E2E: `./tools/npm.ps1 run test:e2e:implemented` (34 ca).
+- **Dừng chờ người dùng chạy thử và nghiệm thu toàn M3.** Sau nghiệm thu mới nói 'M3 hoàn thành'; commit/push/PR chỉ khi được yêu cầu (toàn bộ thay đổi M3.9–M3.12 đang uncommitted trên nhánh `feat/m3.7.2-inventory-adjust`).
+
+## Ngày 29/10/2026 — M3.11 (Người B): bộ dữ liệu demo bằng lệnh seed
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.11 trong chat theo định nghĩa m3-implementation-plan: Seed CLI có kiểm soát, idempotent theo slug `demo-*`, không ghi đè dữ liệu người dùng, không tự seed khi startup. Backend/UI/E2E/CI không đổi — chỉ thêm CLI, test tích hợp, script `seed:demo` và tài liệu. Tồn kho demo ghi lúc tạo biến thể, mỗi lượng nhập kèm một `InventoryMovement` 'Nhập kho demo' (đổi sau review, xem "Bản sửa sau review M3.9–M3.12") → "chạy lại không nhập kho lặp" hợp bởi cấu trúc. **Đã viết, agent đã kiểm tra trên `_test`; chờ người dùng chạy `seed:demo` trên DB local. Chưa commit/push.**
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/cli/seed-demo.ts` (mới) | CLI theo khuôn `create-admin.ts`: 2 danh mục, 4 sản phẩm (3 PUBLISHED — hai ảnh/một ảnh/không ảnh; 1 HIDDEN `demo-ao-an`), 7 biến thể SKU `DEMO-*` + inventory (dư 13/8, ít 1, hết 0, 10...; đang giữ luôn 0); ảnh webp 750×1000 sinh bằng sharp ghi `.local/uploads` (NODE_ENV=test → `test-uploads`), `storageKey` cố định `demo-<slug>-<n>.webp`; owner ảnh là ADMIN (ưu tiên `ADMIN_EMAIL`, nếu không → ADMIN mới nhất có `disabledAt` null), thiếu admin → exit 1 kèm hướng dẫn `admin:create`; tổng kết 'Đã tạo…'/'… đã có sẵn.' và dòng cuối phân biệt 'Bộ dữ liệu demo đã sẵn sàng…' (đã tạo gì đó) hay 'Toàn bộ bộ dữ liệu demo đã có sẵn…' (lượt chạy no-op) |
+| `apps/backend/test/seed-demo.integration.spec.ts` (mới) | Spawn CLI hai lượt bằng `process.execPath`; snapshot (sản phẩm/trạng thái/giá/variants/available/assetKey + `access` file) phải bằng nhau sâu giữa hai lượt; assert 4 sản phẩm, 7 biến thể, ảnh 2/1/0/0 (PUBLISHED không ảnh duy nhất là `demo-quan-jean`), `priceFrom` = min biến thể, available có 0 và 1; cleanup `demo-*` trước/sau lượt chạy (bảng + file webp test-uploads), tự tạo xóa admin riêng của test |
+| `apps/backend/package.json`, root `package.json` | Thêm `"seed:demo"` — backend: `npm run build && node --env-file-if-exists=.env dist/cli/seed-demo.js`; root: `npm run seed:demo -w @clothing/backend` |
+| `README.md` | Mục mới 'Bộ dữ liệu demo (M3.11)' (điều kiện, hành vi chạy lại, cách dọn). Ngoài ra sửa 2 dòng bảng E2E bị lạc hậu từ trước M3.9 (số ca 18 → 33 và phạm vi catalog M3.9/M3.10) — ngoài danh sách file kế hoạch, cho phép để doc không nói sai |
+| `docs/local-trial-m3.md`, `progress.md` | Mục M3.11 (bảng thao tác/thử) và mục này + bảng trạng thái |
+
+### Data flow / key quan trọng
+
+Lệnh `seed:demo` → backend tự build → `node --env-file-if-exists=.env dist/cli/seed-demo.js` → `readEnvironment(.env)` (DB dev) → chọn admin chủ ảnh → từng mục: tra slug → còn thiếu thì tạo ảnh ngoài transaction (file sharp rồi row asset, lỗi thì xóa lại) → một nested create sản phẩm + variants + inventory + movements + productImages → in log tổng kết. Đã có thì chỉ log 'Đã có sẵn', không ghi gì.
+
+- Idempotency theo slug/`storageKey` cố định trong CLI (không thêm ràng buộc DB); chạy lại là no-op, tồn kho chỉ ghi một lần cùng lúc tạo biến thể.
+- `uploadsRoot` suy 4 cấp từ `dist/cli` qua `import.meta.url` → độc lập cwd, luôn trùng `.local/uploads` của dev server (test → `test-uploads`).
+- Không auto seed: CLI chỉ chạy qua npm script tường minh; không import trong bootstrap/module nào.
+
+### Kiểm tra thực tế (Node 24.22.1; integration qua `vitest.integration.config.ts` với `.env.test`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test integration mới trước khi có CLI | FAIL đúng lý do: `Cannot find module .../dist/cli/seed-demo.js` (RED) |
+| Lượt test sau CLI | FAIL vì lỗi của chính test: đọc `image.storageKey` thay `image.asset.storageKey`, và assert số sản phẩm không ảnh = 1 (thiếu sản phẩm ẩn); sửa xong lại FAIL vì dòng tổng kết CLI in vô điều kiện → thêm đếm `createdCategories/createdProducts` phân nhánh 'sẵn sàng'/'Toàn bộ… đã có sẵn' |
+| `test\seed-demo.integration.spec.ts` | GREEN — Bộ dữ liệu hai lượt deep-equal quay lại ví dụ nhau, ảnh webp tồn tại |
+| `test:integration` toàn bộ | 30/30 (29 cũ + 1 mới) |
+| `run typecheck` | Exit 0 |
+| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 |
+| `run build` | Exit 0 |
+| E2E/CI | Không đổi (không spec mới); khung xanh 33/33 từ M3.10 giữ nguyên |
+
+### Vấn đề gặp trong phần này
+
+- `powershell tools/npm.ps1 run build -w @clothing/backend` không nhận `-w` (wrapper từ chối tham số) — agent build backend trực tiếp bằng tsc cục bộ; script `test:integration` của backend đã tự `npm run build` nên luồng chuẩn không bị ảnh hưởng.
+- Lỗi còn lại nằm ở test tổng kết/assert của riêng phần này; không có thay đổi nghiệp vụ phát sinh ngoài bảng kế hoạch.
+
+### Chạy thử / điểm dừng
+
+- Chạy `.\tools\npm.ps1 run seed:demo` lần 1 (xem log 'Đã tạo…' + 'Bộ dữ liệu demo đã sẵn sàng…'), lần 2 thấy chỉ 'Đã có sẵn' + 'Toàn bộ… không tạo thêm'.
+- Mở `http://127.0.0.1:5173/shop` → kiểm bảng từng tình huống ở [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.11 (gallery 2 ảnh, 'Còn 1 sản phẩm', 'Hết hàng', 'Chưa có ảnh', `/products/demo-ao-an` → 'Không tìm thấy sản phẩm.', kho admin thấy SKU `DEMO-*`, lịch sử kho có dòng 'Nhập kho demo').
+- **Dừng ở M3.11 chờ người dùng chạy thử.** M3.12 (ghép `catalog.spec.ts` + checklist chốt M3) sẽ gửi kế hoạch riêng khi được yêu cầu. Commit/push/PR chỉ khi người dùng yêu cầu.
+
+## Ngày 29/10/2026 — M3.10 (Người B): trang chi tiết sản phẩm công khai và chọn biến thể
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.10 trong chat: route `/products/:slug` (StoreLayout) — breadcrumb 'Bộ sưu tập → danh mục → tên'; nhóm ảnh chính + thumbnail ('Xem ảnh N'), khối 'Chưa có ảnh' khi trống; mô tả khi có; chọn biến thể bằng nút `size · màu` trong nhóm 'Chọn biến thể' (không chọn sẵn — chưa chọn hiện 'Giá từ …'); chọn xong hiện giá biến thể + 'Còn N sản phẩm' / 'Hết hàng'; hàng ẩn/slug sai → Alert 'Không tìm thấy sản phẩm.' có 'Quay lại bộ sưu tập', lỗi khác có 'Tải lại sản phẩm'. Backend `GET /products/:slug` có sẵn từ M3.4/M3.8 — không đổi code backend. Không làm nút thêm giỏ (giỏ thuộc mốc sau — tránh UI giả). `e2e/catalog.spec.ts` vẫn ngoài `test:e2e:implemented` (M3.12 ghép). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/api/catalog.api.ts` | Thêm `catalogApi.detail(slug)` → `GET /api/v1/products/:slug` (slug qua `encodeURIComponent`) và `catalogDetailKey`; tái dùng kiểu `CatalogProduct` |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.tsx` (mới) | Trang chi tiết: breadcrumb (nav 'Breadcrumb sản phẩm' có link danh mục về `/shop?categoryId=…`), Gallery (ảnh chính đổi khi bấm thumbnail, placeholder không ảnh), h1 tên, giá/dòng tồn theo biến thể chọn, nhóm nút biến thể, mô tả; loading 'Đang tải sản phẩm…'; 404 chỉ có 'Quay lại bộ sưu tập', lỗi khác thêm 'Tải lại sản phẩm' |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.test.tsx` (mới) | 10 test UI qua `App` (harness `renderDetail`, mock `client.request` theo đường dẫn): tải theo slug + breadcrumb + mô tả + 'Giá từ …' khi chưa chọn; gallery đổi ảnh theo thumbnail + aria-pressed; nhóm biến thể đủ tên; chọn 'M · đen' → 'Còn 10 sản phẩm' + giá; đổi 'S · trắng' → 'Còn 3 sản phẩm'; available 0 → 'Hết hàng'; 'Chưa có ảnh'; 404 alert + không nút tải lại + về `/shop`; lỗi mạng + tải lại thành công; loading chờ response |
+| `apps/frontend/src/app/App.tsx` | Thêm route `products/:slug` → `ProductDetailPage` |
+| `apps/frontend/e2e/catalog-detail.spec.ts` (mới) | 3 ca trên DB `_test` (seed Prisma, token uuid, SKU HOA, cleanup afterAll): vào từ `/shop` theo token → URL `/products/<slug>` + breadcrumb + mô tả + 'Giá từ 200.000 ₫' + thứ tự nút theo sku tăng ('M · đen', 'S · trắng') → chọn M 'Còn 10 sản phẩm' + 250.000, chọn S 'Còn 3 sản phẩm' + 200.000; reload giữ trang, lựa chọn không giữ sau reload, mobile 390px không tràn (kèm ảnh chụp); hàng HIDDEN và slug lạ → alert 'Không tìm thấy sản phẩm' + 'Quay lại bộ sưu tập' |
+| `package.json`, `.github/workflows/ci.yml` | `test:e2e:implemented` và tên bước CI thêm `catalog-detail.spec.ts` (trước catalog-list theo bảng chữ cái → 10 spec) |
+| `progress.md`, `docs/local-trial-m3.md` | Mục này và hướng dẫn chạy thử M3.10 |
+
+### Data flow / key quan trọng
+
+Khách bấm link tên trên `/shop` → `/products/<slug>` → `useQuery([...catalogDetailKey, slug])` gọi `GET /api/v1/products/:slug` → backend lọc `visible` (PUBLISHED + danh mục bật + biến thể bật), trả ảnh (URL `/api/v1/media/<assetId>`) và variants (size viết hoa, màu viết thường, `available = onHand − reserved`) sắp theo sku tăng → UI render; bấm nút biến thể chỉ đổi `variantId` state cục bộ — giá và dòng tồn đổi ngay, không gọi API thêm.
+
+- Nhãn nút là `${variant.size} · ${variant.color}` — form admin viết thường màu trước khi lưu (`variantDrafts.ts`) và DTO viết hoa size, nên 'M · đen' khớp chính xác `/M · đen/` trong `catalog.spec.ts` (M3.12).
+- Lỗi phân loại theo `ApiError.status === 404`: đúng hàng không có/hàng ẩn chỉ hiện đường về `/shop`; lỗi khác (mạng, dịch vụ) hiện 'Tải lại sản phẩm' (`refetch`, `retry: false`).
+- Lựa chọn biến thể nằm trong state (không URL): F5 giữ đúng trang chi tiết nhưng về mặc định 'Giá từ …' — deep link/refresh hoạt động, chỉ mất lựa chọn.
+
+### Kiểm tra thực tế (Node 24.22.1 qua `tools/npm.ps1`, E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test trang trước khi code | 10 test fail đúng lý do: `/products/<slug>` rơi vào NotFoundPage, thiếu heading/alert/gallery (RED) |
+| `vitest ProductDetailPage.test.tsx` | Lượt 1: 7/10 — thiếu import `Alert` (MUI) và query link 'Bộ sưu tập' trùng nav header (thu hẹp trong breadcrumb); lượt 2: 10/10 |
+| `vitest` frontend toàn bộ | 180/180 — baseline 170 ở M3.9 + 10 mới |
+| `test` toàn workspace | tools 8 + backend 9 + frontend 180 đạt |
+| `run typecheck` | 1 lần chạm `exact` không thuộc `ByRoleOptions` (test UI viết theo kiểu Playwright), gỡ khỏi role query → đạt |
+| `run build` | Exit 0 đã xác minh (`EXITCODE=0`); cảnh báo chunk Vite có sẵn; lượt đầu PowerShell phiên dịch stderr thành exit 1, không phải lỗi build |
+| `run test:integration` | 29/29 (exit 0 xác minh) |
+| E2E riêng `catalog-detail.spec.ts` | Lượt 1: 2/3 — sai kỳ vọng thứ tự nút (seed theo mảng, backend trả theo sku asc); sửa kỳ vọng → 3/3 |
+| E2E implemented 10 spec | 33/33 (37.3s), lượt này không gặp flake Vite |
+
+### Vấn đề gặp trong phần này
+
+- Seed E2E trực tiếp qua Prisma vẫn cần SKU viết HOA (CHECK `variant_fields_valid`) — đã nêu ở M3.9, giữ nguyên quy tắc.
+- Lỗi trong lượt này đều là sai sót của bản test (import thiếu, kỳ vọng thứ tự), không có thay đổi thiết kế phát sinh so với bảng kế hoạch.
+- E2E không seed ảnh thật (cần asset upload phức tạp) — gallery chỉ được phủ ở test UI với ảnh mock; khi M3.12 ghép `catalog.spec.ts` (upload ảnh thật qua admin) sẽ phủ thêm trang chi tiết có ảnh.
+
+### Chạy thử / điểm dừng
+
+- Mở `http://localhost:5173/shop` → bấm một card sản phẩm → thấy chi tiết: breadcrumb, ảnh/thumbnail (hàng có ảnh upload từ admin trước đó), mô tả; bấm 'M · đen' → giá + 'Còn N sản phẩm'; đổi variant khác đổi theo; F5 không mất trang, chỉ mất lựa chọn; 'Quay lại bộ sưu tập' về `/shop`.
+- Hàng ẩn: vào `/products/<slug>` của hàng chưa xuất bản hoặc gõ slug lạ → 'Không tìm thấy sản phẩm.'.
+- Hướng dẫn chi tiết: [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.10.
+- **Dừng ở M3.10 chờ người dùng chạy thử.** M3.11 (seed demo) sẽ gửi kế hoạch riêng khi được yêu cầu. Commit/push/PR chỉ khi người dùng yêu cầu.
+
+## Ngày 29/10/2026 — M3.9 (Người B): catalog khách tìm và lọc danh sách hàng công khai
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.9 trong chat: thay trang giới thiệu tại `/shop` bằng trang danh sách thật (tìm theo tên/SKU, chọn danh mục, sắp thứ tự, phân trang; bộ lọc nằm trên URL nên refresh/Back giữ đúng; card là liên kết tới `/products/<slug>` — trang chi tiết thuộc M3.10, bấm vào sẽ 404 tạm). `e2e/catalog.spec.ts` vẫn ở ngoài `test:e2e:implemented` theo chỉ dẫn cũ (M3.12 ghép khi đủ chi tiết + dữ liệu demo). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/api/catalog.api.ts` (mới) | `catalogApi.list({ q, page, sort, categoryId })` (pageSize cố định 12, bỏ tham số rỗng) và `catalogApi.categories()`; kiểu khớp response công khai của backend |
+| `apps/frontend/src/features/catalog/pages/CatalogPage.tsx` (mới) | Trang `/shop`: tiêu đề gọn thay hero dài; form tìm (Enter/Tìm kiếm); select 'Thứ tự sắp xếp' + 'Danh mục' (native, nhãn shrink); nút 'Xóa tìm kiếm'/'Xóa lọc'; lưới card (ảnh đầu hoặc khối 'Chưa có ảnh', tên danh mục, tên sản phẩm là liên kết, 'Giá từ …' theo `Intl.NumberFormat('vi-VN', VND)`); phân trang MUI với nhãn tiếng Việt; loading/empty/error + 'Tải lại bộ sưu tập'; guard URL hợp lệ (trang, q ≤ 80, sort, categoryId UUID) |
+| `apps/frontend/src/features/catalog/pages/CatalogPage.test.tsx` (mới) | 15 test: card/link/ảnh/giá/tổng; placeholder không ảnh; loading chờ response; tìm trim, đặt lại trang, Back khôi phục; sort/danh mục ghi URL và lần gọi API; phân trang giữ q; đọc cả 4 bộ lọc từ URL lúc đầu; empty có lọc (Xóa lọc) và không lọc; lỗi + tải lại; 4 loại bộ lọc sai không gọi API |
+| `apps/frontend/src/app/App.tsx` | Route `/shop`: `CatalogIntroPage` → `CatalogPage` |
+| `apps/frontend/src/features/catalog/pages/CatalogIntroPage.tsx` + `.test.tsx` | Xóa — trang giới thiệu placeholder (6 test) hết nhu cầu sau khi có danh sách thật |
+| `apps/frontend/e2e/catalog-list.spec.ts` (mới) | 4 ca trên DB `_test`: chỉ PUBLISHED trong danh mục bật hiển thị (seed token uuid trùng khó: 4 sản phẩm gồm HIDDEN và PUBLISHED trong danh mục đã tắt); lọc kết hợp q+categoryId+sort trên URL, giữ qua reload, 'Xóa lọc' về mặc định; keyword không khớp + abort mạng + nút 'Tải lại bộ sưu tập'; mobile 390px + thứ tự mới nhất (kèm ảnh chụp) |
+| `apps/frontend/e2e/auth.spec.ts` | 2 điểm kỳ vọng dựa vào khối phiên của trang intro bị xóa: lúc đăng nhập, `/shop` kiểm tra link 'Tài khoản' ở nav 'Điều hướng chính' (trước: trong `main`); lúc đăng xuất kiểm tra link 'Đăng nhập' và không còn 'Tài khoản'. Ý "trang /shop phản ánh phiên" giữ nguyên |
+| `package.json`, `.github/workflows/ci.yml` | `test:e2e:implemented` và tên bước CI thêm `catalog-list.spec.ts` (thứ tự bảng chữ cái sau auth) |
+| `progress.md`, `docs/local-trial-m3.md` | Mục này và hướng dẫn chạy thử M3.9 |
+
+### Data flow / key quan trọng
+
+Khách nhập tìm/chọn danh mục/đổi thứ tự/sang trang → `setSearch` cập nhật URL `/shop?...` → query TanStack `catalogApi.list` gọi `GET /api/v1/products` (q, categoryId, sort, page, pageSize=12) → backend lọc cố định `PUBLISHED + danh mục bật + biến thể bật`, sort `newest/price-asc/price-desc`, trả items + total → lưới card + 'Tìm thấy N sản phẩm.' + phân trang; danh mục cho ô lọc lấy từ `GET /api/v1/categories` (mảng danh mục bật).
+
+- `filtersUsable` (trang hợp lệ + q ≤ 80 + sort hợp lệ + categoryId UUID): sai → alert + nút sửa ('Về trang đầu'/'Xóa tìm kiếm'/'Xóa lọc') và cả hai query đều không gọi API.
+- 'Xóa lọc' chỉ nằm ở hàng bộ lọc, hiện khi có bộ lọc và guard hợp lệ; empty-state chỉ giữ 'Về trang đầu' cho trang > 1.
+- Query key gồm `[shop-catalog, categoryId, q, rawSort, sort, page]` nên mỗi bộ lọc một cache riêng; đổi tham số tự gọi API mới (không nút Áp dụng cho sort/danh mục).
+
+### Kiểm tra thực tế (Node 24.22.1 qua `tools/npm.ps1`, E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test trang trước khi code | 15 test fail đúng lý do: `/shop` còn trang giới thiệu, thiếu heading/card/guard (RED) |
+| `vitest src/features/catalog` | 15/15 (kèm 3 lượt chỉnh: key form, lọc categories theo guard, regex giá dùng `\s`) |
+| `vitest` frontend toàn bộ (sau chỉnh nhãn select) | 170/170 — baseline 161 ở M3.7.3, −6 test trang giới thiệu, +15 test M3.9 |
+| `test` toàn workspace | 8 công cụ + 9 backend + 170 frontend đạt |
+| `run typecheck` | Đạt (1 lần chạm `exactOptionalPropertyTypes`, sửa bằng spread có điều kiện) |
+| `run build` | Exit 0; cảnh báo chunk Vite có sẵn |
+| `run test:integration` | 29/29 |
+| E2E implemented 9 spec | Lượt 1: 25/30 (2 lỗi spec mới + 2 điểm auth.spec); lượt 2: 29/30; lượt 3: 30/30 (38.1s) |
+
+### Vấn đề gặp trong phần này
+
+- Seed E2E trực tiếp qua Prisma bị DB chặn `variant_fields_valid` vì CHECK yêu cầu SKU viết HOA; seed không qua DTO nên tự viết hoa token trong SKU của spec.
+- `auth.spec.ts` (chung) kỳ vọng khối phiên của trang intro trong `main` của `/shop` — trang intro bị xóa theo kế hoạch nên 2 điểm chuyển sang kiểm tra link phiên ở nav header; 'Tạo tài khoản' không còn hiển thị trên `/shop` (khách dùng link 'Đăng nhập', trang đăng nhập có đường sang đăng ký). Khác biệt so với bảng kế hoạch, nêu rõ tại đây.
+- Nút 'Xóa lọc' đầu tiên chỉ nằm trong empty-state — E2E bắt thiếu khi lọc trả về có kết quả; chuyển nút lên hàng bộ lọc và bỏ bản trùng trong empty-state.
+- Nhãn select 'Danh mục' đè chữ 'Tất cả danh mục' khi rỗng (select native); `inputLabel.shrink: true` sửa; bắt từ ảnh mobile 390px agent đã xem.
+- Git sau phần này: `main` đã có M3.4.2–M3.8 (PR #9, #10); nhánh đang làm chứa commit M3.7.2 `8be0ab5`, M3.7.3 `94b2b33` + các thay đổi M3.9 chưa commit.
+
+### Chạy thử / điểm dừng
+
+- `tools/setup-local.mjs` như README để có server; mở `http://localhost:5173/shop` (hoặc theo hướng dẫn [docs/local-trial-m3.md](docs/local-trial-m3.md)): tìm theo tên/SKU, chọn danh mục, đổi thứ tự, sang trang; refresh và Back giữ bộ lọc; nhập URL sai (khi ví dụ `?page=abc`) thấy cảnh báo và không gọi API; gửi lỗi mạng bằng cách tắt server để thử 'Tải lại bộ sưu tập'.
+- Bấm vào card → `/products/<slug>` 404 tạm — trang chi tiết là M3.10.
+- **Dừng ở M3.9 chờ người dùng thử.** M3.10 (chi tiết + chọn biến thể) sẽ gửi kế hoạch riêng; M3.11 (seed demo) theo sau. Commit/push/PR chỉ khi người dùng yêu cầu.
 
 ## Ngày 29/10/2026 — Push, PR và CI cho M3.4.2–M3.8 (Người A)
 
