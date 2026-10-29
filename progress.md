@@ -22,6 +22,16 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — Push, PR và CI cho M3.4.2–M3.8 (Người A)
+
+- Người dùng yêu cầu push 4 nhánh và mở PR. Trước khi push, `main` đã có PR #4 (M3.7.1 của Người B) nên đã rebase cả chuỗi lên `main` mới; xung đột chỉ ở file dùng chung (README, CI, `package.json`, `progress.md`, `docs/local-trial-m3.md`), gộp giữ cả hai bên. Mã commit sau rebase: M3.4.2 `3c18ca9`, M3.5 `5c2447f`, M3.6 `3d184a4`, M3.8 `1e7b57b` (thay cho `31ef890`/`3e2bd91`/`cf5a141`/`e955675` ghi ở các mục dưới).
+- Kiểm tra lại sau rebase bằng Node 24.22.1: typecheck, build đạt; unit 8 tools + 9 backend + 124 frontend; integration 29/29; E2E implemented 18/18 (gồm 3 ca kho của Người B).
+- Mở PR xếp chồng #5 (M3.4.2 → `main`), #6 (M3.5), #7 (M3.6), #8 (M3.8). CI GitHub đạt cả 4 PR, đủ bước typecheck/build/unit/integration/E2E.
+- Bốn PR được merge liền nhau: chỉ #5 vào `main`, #6–#8 rơi vào nhánh base trung gian. Đã mở #9 từ `feat/m3.8-publish` vào `main` (nội dung trùng khớp nhánh sau khi merge #6–#8, không xung đột); CI của #9 đạt, #9 đã merge. `main` tại `13b0578` có đủ M3.4.2, M3.5, M3.6, M3.8 và M3.7.1; CI trên `main` sau merge đạt.
+- Bài học: với PR xếp chồng, merge từng PR và chờ PR kế tiếp đổi base sang `main`; hoặc mở PR thẳng vào `main` sau khi phần trước đã merge.
+- Dọn dòng `=======` còn sót từ lần merge cũ trong `progress.md`. Bốn nhánh đã merge chưa xóa trên GitHub (thao tác xóa cần người dùng cho phép rõ).
+- Trạng thái nghiệm thu: người dùng đã thử M3.5; M3.4.2, M3.6, M3.8 đã qua kiểm tra local và CI, chờ người dùng thử.
+
 ## Ngày 29/10/2026 — M3.8 (Người A): xuất bản và ẩn sản phẩm
 
 **Phạm vi:** người dùng duyệt kế hoạch M3.8 (gồm khóa Xuất bản khi còn thay đổi chưa lưu) và cho commit M3.6 (`cf5a141`). Nhánh `feat/m3.8-publish` tạo từ `feat/m3.6-image-order`. Phiên làm việc bị ngắt sau khi viết test đầu; đã kiểm tra lại Git và tiếp tục đúng phạm vi. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push M3.8.
@@ -481,7 +491,7 @@ Hai vướng mắc kiểm tra đã xử lý đúng nguyên nhân: (1) một lư�
 - Hướng dẫn: [chạy thử M3.3](docs/local-trial-m3.md). Giữ/chạy `./tools/npm.ps1 run dev:backend` và `./tools/npm.ps1 run dev:frontend` ở hai terminal. ADMIN mở http://127.0.0.1:5173/admin/products → Thêm sản phẩm → tên/slug/danh mục + SKU/size/màu/giá → Lưu → refresh, phải còn Nháp/khả dụng0. Thử dùng lại SKU/slug để kiểm tra lỗi giữ input.
 
 **Dừng ở M3.3 cho người dùng thử/xác nhận.** M3.4 — sửa nháp và quản lý biến thể — cần kế hoạch riêng được duyệt; chưa triển khai.
-=======
+
 ## Ngày 28/10/2026 — Sửa theo review repo (nhánh `fix/review-findings`)
 
 **Trạng thái:** người dùng yêu cầu thực hiện các mục ưu tiên sau review. Đã viết và agent đã kiểm tra local; **chờ người dùng xem/merge**. Không thay đổi phạm vi M3, không bắt đầu M3.3.
