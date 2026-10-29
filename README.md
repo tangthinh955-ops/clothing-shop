@@ -82,6 +82,31 @@ Sau khi có tài khoản ADMIN (lệnh trên), chạy một lần để `/shop` 
 
 Lệnh tạo phía backend CLI (`apps/backend/src/cli/seed-demo.ts`): 2 danh mục và 4 sản phẩm có slug `demo-*` (3 xuất bản: một bản hai ảnh, một bản một ảnh, một bản không ảnh; 1 bản ẩn), 7 biến thể `DEMO-*` kèm tồn kho đa dạng (mỗi lượng nhập có một dòng lịch sử kho 'Nhập kho demo', không có hàng đang giữ vì không có đơn) và ảnh webp 750×1000 ghi vào `.local/uploads`. Chạy lại lệnh là an toàn: phần đã có được bỏ qua — không tạo trùng, không nhập kho thêm, không đụng dữ liệu bạn đã tạo. Ảnh demo cần một tài khoản ADMIN làm chủ (ưu tiên `ADMIN_EMAIL` nếu có, nếu không dùng ADMIN mới nhất); chưa có admin thì lệnh báo lỗi và hướng dẫn tạo. Backend không tự seed khi startup. Dữ liệu demo là dữ liệu nghiệp vụ bình thường: có thể Ẩn/Xuất bản lại qua admin hoặc dọn bằng Prisma Studio theo slug `demo-*`.
 
+## Nhập dữ liệu shop thật từ CSV và ảnh (M3.13a)
+
+Chuẩn bị thư mục (mặc định `data\import`) gồm: ảnh sản phẩm (jpg/png/webp, mỗi sản phẩm 1–8 ảnh) và file `products.csv` theo khuôn dưới đây — mỗi dòng là một sản phẩm. Tên file ảnh trong cột `files` phải trùng đúng tên file nằm cùng thư mục, nhiều ảnh cách nhau bằng `|` (ảnh đầu là ảnh bìa).
+
+```csv
+name,category,color,sizes,price,stock,description,files
+"RMG Goldline Metal Baggy Pants","Quần","đen","S|M","450000","","Denim 12oz, chi tiết kim loại.","anh-1.jpg|anh-2.jpg"
+```
+
+```powershell
+.\tools\npm.ps1 run import:products          # đọc data\import
+.\tools\npm.ps1 run import:products -- --dir "đường\dẫn\thư\mục\khác" --draft
+```
+
+| Ràng buộc | Giá trị |
+|---|---|
+| sizes | `XS`,`S`,`M`,`L`,`XL`,`XXL`,`3XL`,`FREESIZE`; trống = `FREESIZE`; nhiều size cách nhau `|`, mỗi size một biến thể cùng giá |
+| price | số nguyên 1–100.000.000 (bắt buộc); `stock` trống = 0, tối đa 1.000.000 |
+| ảnh | 1–8 ảnh mỗi sản phẩm (file phải nằm cùng thư mục CSV); lưu vào `.local/uploads` dạng webp 750×1000 (cắt viền vừa khung) |
+| trạng thái | Mặc định PUBLISHED lên `/shop` ngay (cần danh mục bật + ≥1 ảnh + ≥1 biến thể); `--draft` để nhập nháp soát trước |
+| chạy lại | Theo slug từ tên: phần đã có bị bỏ qua (không ghi đè, không nhập kho thêm); đổi tên sản phẩm tạo sản phẩm mới |
+| quyền | Cần một tài khoản ADMIN làm chủ ảnh (`ADMIN_EMAIL` nếu có; thiếu admin → exit 1 kèm hướng dẫn `admin:create`) |
+
+Không thêm cột mới, không đổi bước này: dữ liệu thật chỉ vào web qua lệnh tường minh này. Nhập tồn hoạt động qua UI Kho (M3.7.2) để có lịch sử giao dịch.
+
 ## File đưa lên Git
 
 | Đưa lên Git | Giữ ở máy local |
