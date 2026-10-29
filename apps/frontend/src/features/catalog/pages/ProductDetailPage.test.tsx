@@ -46,62 +46,93 @@ function renderDetail(path = `/products/${product.slug}`,
 describe('public product detail page', () => {
   it('loads one published product by slug with name, breadcrumb, description and starting price', async () => {
     const request = renderDetail();
-    expect(await screen.findByRole('heading', { name: product.name })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: product.name, level: 1 })).toBeVisible();
     expect(request).toHaveBeenCalledWith(`/products/${product.slug}`);
     const breadcrumbs = within(screen.getByRole('navigation', { name: 'Breadcrumb sản phẩm' }));
-    expect(breadcrumbs.getByRole('link', { name: 'Bộ sưu tập' })).toHaveAttribute('href', '/shop');
+    expect(breadcrumbs.getByRole('link', { name: 'Tất cả sản phẩm' })).toHaveAttribute('href', '/shop');
     expect(breadcrumbs.getByRole('link', { name: 'Áo thun' })).toHaveAttribute('href', `/shop?categoryId=${categoryId}`);
     expect(screen.getByText('Áo cotton co giãn, dễ mặc hàng ngày.')).toBeVisible();
-    expect(screen.getByText(/Giá từ 200\.000\s*₫/)).toBeVisible();
+    expect(screen.getByText(/^Từ 200\.000\s*₫$/)).toBeVisible();
     expect(screen.queryByText(/Còn .* sản phẩm/)).not.toBeInTheDocument();
   });
 
-  it('shows the main image and switches it when another thumbnail is chosen', async () => {
+  it('shows every photo, numbered, without a separate thumbnail strip', async () => {
     renderDetail();
-    const main = await screen.findByAltText(`Ảnh của ${product.name}`);
-    expect(main).toHaveAttribute('src', '/api/v1/media/asset-1');
-    await userEvent.click(screen.getByRole('button', { name: 'Xem ảnh 2' }));
-    expect(main).toHaveAttribute('src', '/api/v1/media/asset-2');
-    expect(screen.getByRole('button', { name: 'Xem ảnh 1' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Xem ảnh 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByAltText(`Ảnh 1 của ${product.name}`)).toHaveAttribute('src', '/api/v1/media/asset-1');
+    expect(screen.getByAltText(`Ảnh 2 của ${product.name}`)).toHaveAttribute('src', '/api/v1/media/asset-2');
+    expect(screen.queryByRole('button', { name: /Xem ảnh/ })).not.toBeInTheDocument();
   });
 
-  it('keeps the variant group visible with every selectable size and colour', async () => {
+  it('preselects the first colour and lists only the sizes made in that colour', async () => {
+    const user = userEvent.setup();
     renderDetail();
-    const group = await screen.findByRole('group', { name: 'Chọn biến thể' });
-    expect(group).toHaveTextContent('S · trắng');
-    expect(group).toHaveTextContent('M · đen');
-    expect(screen.queryByRole('button', { name: 'M · đen' })).toHaveAttribute('aria-pressed', 'false');
+    const colours = await screen.findByRole('group', { name: 'Chọn màu' });
+    const sizes = screen.getByRole('group', { name: 'Chọn size' });
+    expect(within(colours).getByRole('button', { name: 'trắng' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(colours).getByRole('button', { name: 'đen' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(sizes).getAllByRole('button').map((button) => button.textContent)).toEqual(['S']);
+    await user.click(within(colours).getByRole('button', { name: 'đen' }));
+    expect(within(sizes).getAllByRole('button').map((button) => button.textContent)).toEqual(['M']);
+    expect(screen.getByText('Màu: đen')).toBeVisible();
   });
 
-  it('updates price and stock after choosing a variant', async () => {
+  it('shows the exact price, stock and SKU once a colour and size are chosen', async () => {
+    const user = userEvent.setup();
     renderDetail();
-    await screen.findByRole('heading', { name: product.name });
-    await userEvent.click(screen.getByRole('button', { name: 'M · đen' }));
+    await user.click(await screen.findByRole('button', { name: 'đen' }));
+    await user.click(screen.getByRole('button', { name: 'M' }));
+    expect(screen.getByRole('button', { name: 'M' })).toHaveAttribute('aria-pressed', 'true');
     expect(await screen.findByText('Còn 10 sản phẩm', { exact: true })).toBeVisible();
-    expect(screen.getByText(/250\.000\s*₫/)).toBeVisible();
-    expect(screen.queryByText(/Giá từ/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^250\.000\s*₫$/)).toBeVisible();
+    expect(screen.queryByText(/^Từ /)).not.toBeInTheDocument();
+    expect(screen.getByText('Mã sản phẩm: AO-1-M')).toBeVisible();
   });
 
-  it('switches to another variant and shows that variant stock and price', async () => {
+  it('clears the size when the colour changes so stock never belongs to the wrong variant', async () => {
+    const user = userEvent.setup();
     renderDetail();
-    await screen.findByRole('button', { name: 'M · đen' });
-    await userEvent.click(screen.getByRole('button', { name: 'M · đen' }));
+    await user.click(await screen.findByRole('button', { name: 'đen' }));
+    await user.click(screen.getByRole('button', { name: 'M' }));
     await screen.findByText('Còn 10 sản phẩm', { exact: true });
-    await userEvent.click(screen.getByRole('button', { name: 'S · trắng' }));
+    await user.click(screen.getByRole('button', { name: 'trắng' }));
+    expect(screen.queryByText(/Còn .* sản phẩm/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Mã sản phẩm/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'S' }));
     expect(await screen.findByText('Còn 3 sản phẩm', { exact: true })).toBeVisible();
-    expect(screen.getByText(/200\.000\s*₫/)).toBeVisible();
-    expect(screen.queryByText(/250\.000\s*₫/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^200\.000\s*₫$/)).toBeVisible();
   });
 
-  it('reports a selected variant with no stock as out of stock', async () => {
+  it('marks a sold-out size and reports it as out of stock when chosen', async () => {
+    const user = userEvent.setup();
     renderDetail('/products/ao-cotton-hanh-phuc', () => Promise.resolve({
       ...product, variants: [{ ...variantS, available: 0 }], priceFrom: variantS.price,
     }));
-    await screen.findByRole('button', { name: 'S · trắng' });
-    await userEvent.click(screen.getByRole('button', { name: 'S · trắng' }));
+    await user.click(await screen.findByRole('button', { name: 'S, hết hàng' }));
     expect(await screen.findByText('Hết hàng', { exact: true })).toBeVisible();
-    expect(screen.queryByText(/Giá từ/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Từ /)).not.toBeInTheDocument();
+  });
+
+  it('lets the shopper order by messaging the shop on Instagram', async () => {
+    renderDetail();
+    const order = await screen.findByRole('link', { name: 'Nhắn shop qua Instagram để đặt' });
+    expect(order).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    expect(order).toHaveAttribute('target', '_blank');
+    expect(order).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');
+  });
+
+  it('folds the real shipping and returns policies into the page', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    const shipping = await screen.findByRole('button', { name: 'Giao hàng' });
+    expect(shipping).toHaveAttribute('aria-expanded', 'false');
+    await user.click(shipping);
+    expect(shipping).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/30\.000đ mỗi đơn/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Xem chính sách Giao hàng' })).toHaveAttribute('href', '/shipping');
+    await user.click(screen.getByRole('button', { name: 'Đổi & trả' }));
+    expect(screen.getByText(/trong 7 ngày/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Xem chính sách Đổi & trả' })).toHaveAttribute('href', '/returns-policy');
   });
 
   it('shows a placeholder when the product has no image', async () => {

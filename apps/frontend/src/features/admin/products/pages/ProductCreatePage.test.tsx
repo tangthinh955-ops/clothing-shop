@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { catalogApi } from '../../../catalog/api/catalog.api';
 import { App } from '../../../../app/App';
 import { authApi, type User } from '../../../auth/api/auth.api';
 import * as client from '../../../../shared/api/client';
@@ -15,6 +16,8 @@ const product = { id: 'product-test', name: 'Áo cotton', slug: 'ao-cotton', des
 afterEach(() => vi.restoreAllMocks());
 
 function renderPage(user: User | null = admin) {
+  // The store header loads category links on every page; these tests are not about them.
+  vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
   vi.spyOn(authApi, 'me').mockResolvedValue(user);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={queryClient}>

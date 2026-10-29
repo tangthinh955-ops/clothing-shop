@@ -6,7 +6,7 @@ export function AuthLayout({ title, description, children }: { title: string; de
   return <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '0.9fr 1fr' }, minHeight: 580, my: { xs: 3, md: 7 } }}>
     <Box sx={{ bgcolor: '#e8e4dc', p: { xs: 4, md: 7 }, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', justifyContent: 'space-between' }}>
       <Typography variant="overline" sx={{ letterSpacing: '.25em' }}>{SHOP_NAME.toUpperCase()}</Typography>
-      <Box><Typography variant="h2" sx={{ fontFamily: 'Georgia, serif', lineHeight: 1.12, mb: 3 }}>Mặc thoải mái.<br />Sống theo cách bạn.</Typography>
+      <Box><Typography variant="h2" sx={{ lineHeight: 1.12, mb: 3 }}>Mặc thoải mái.<br />Sống theo cách bạn.</Typography>
         <Typography sx={{ maxWidth: 300, color: 'text.secondary' }}>Một nơi lưu lại những lựa chọn dành riêng cho mỗi ngày của bạn.</Typography></Box>
       <Box sx={{ width: 64, borderBottom: '2px solid #181818' }} />
     </Box>

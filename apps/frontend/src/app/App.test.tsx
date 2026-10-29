@@ -5,11 +5,14 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authApi, type User } from '../features/auth/api/auth.api';
 import * as apiClient from '../shared/api/client';
+import { catalogApi } from '../features/catalog/api/catalog.api';
 import { App } from './App';
 
 afterEach(() => vi.restoreAllMocks());
 
 function renderApp(path: string) {
+  // The store header loads category links on every page; these tests are not about them.
+  vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
   </QueryClientProvider>);

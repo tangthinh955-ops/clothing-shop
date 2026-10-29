@@ -82,7 +82,7 @@ test('admin publishes actual product/image/stock; public filters/detail/mobile a
   await page.goto(`/shop?categoryId=${category.id}&q=${encodeURIComponent('cotton trình duyệt')}&sort=price-asc`);
   await page.getByRole('link', { name: 'Áo cotton trình duyệt', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Áo cotton trình duyệt', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /M · đen/ }).click();
+  await page.getByRole('group', { name: 'Chọn size' }).getByRole('button', { name: 'M', exact: true }).click();
   await expect(page.getByText('Còn 10 sản phẩm', { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
