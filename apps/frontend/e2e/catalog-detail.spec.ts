@@ -24,8 +24,12 @@ function assertTestDatabase() {
   if (!valid) throw new Error('Catalog detail E2E requires NODE_ENV=test and a PostgreSQL *_test database');
 }
 
-function variantButtons(page: Page) {
-  return page.getByRole('group', { name: 'Chọn biến thể' }).getByRole('button');
+function colourButtons(page: Page) {
+  return page.getByRole('group', { name: 'Chọn màu' }).getByRole('button');
+}
+
+function sizeButtons(page: Page) {
+  return page.getByRole('group', { name: 'Chọn size' }).getByRole('button');
 }
 
 test.beforeAll(async () => {
@@ -67,25 +71,30 @@ test('opens the detail from the shop list and shows the chosen variant price and
   await expect(page.getByRole('heading', { name: detailName, exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Breadcrumb sản phẩm' })).toContainText(detailName);
   await expect(page.getByText(descriptionText)).toBeVisible();
-  await expect(page.getByText(/Giá từ 200\.000\s*₫/)).toBeVisible();
-  await expect(variantButtons(page)).toHaveText(['M · đen', 'S · trắng']); // Thứ tự sku tăng dần từ backend.
-  await page.getByRole('button', { name: /M · đen/ }).click();
+  await expect(page.getByText(/^Từ 200\.000\s*₫$/)).toBeVisible();
+  await expect(colourButtons(page)).toHaveText(['đen', 'trắng']); // Thứ tự sku tăng dần từ backend; màu đầu được chọn sẵn.
+  await expect(sizeButtons(page)).toHaveText(['M']);
+  await sizeButtons(page).getByText('M', { exact: true }).click();
   await expect(page.getByText('Còn 10 sản phẩm', { exact: true })).toBeVisible();
-  await expect(page.getByText(/250\.000\s*₫/)).toBeVisible();
-  await expect(page.getByText(/Giá từ/)).toHaveCount(0);
-  await page.getByRole('button', { name: /S · trắng/ }).click();
+  await expect(page.getByText(/^250\.000\s*₫$/)).toBeVisible();
+  await expect(page.getByText(`Mã sản phẩm: DETAIL-${skuToken}-M`, { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Từ /)).toHaveCount(0);
+  await colourButtons(page).getByText('trắng', { exact: true }).click();
+  await expect(sizeButtons(page)).toHaveText(['S']);
+  await sizeButtons(page).getByText('S', { exact: true }).click();
   await expect(page.getByText('Còn 3 sản phẩm', { exact: true })).toBeVisible();
-  await expect(page.getByText(/200\.000\s*₫/)).toBeVisible();
-  await expect(page.getByText(/250\.000\s*₫/)).toHaveCount(0);
+  await expect(page.getByText(/^200\.000\s*₫$/)).toBeVisible();
+  await expect(page.getByText(/^250\.000\s*₫$/)).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Nhắn shop qua Instagram để đặt' })).toHaveAttribute('target', '_blank');
 });
 
 test('reloads the deep link, resets the selection and stays within the viewport on mobile', async ({ page }, info) => {
   await page.goto(`/products/${productSlug}`);
-  await page.getByRole('button', { name: /M · đen/ }).click();
+  await sizeButtons(page).getByText('M', { exact: true }).click();
   await expect(page.getByText('Còn 10 sản phẩm', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: detailName, exact: true })).toBeVisible();
-  await expect(page.getByText(/Giá từ 200\.000\s*₫/)).toBeVisible();
+  await expect(page.getByText(/^Từ 200\.000\s*₫$/)).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('catalog-detail-mobile.png'), fullPage: true, animations: 'disabled' });

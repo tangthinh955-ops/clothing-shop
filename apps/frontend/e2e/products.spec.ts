@@ -277,5 +277,5 @@ test('admin edits a published product and the shop shows the change at once', as
   expect(await db.product.findUniqueOrThrow({ where: { id: published.id } })).toMatchObject({ status: 'PUBLISHED', version: 1 });
   await page.goto(`/products/${slugs[4]}`);
   await expect(page.getByRole('heading', { name: 'Áo đang bán đã sửa thử', exact: true })).toBeVisible();
-  await expect(page.getByText(/Giá từ 270\.000\s*₫/)).toBeVisible();
+  await expect(page.getByText(/^270\.000\s*₫$/)).toBeVisible();
 });

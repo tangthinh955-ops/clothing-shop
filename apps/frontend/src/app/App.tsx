@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router';
+import { Route, Routes } from 'react-router';
 import { StoreLayout } from '../layouts/StoreLayout';
 import { AuthPage } from '../features/auth/pages/AuthPage';
 import { VerifyPage } from '../features/auth/pages/VerifyPage';
@@ -10,6 +10,7 @@ import { ProductsPage } from '../features/admin/products/pages/ProductsPage';
 import { ProductCreatePage } from '../features/admin/products/pages/ProductCreatePage';
 import { ProductEditPage } from '../features/admin/products/pages/ProductEditPage';
 import { CatalogPage } from '../features/catalog/pages/CatalogPage';
+import { HomePage } from '../features/catalog/pages/HomePage';
 import { ProductDetailPage } from '../features/catalog/pages/ProductDetailPage';
 import { policyPages } from '../features/information/content/policies';
 import { PolicyPage } from '../features/information/pages/PolicyPage';
@@ -19,7 +20,7 @@ import { PrivateRoute } from './router/PrivateRoute';
 export function App() {
   return <Routes>
     <Route element={<StoreLayout />}>
-      <Route index element={<Navigate to="/shop" replace />} />
+      <Route index element={<HomePage />} />
       <Route path="shop" element={<CatalogPage />} />
       <Route path="products/:slug" element={<ProductDetailPage />} />
       <Route path="login" element={<AuthPage key="login" mode="login" />} />
