@@ -107,10 +107,11 @@ Trước mỗi nhiệm vụ/phần code, gửi bảng kế hoạch ngắn ngay t
 
 ## 5. Bảo mật, dữ liệu và môi trường
 
-- Ưu tiên local, dữ liệu giả và dịch vụ miễn phí theo yêu cầu hiện tại. Không tự tạo tài khoản dịch vụ, kích hoạt trả phí hoặc deploy khi chưa được giao.
+- Đây là website bán hàng thật của shop (từ 29/10/2026), không phải demo. Phát triển và test trên local/`_test` với dữ liệu thử; dữ liệu khách thật chỉ nằm trên production. Không tự tạo tài khoản dịch vụ, thuê VPS, mua domain, kích hoạt trả phí hoặc deploy khi chưa được giao.
+- Không truy cập, sao chép hoặc chỉnh dữ liệu production (DB, ảnh, backup) nếu chưa được yêu cầu rõ; không đưa dữ liệu khách thật (tên, SĐT, địa chỉ, email) vào local, test, log, tài liệu hay chat. Lệnh tạo dữ liệu mẫu như `seed:demo` không được chạy trên production.
 - Giữ session server, cookie HttpOnly và CSRF theo thiết kế; kiểm tra role/owner ở backend. Không bỏ guard để chữa lỗi frontend/proxy.
 - Không lưu mật khẩu/token dài hạn trong localStorage. Không ghi secret, cookie, token, mật khẩu hoặc dữ liệu cá nhân nhạy cảm vào Git, log, tài liệu hay chat.
-- `.env` thật phải được bỏ qua; các `.env*.example` cần thiết phải được đưa vào repo, chỉ chứa placeholder/cấu hình demo an toàn. Không đưa secret vào biến `VITE_*`.
+- `.env` thật phải được bỏ qua; các `.env*.example` cần thiết phải được đưa vào repo, chỉ chứa placeholder/cấu hình mẫu an toàn. Không đưa secret vào biến `VITE_*`.
 - Không tạo mật khẩu admin mặc định hoặc tự nâng quyền tài khoản. Dùng CLI tạo admin đã có khi được yêu cầu.
 - Test tích hợp/E2E chỉ chạy với môi trường test và database riêng có hậu tố `_test`; kiểm tra trước mọi thao tác ghi hoặc cleanup. Chỉ dọn dữ liệu do test tạo.
 - Không reset/truncate database, xóa volume, force push hoặc xóa dữ liệu người dùng nếu chưa được yêu cầu rõ. Trên Windows phải kiểm tra đường dẫn tuyệt đối trước thao tác xóa/di chuyển đệ quy.

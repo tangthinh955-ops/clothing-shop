@@ -1,20 +1,20 @@
 # Clothing Shop
 
-Website một shop quần áo, phục vụ khách từ Instagram. React/Vite và NestJS là hai ứng dụng build/deploy độc lập; PostgreSQL lưu dữ liệu nghiệp vụ, Cloudinary lưu ảnh.
+Website bán hàng thật của một shop quần áo, phục vụ khách từ Instagram. React/Vite và NestJS là hai ứng dụng build độc lập, deploy trên VPS của chủ shop sau một reverse proxy HTTPS; PostgreSQL lưu dữ liệu nghiệp vụ, ảnh lưu trên ổ đĩa VPS và được backup ra ngoài.
 
 ## Trạng thái
 
-Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản local. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
+Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (quyết định và lộ trình mới ở [kế hoạch](docs/plan.md#chuyển-sang-shop-thật-29102026)). Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng: các phần M3.1–M3.12 (danh mục, sản phẩm nháp, ảnh, điều chỉnh kho, xuất bản catalog khách, seed demo và ca E2E tổng) đã triển khai xong, chờ người dùng chạy thử và nghiệm thu. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md).
+Điểm dừng: M3.1–M3.12 và M3.13a (nhập sản phẩm thật từ CSV) đã triển khai, chờ người dùng chạy thử và nghiệm thu. Tiếp theo là giai đoạn chuẩn bị bán thật (M3.13b–M3.17), rồi M4 bán hàng và M6 deploy VPS. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md).
 
-Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật.
+**Chưa mở bán:** chưa có giỏ hàng/đặt hàng (M4), chưa deploy và backup (M6). Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
 ## Tài liệu
 
 - [Quy tắc làm việc cho agent](AGENTS.md)
 - [Kế hoạch và các bước triển khai](docs/plan.md)
-- [Quy tắc nghiệp vụ và giả định demo](docs/business-rules.md)
+- [Quy tắc nghiệp vụ](docs/business-rules.md)
 - [Kiến trúc, dữ liệu, UI và API](docs/architecture.md)
 - [Danh sách kiểm tra nghiệm thu](docs/acceptance-checklist.md)
 
@@ -74,7 +74,9 @@ Mật khẩu 12–128 ký tự; xóa `ADMIN_PASSWORD` khỏi môi trường/tệ
 
 ## Bộ dữ liệu demo (M3.11)
 
-Sau khi có tài khoản ADMIN (lệnh trên), chạy một lần để `/shop` có hàng thật:
+**Chỉ dùng trên máy local để thử giao diện; không chạy trên production** (M3.15 sẽ cho lệnh từ chối chạy khi `NODE_ENV=production`). Hàng thật của shop nhập bằng admin hoặc lệnh `import:products` bên dưới.
+
+Sau khi có tài khoản ADMIN (lệnh trên), chạy một lần để `/shop` local có hàng mẫu:
 
 ```powershell
 .\tools\npm.ps1 run seed:demo
@@ -113,7 +115,7 @@ Không thêm cột mới, không đổi bước này: dữ liệu thật chỉ v
 |---|---|
 | Mã nguồn, test, tài liệu, migration, cấu hình build/CI | `node_modules/`, `dist/`, coverage và kết quả test |
 | `package.json` ở root và các app, `package-lock.json` ở root | `.local/` gồm runtime, thư xác minh/reset và trình duyệt test |
-| `.env.example`, `.env.test.example` chỉ chứa placeholder/cấu hình demo | `.env`, `.env.test` và cấu hình môi trường riêng |
+| `.env.example`, `.env.test.example` chỉ chứa placeholder/cấu hình mẫu an toàn | `.env`, `.env.test` và cấu hình môi trường riêng |
 
 `package.json` khai báo thư viện và lệnh chạy; `package-lock.json` cố định phiên bản để máy khác và CI cài lại bằng `npm ci`. Hai file này cần được commit; thư viện đã tải trong `node_modules/` được bỏ qua.
 
