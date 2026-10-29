@@ -179,6 +179,33 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
 
+## M3.9 — Người B: catalog khách tìm và lọc hàng công khai
+
+Phần này KHÔNG cần đăng nhập. Mở **http://127.0.0.1:5173/shop** với hai terminal dev như mục M3.1. Muốn thấy hàng, bấm hoặc chạy trước phần M3.8 để có sản phẩm Đã xuất bản.
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả |
+|---|---|
+| Mở `/shop` | Lưới chỉ gồm hàng Đã xuất bản (danh mục bật, có ít nhất một biến thể bật); sản phẩm ẩn/nháp/không danh mục bật không xuất hiện. Card: ảnh hoặc khối 'Chưa có ảnh', tên danh mục, tên sản phẩm, 'Giá từ …' |
+| Gõ tên hoặc một phần SKU vào 'Tìm theo tên hoặc SKU' · Enter | Danh sách lọc; URL thành `/shop?q=...`; nút 'Xóa tìm kiếm' xuất hiện |
+| Chọn 'Danh mục' | Lọc theo danh mục; URL thêm `categoryId=...`; quay về trang 1 |
+| Đổi 'Thứ tự sắp xếp' | 'Mới nhất' / 'Giá thấp đến cao' / 'Giá cao đến thấp'; URL thêm `sort=...`; quay về trang 1 |
+| Dùng phân trang khi số hàng > 12 | Sang trang, URL thêm `page=...`; trong lúc tải, các sản phẩm trang cũ vẫn hiển thị kèm 'Đang cập nhật bộ sưu tập…' và thanh phân trang tạm khóa |
+| F5 hoặc Back/Diếp | Bộ lọc và trang còn nguyên, danh sách đúng trạng thái |
+| Dán `/shop?page=abc`, `/shop?sort=ten-gi-do` hoặc `categoryId` sai định dạng | Cảnh báo tương ứng ('Số trang không hợp lệ.'/'Bộ lọc không hợp lệ.'), không gọi API; nút 'Về trang đầu'/'Xóa lọc' đưa về trạng thái hợp lệ |
+| Mở `/shop?categoryId=<id danh mục vừa tắt ở admin>` (hoặc bấm breadcrumb danh mục cũ) | Cảnh báo 'Danh mục này không còn hiển thị.'; ô Danh mục ghi 'Danh mục không còn hiển thị' (không giả vờ 'Tất cả danh mục'); bấm 'Xóa lọc' về `/shop` |
+| Tìm từ khóa không khớp → 'Xóa lọc' | 'Chưa có sản phẩm phù hợp bộ lọc hiện tại.'; bấm 'Xóa lọc' về trạng thái mặc định |
+| Tắt backend (Ctrl+C ở Terminal 1), mở lại `/shop` | Alert 'Không thể kết nối…' và nút 'Tải lại bộ sưu tập'; bật backend lại, bấm nút → danh sách hiện |
+| Bấm tên sản phẩm | Tới `/products/<slug>` — chi tiết sản phẩm (M3.10) |
+| Thu hẹp cửa sổ về ~390px | Không tràn ngang; bộ lọc và card xếp dọc |
+
+### Luồng dữ liệu / key M3.9
+
+URL là nguồn sự thật: `q`/`categoryId`/`sort`/`page` được đọc và ghi qua `setSearch` trong `CatalogPage`; sai guard (`filtersUsable`) thì cả query sản phẩm lẫn danh mục đều không gọi API. Danh sách lấy `GET /api/v1/products?...&pageSize=12` — backend lọc cứng PUBLISHED + danh mục bật + biến thể bật và sort trên server; danh mục cho ô lọc từ `GET /api/v1/categories`. Giá hiển thị `priceFrom` qua `Intl.NumberFormat('vi-VN', VND)`.
+
+Kiểm tra tự động riêng phần này: 15 test UI + E2E `catalog-list.spec.ts` (4 ca; cả bộ implemented 9 spec 30/30) — chi tiết và giới hạn xem [progress.md](../progress.md).
+
 ## M3.7.3 — Người B: lịch sử tồn kho của từng SKU
 
 Giữ hai terminal backend/frontend như Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**. Backend đã có sẵn `GET /api/v1/admin/inventory/movements`; phần này chỉ thêm UI đọc.

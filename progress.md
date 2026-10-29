@@ -22,6 +22,59 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — M3.9 (Người B): catalog khách tìm và lọc danh sách hàng công khai
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.9 trong chat: thay trang giới thiệu tại `/shop` bằng trang danh sách thật (tìm theo tên/SKU, chọn danh mục, sắp thứ tự, phân trang; bộ lọc nằm trên URL nên refresh/Back giữ đúng; card là liên kết tới `/products/<slug>` — trang chi tiết thuộc M3.10, bấm vào sẽ 404 tạm). `e2e/catalog.spec.ts` vẫn ở ngoài `test:e2e:implemented` theo chỉ dẫn cũ (M3.12 ghép khi đủ chi tiết + dữ liệu demo). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/api/catalog.api.ts` (mới) | `catalogApi.list({ q, page, sort, categoryId })` (pageSize cố định 12, bỏ tham số rỗng) và `catalogApi.categories()`; kiểu khớp response công khai của backend |
+| `apps/frontend/src/features/catalog/pages/CatalogPage.tsx` (mới) | Trang `/shop`: tiêu đề gọn thay hero dài; form tìm (Enter/Tìm kiếm); select 'Thứ tự sắp xếp' + 'Danh mục' (native, nhãn shrink); nút 'Xóa tìm kiếm'/'Xóa lọc'; lưới card (ảnh đầu hoặc khối 'Chưa có ảnh', tên danh mục, tên sản phẩm là liên kết, 'Giá từ …' theo `Intl.NumberFormat('vi-VN', VND)`); phân trang MUI với nhãn tiếng Việt; loading/empty/error + 'Tải lại bộ sưu tập'; guard URL hợp lệ (trang, q ≤ 80, sort, categoryId UUID) |
+| `apps/frontend/src/features/catalog/pages/CatalogPage.test.tsx` (mới) | 15 test: card/link/ảnh/giá/tổng; placeholder không ảnh; loading chờ response; tìm trim, đặt lại trang, Back khôi phục; sort/danh mục ghi URL và lần gọi API; phân trang giữ q; đọc cả 4 bộ lọc từ URL lúc đầu; empty có lọc (Xóa lọc) và không lọc; lỗi + tải lại; 4 loại bộ lọc sai không gọi API |
+| `apps/frontend/src/app/App.tsx` | Route `/shop`: `CatalogIntroPage` → `CatalogPage` |
+| `apps/frontend/src/features/catalog/pages/CatalogIntroPage.tsx` + `.test.tsx` | Xóa — trang giới thiệu placeholder (6 test) hết nhu cầu sau khi có danh sách thật |
+| `apps/frontend/e2e/catalog-list.spec.ts` (mới) | 4 ca trên DB `_test`: chỉ PUBLISHED trong danh mục bật hiển thị (seed token uuid trùng khó: 4 sản phẩm gồm HIDDEN và PUBLISHED trong danh mục đã tắt); lọc kết hợp q+categoryId+sort trên URL, giữ qua reload, 'Xóa lọc' về mặc định; keyword không khớp + abort mạng + nút 'Tải lại bộ sưu tập'; mobile 390px + thứ tự mới nhất (kèm ảnh chụp) |
+| `apps/frontend/e2e/auth.spec.ts` | 2 điểm kỳ vọng dựa vào khối phiên của trang intro bị xóa: lúc đăng nhập, `/shop` kiểm tra link 'Tài khoản' ở nav 'Điều hướng chính' (trước: trong `main`); lúc đăng xuất kiểm tra link 'Đăng nhập' và không còn 'Tài khoản'. Ý "trang /shop phản ánh phiên" giữ nguyên |
+| `package.json`, `.github/workflows/ci.yml` | `test:e2e:implemented` và tên bước CI thêm `catalog-list.spec.ts` (thứ tự bảng chữ cái sau auth) |
+| `progress.md`, `docs/local-trial-m3.md` | Mục này và hướng dẫn chạy thử M3.9 |
+
+### Data flow / key quan trọng
+
+Khách nhập tìm/chọn danh mục/đổi thứ tự/sang trang → `setSearch` cập nhật URL `/shop?...` → query TanStack `catalogApi.list` gọi `GET /api/v1/products` (q, categoryId, sort, page, pageSize=12) → backend lọc cố định `PUBLISHED + danh mục bật + biến thể bật`, sort `newest/price-asc/price-desc`, trả items + total → lưới card + 'Tìm thấy N sản phẩm.' + phân trang; danh mục cho ô lọc lấy từ `GET /api/v1/categories` (mảng danh mục bật).
+
+- `filtersUsable` (trang hợp lệ + q ≤ 80 + sort hợp lệ + categoryId UUID): sai → alert + nút sửa ('Về trang đầu'/'Xóa tìm kiếm'/'Xóa lọc') và cả hai query đều không gọi API.
+- 'Xóa lọc' chỉ nằm ở hàng bộ lọc, hiện khi có bộ lọc và guard hợp lệ; empty-state chỉ giữ 'Về trang đầu' cho trang > 1.
+- Query key gồm `[shop-catalog, categoryId, q, rawSort, sort, page]` nên mỗi bộ lọc một cache riêng; đổi tham số tự gọi API mới (không nút Áp dụng cho sort/danh mục).
+
+### Kiểm tra thực tế (Node 24.22.1 qua `tools/npm.ps1`, E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test trang trước khi code | 15 test fail đúng lý do: `/shop` còn trang giới thiệu, thiếu heading/card/guard (RED) |
+| `vitest src/features/catalog` | 15/15 (kèm 3 lượt chỉnh: key form, lọc categories theo guard, regex giá dùng `\s`) |
+| `vitest` frontend toàn bộ (sau chỉnh nhãn select) | 170/170 — baseline 161 ở M3.7.3, −6 test trang giới thiệu, +15 test M3.9 |
+| `test` toàn workspace | 8 công cụ + 9 backend + 170 frontend đạt |
+| `run typecheck` | Đạt (1 lần chạm `exactOptionalPropertyTypes`, sửa bằng spread có điều kiện) |
+| `run build` | Exit 0; cảnh báo chunk Vite có sẵn |
+| `run test:integration` | 29/29 |
+| E2E implemented 9 spec | Lượt 1: 25/30 (2 lỗi spec mới + 2 điểm auth.spec); lượt 2: 29/30; lượt 3: 30/30 (38.1s) |
+
+### Vấn đề gặp trong phần này
+
+- Seed E2E trực tiếp qua Prisma bị DB chặn `variant_fields_valid` vì CHECK yêu cầu SKU viết HOA; seed không qua DTO nên tự viết hoa token trong SKU của spec.
+- `auth.spec.ts` (chung) kỳ vọng khối phiên của trang intro trong `main` của `/shop` — trang intro bị xóa theo kế hoạch nên 2 điểm chuyển sang kiểm tra link phiên ở nav header; 'Tạo tài khoản' không còn hiển thị trên `/shop` (khách dùng link 'Đăng nhập', trang đăng nhập có đường sang đăng ký). Khác biệt so với bảng kế hoạch, nêu rõ tại đây.
+- Nút 'Xóa lọc' đầu tiên chỉ nằm trong empty-state — E2E bắt thiếu khi lọc trả về có kết quả; chuyển nút lên hàng bộ lọc và bỏ bản trùng trong empty-state.
+- Nhãn select 'Danh mục' đè chữ 'Tất cả danh mục' khi rỗng (select native); `inputLabel.shrink: true` sửa; bắt từ ảnh mobile 390px agent đã xem.
+- Git sau phần này: `main` đã có M3.4.2–M3.8 (PR #9, #10); nhánh đang làm chứa commit M3.7.2 `8be0ab5`, M3.7.3 `94b2b33` + các thay đổi M3.9 chưa commit.
+
+### Chạy thử / điểm dừng
+
+- `tools/setup-local.mjs` như README để có server; mở `http://localhost:5173/shop` (hoặc theo hướng dẫn [docs/local-trial-m3.md](docs/local-trial-m3.md)): tìm theo tên/SKU, chọn danh mục, đổi thứ tự, sang trang; refresh và Back giữ bộ lọc; nhập URL sai (khi ví dụ `?page=abc`) thấy cảnh báo và không gọi API; gửi lỗi mạng bằng cách tắt server để thử 'Tải lại bộ sưu tập'.
+- Bấm vào card → `/products/<slug>` 404 tạm — trang chi tiết là M3.10.
+- **Dừng ở M3.9 chờ người dùng thử.** M3.10 (chi tiết + chọn biến thể) sẽ gửi kế hoạch riêng; M3.11 (seed demo) theo sau. Commit/push/PR chỉ khi người dùng yêu cầu.
+
 ## Ngày 29/10/2026 — Push, PR và CI cho M3.4.2–M3.8 (Người A)
 
 - Người dùng yêu cầu push 4 nhánh và mở PR. Trước khi push, `main` đã có PR #4 (M3.7.1 của Người B) nên đã rebase cả chuỗi lên `main` mới; xung đột chỉ ở file dùng chung (README, CI, `package.json`, `progress.md`, `docs/local-trial-m3.md`), gộp giữ cả hai bên. Mã commit sau rebase: M3.4.2 `3c18ca9`, M3.5 `5c2447f`, M3.6 `3d184a4`, M3.8 `1e7b57b` (thay cho `31ef890`/`3e2bd91`/`cf5a141`/`e955675` ghi ở các mục dưới).
