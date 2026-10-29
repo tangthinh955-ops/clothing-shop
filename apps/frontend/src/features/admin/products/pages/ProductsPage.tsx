@@ -31,7 +31,7 @@ export function ProductsPage() {
     <Typography component="h1" variant="h3" sx={{ mb: 2 }}>Sản phẩm</Typography>
     <Button component={Link} to="/admin/products/new" variant="contained" sx={{ mb: 3 }}>Thêm sản phẩm</Button>
     {createdName && <Alert severity="success" sx={{ mb: 3, overflowWrap: 'anywhere' }}>Đã tạo sản phẩm nháp “{createdName}”.</Alert>}
-    {updatedName && <Alert severity="success" sx={{ mb: 3, overflowWrap: 'anywhere' }}>Đã cập nhật sản phẩm nháp “{updatedName}”.</Alert>}
+    {updatedName && <Alert severity="success" sx={{ mb: 3, overflowWrap: 'anywhere' }}>Đã cập nhật sản phẩm “{updatedName}”.</Alert>}
     {!validPage ? <Stack spacing={2}>
       <Alert severity="error">Số trang không hợp lệ.</Alert>
       <Button variant="outlined" onClick={() => changePage(1)}>Về trang đầu</Button>

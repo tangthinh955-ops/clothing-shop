@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import { conflict, databaseError } from '../../common/database-errors.js';
+import { conflict, databaseError, publishRuleConflict } from '../../common/database-errors.js';
 import type { AdminProductQuery, ImagesDto, ProductDto, ProductQuery, ProductUpdateDto } from './dto/product.dto.js';
 
 const include = { category: true, variants: { include: { inventory: true }, orderBy: { sku: 'asc' } },
@@ -63,7 +63,7 @@ export class ProductsService {
           || before.variants.some((v) => !supplied.includes(v.id))) conflict('Không được xóa hoặc chuyển biến thể sang sản phẩm khác. Hãy tắt biến thể cũ.');
         const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
         if (!category) throw new BadRequestException('Danh mục không hợp lệ.');
-        if (before.status === 'PUBLISHED' && (!category.active || !dto.variants.some((v) => v.active))) conflict('Sản phẩm đang xuất bản cần danh mục và biến thể đang bật.');
+        if (before.status === 'PUBLISHED' && (!category.active || !dto.variants.some((v) => v.active))) publishRuleConflict('Sản phẩm đang xuất bản cần danh mục và biến thể đang bật.');
         for (const { id: variantId, ...v } of dto.variants) {
           if (variantId) await tx.variant.update({ where: { id: variantId }, data: v });
           else await tx.variant.create({ data: { ...v, productId: id, inventory: { create: {} } } });
@@ -81,7 +81,7 @@ export class ProductsService {
         const changed = await tx.product.updateMany({ where: { id, version: expectedVersion }, data: { status, version: { increment: 1 } } });
         if (!changed.count) conflict();
         const row = await tx.product.findUniqueOrThrow({ where: { id }, include });
-        if (status === 'PUBLISHED' && (!row.category.active || !row.images.length || !row.variants.some((v) => v.active))) conflict('Cần danh mục bật, ít nhất một ảnh và một biến thể bật để xuất bản.');
+        if (status === 'PUBLISHED' && (!row.category.active || !row.images.length || !row.variants.some((v) => v.active))) publishRuleConflict('Cần danh mục bật, ít nhất một ảnh và một biến thể bật để xuất bản.');
         return view(row, true);
       });
     } catch (error) { databaseError(error); }
@@ -92,7 +92,7 @@ export class ProductsService {
         const changed = await tx.product.updateMany({ where: { id, version: dto.expectedVersion }, data: { version: { increment: 1 } } });
         if (!changed.count) conflict();
         const before = await tx.product.findUniqueOrThrow({ where: { id }, include });
-        if (!dto.assetIds.length && before.status === 'PUBLISHED') conflict('Cần giữ ít nhất một ảnh cho sản phẩm đang xuất bản.');
+        if (!dto.assetIds.length && before.status === 'PUBLISHED') publishRuleConflict('Cần giữ ít nhất một ảnh cho sản phẩm đang xuất bản.');
         for (const assetId of [...dto.assetIds].sort()) {
           await tx.$queryRaw`SELECT id FROM upload_assets WHERE id = ${assetId}::uuid FOR UPDATE`;
           const asset = await tx.uploadAsset.findUnique({ where: { id: assetId }, include: { image: true } });

@@ -100,8 +100,8 @@ test('admin publishes only a ready, saved product; hide and republish follow pub
   await expect(publish).toBeEnabled();
   await publish.click();
   await expect(page.getByText('Đã xuất bản sản phẩm.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Quản lý sản phẩm', level: 1 })).toBeVisible();
-  await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();
+  await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toBeVisible();
   const published = await db.product.findUniqueOrThrow({ where: { id: draft.id }, include: { images: true } });
   expect(published).toMatchObject({ status: 'PUBLISHED', version: 2 });
   const assetId = published.images[0]?.assetId ?? '';

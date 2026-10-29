@@ -201,7 +201,7 @@ test('admin edits draft variants: keeps ids and stock, adds a variant, turns one
   await page.getByLabel('Bật biến thể 1', { exact: true }).uncheck();
   await page.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/products$/);
-  await expect(page.getByText('Đã cập nhật sản phẩm nháp “Áo cotton đã sửa thử”.')).toBeVisible();
+  await expect(page.getByText('Đã cập nhật sản phẩm “Áo cotton đã sửa thử”.')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Áo cotton đã sửa thử', exact: true })).toBeVisible();
   const saved = await db.product.findUniqueOrThrow({ where: { id: draft.id }, include: { variants: { include: { inventory: true } } } });
@@ -252,12 +252,12 @@ test('two tabs editing the same draft: the stale one is rejected and only rebase
     await first.getByLabel('Tên sản phẩm', { exact: true }).fill('Tab một lưu sau khi tải mới');
     await first.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/products$/);
-    await expect(page.getByText('Đã cập nhật sản phẩm nháp “Tab một lưu sau khi tải mới”.')).toBeVisible();
+    await expect(page.getByText('Đã cập nhật sản phẩm “Tab một lưu sau khi tải mới”.')).toBeVisible();
     expect(await db.product.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({ name: 'Tab một lưu sau khi tải mới', version: 2 });
   } finally { await other.close(); }
 });
 
-test('edit page refuses products that are not drafts', async ({ page }) => {
+test('admin edits a published product and the shop shows the change at once', async ({ page }) => {
   if (!db) throw new Error('Missing test DB');
   const published = await db.product.create({ data: { name: 'Áo đã xuất bản thử', slug: slugs[4], description: '', categoryId,
     status: 'PUBLISHED', priceFrom: 250000,
@@ -268,7 +268,14 @@ test('edit page refuses products that are not drafts', async ({ page }) => {
   await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto(`/admin/products/${published.id}`);
-  await expect(page.getByText(/Chỉ sản phẩm nháp được sửa ở phần này/)).toBeVisible();
-  await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Lưu thay đổi', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();
+  await expect(page.getByText(/Khách đang xem sản phẩm này/)).toBeVisible();
+  await page.getByLabel('Tên sản phẩm', { exact: true }).fill('Áo đang bán đã sửa thử');
+  await page.getByLabel('Giá 1 (VND)', { exact: true }).fill('270000');
+  await page.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(page.getByText('Đã cập nhật sản phẩm “Áo đang bán đã sửa thử”.')).toBeVisible();
+  expect(await db.product.findUniqueOrThrow({ where: { id: published.id } })).toMatchObject({ status: 'PUBLISHED', version: 1 });
+  await page.goto(`/products/${slugs[4]}`);
+  await expect(page.getByRole('heading', { name: 'Áo đang bán đã sửa thử', exact: true })).toBeVisible();
+  await expect(page.getByText(/Giá từ 270\.000\s*₫/)).toBeVisible();
 });

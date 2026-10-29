@@ -4,7 +4,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 29/10/2026 — M3.13b (lộ trình giao Người B, agent của Người A làm theo yêu cầu): sửa lệnh nhập CSV
 
-**Phạm vi:** người dùng yêu cầu làm luôn M3.13b: sửa 2 lỗi còn mở của M3.13a đã ghi ở PR #13. Nhánh `fix/m3.13b-import-args` từ `main` (độc lập với M3.14). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử. Đã commit trên nhánh local, chưa push.**
+**Phạm vi:** người dùng yêu cầu làm luôn M3.13b: sửa 2 lỗi còn mở của M3.13a đã ghi ở PR #13. Nhánh `fix/m3.13b-import-args` từ `main`, PR #16; sau khi PR #15 (M3.14) merge, đã merge `main` vào nhánh để giải xung đột `progress.md` (giữ cả hai mục). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
 
 | File | Thay đổi |
 |---|---|
@@ -18,11 +18,37 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | Kiểm tra | Kết quả |
 |---|---|
 | `npm run typecheck` | Đạt |
-| `npm test` | 8 công cụ + 9 backend + 182 frontend |
-| `npm run test:integration` | 34/34 |
-| `npm run test:e2e:implemented` | 34/34 (41.0s) |
+| `npm test` (sau khi merge `main` có M3.14) | 8 công cụ + 9 backend + 184 frontend |
+| `npm run test:integration` | 35/35 (33 của `main` + 2 ca M3.13b) |
+| `npm run test:e2e:implemented` | 34/34 (42.6s) |
 
 Chưa sửa điểm nhỏ "test cleanup prefix cố định" của review PR #13: integration chạy tuần tự (`fileParallelism: false`) nên chưa gây lỗi. **Chạy thử:** `.\tools\npm.ps1 run import:products -- --dir <thư mục khác> --draft` → sản phẩm nhập nháp từ đúng thư mục. **Dừng chờ người dùng thử.**
+
+## Ngày 29/10/2026 — M3.14 (Người A): sửa sản phẩm đang bán hoặc đã ẩn
+
+**Phạm vi:** người dùng yêu cầu "làm luôn" M3.14 theo lộ trình P0. Backend vốn cho sửa sản phẩm mọi trạng thái (giữ ràng buộc khi đang bán); UI chặn khác nháp. Nhánh `feat/m3.14-edit-live-products` từ `main`, đã merge vào `main` qua PR #15. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Form và phần ảnh hiện cho mọi trạng thái; tiêu đề theo trạng thái (nháp/đang bán/đã ẩn); cảnh báo hàng đang bán (lưu là lên web, đổi đường dẫn làm hỏng link đã chia sẻ) và ghi chú hàng đã ẩn; khóa Xuất bản khi còn thay đổi chưa lưu áp dụng cho mọi trạng thái |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | 409 mã `PUBLISH_RULE` hiện đúng lý do từ server thay vì thông báo chung "đã thay đổi/bị trùng"; nhãn form "Sửa sản phẩm" khi không phải nháp |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.tsx` | Thông báo sau lưu "Đã cập nhật sản phẩm “…”." cho mọi trạng thái |
+| `apps/backend/src/common/database-errors.ts`, `modules/products/products.service.ts` | Thêm `publishRuleConflict` (409, mã `PUBLISH_RULE`) cho 3 ràng buộc xuất bản: sửa hàng đang bán, xuất bản thiếu điều kiện, gỡ hết ảnh hàng đang bán. Thông báo giữ nguyên |
+| `ProductEditPage.test.tsx` | Thay 2 test "không sửa được hàng không phải nháp" bằng: sửa hàng đang bán, lý do 409 hiện nguyên văn, hàng đã ẩn, tải dữ liệu mới thấy đang bán vẫn sửa được; test xuất bản → ẩn → lưu dùng version trả về (5) |
+| `apps/backend/test/catalog.integration.spec.ts` | +1 ca: sửa tên/giá/mô tả hàng đang bán thì API công khai trả ngay giá trị mới; tắt hết biến thể hoặc gỡ hết ảnh trả 409 `PUBLISH_RULE` và không đổi version |
+| `apps/frontend/e2e/products.spec.ts`, `e2e/product-status.spec.ts` | Ca "từ chối sửa hàng đã xuất bản" thành "sửa hàng đang bán, khách thấy ngay"; sau xuất bản form vẫn còn; đổi chữ thông báo |
+| `docs/local-trial-m3.md` | Mục M3.14 |
+
+**TDD:** integration mới RED đúng lý do (sửa khi đang bán đã chạy, mã lỗi còn `CONFLICT`) → GREEN 13/13 sau khi thêm `PUBLISH_RULE`. UI: 6 test RED (trang còn chặn hàng không phải nháp) → GREEN 63/63; một lần fail giữa chừng do stub của chính test trả tên cũ, đã sửa test.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 184 frontend |
+| `npm run test:integration` | 33/33 |
+| `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (42.5s) |
+
+**Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.14. **Dừng chờ người dùng thử.**
 
 ## Ngày 29/10/2026 — P0: chuyển tài liệu gốc từ demo sang shop thật
 
@@ -98,7 +124,7 @@ Tài liệu: `docs/local-trial-m3.md` mục M3.9 (2 dòng thử mới) và M3.11
 | Kiểm tra | Kết quả |
 |---|---|
 | `npm run typecheck`, `npm run build` | Đạt |
-| `npm test` | 8 công cụ + 9 backend + 182 frontend |
+| `npm test` (sau khi merge `main` có M3.14) | 8 công cụ + 9 backend + 184 frontend |
 | `npm run test:integration` | 31/31 |
 | `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (39.6s) |
 
