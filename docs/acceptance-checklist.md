@@ -8,11 +8,14 @@ Mỗi lần chạy ghi: mã → điều kiện → bước → mong đợi → t
 
 | Mã | Điều kiện/bước | Mong đợi | Thực tế | Bằng chứng | Kết luận |
 |---|---|---|---|---|---|
-| AUTH-01 | Đăng ký, verify, login, logout bằng mailbox được phép | Token một lần, phiên được tạo/thu hồi | Chưa chạy | — | Chưa đánh giá |
+| AUTH-01 | Admin login, logout, reset mật khẩu bằng mailbox được phép | Token một lần, phiên được tạo/thu hồi | Chưa chạy | — | Chưa đánh giá |
 | AUTH-02 | Reset hết hạn/đã dùng, thử phiên cũ | Từ chối và thu hồi đúng | Chưa chạy | — | Chưa đánh giá |
 | AUTH-03 | Dò tài khoản và vượt limit | Uniform response và giới hạn | Chưa chạy | — | Chưa đánh giá |
-| ACL-01 | A đọc/hủy/return đơn B | Không truy cập/thay đổi | Chưa chạy | — | Chưa đánh giá |
-| ACL-02 | Customer gọi admin, gửi role/status/paymentStatus | Từ chối, không mass assignment | Chưa chạy | — | Chưa đánh giá |
+| AUTH-04 | Đoán mật khẩu admin từ nhiều IP; đăng nhập admin thiếu/sai mã 2 bước | Giới hạn theo tài khoản chặn được; không vào admin khi thiếu TOTP | Chưa chạy | — | Chưa đánh giá |
+| ACL-01 | Dùng mã/token của đơn khác, sửa mã trong link, dò mã đơn + SĐT | Không xem/hủy được đơn người khác; thông báo đồng nhất; bị giới hạn tần suất | Chưa chạy | — | Chưa đánh giá |
+| ACL-02 | Khách/ẩn danh gọi API admin, gửi role/status/paymentStatus | Từ chối, không mass assignment | Chưa chạy | — | Chưa đánh giá |
+| GUEST-01 | Tạo đơn ảo hàng loạt từ một IP/một SĐT để giữ hết hàng | Vượt giới hạn bị từ chối, không giữ kho thêm; đơn chuyển khoản quá hạn tự giải phóng | Chưa chạy | — | Chưa đánh giá |
+| PRIV-01 | Đặt đơn rồi xem log ứng dụng/proxy | Không có tên/SĐT/địa chỉ/email/token tra cứu trong log | Chưa chạy | — | Chưa đánh giá |
 | SEC-01 | Injection/XSS trong input lưu và query | Không thực thi/đổi query trái phép | Chưa chạy | — | Chưa đánh giá |
 | SEC-02 | Write thiếu/sai CSRF hoặc Origin | Bị chặn kể cả login | Chưa chạy | — | Chưa đánh giá |
 | SEC-03 | Cookie/HTTPS/header/CORS/proxy/cache | Đúng cấu hình, private no-store | Chưa chạy | — | Chưa đánh giá |
@@ -28,19 +31,18 @@ Mỗi lần chạy ghi: mã → điều kiện → bước → mong đợi → t
 | PAY-02 | Thiếu/dư/muộn/trùng ref | Ngoại lệ đúng, không tự revive | Chưa chạy | — | Chưa đánh giá |
 | PAY-03 | COD tạo/gửi/giao chưa đối soát | Chưa PAID | Chưa chạy | — | Chưa đánh giá |
 | PAY-04 | Receipt→cancel và cancel→receipt trước deadline, gồm thu dư | Đơn vẫn hủy, nghĩa vụ đúng không trùng nguồn | Chưa chạy | — | Chưa đánh giá |
+| PAY-05 | Quét VietQR của đơn chuyển khoản bằng app ngân hàng | Đúng ngân hàng/tài khoản/tên, số tiền còn phải trả, nội dung là mã đơn; đơn chưa thành đã thu cho tới khi admin ghi nhận | Chưa chạy | — | Chưa đánh giá |
 | ORD-04 | Nhận hàng giao thất bại prepaid/COD, hàng tốt/hỏng/thiếu và nhận lặp | Restock đúng; nghĩa vụ tiền/giảm phải thu đúng; thiếu còn cần xử lý | Chưa chạy | — | Chưa đánh giá |
-| RET-01 | Quá 7d/quá qty/claim trùng đồng thời | Không cấp quyền lợi hai lần | Chưa chạy | — | Chưa đánh giá |
-| RET-02 | Nhận một phần/hỏng/nhận lại lặp | Restock đúng phần bán được một lần | Chưa chạy | — | Chưa đánh giá |
-| EXC-01 | Size đích hết hàng sau duyệt | Chờ/chuyển xử lý, không kho ảo | Chưa chạy | — | Chưa đánh giá |
-| EXC-02 | Đổi rồi trả replacement | Không revenue/refund double count | Chưa chạy | — | Chưa đánh giá |
-| EXC-03 | Replacement hủy/giao thất bại rồi resolve | needsResolution đúng, không vòng module hoặc hai replacement hoạt động | Chưa chạy | — | Chưa đánh giá |
 | REF-01 | Hoàn đồng thời hoặc quá nguồn thu | Không vượt ngân sách/obligation | Chưa chạy | — | Chưa đánh giá |
 | FAIL-01 | Mail lỗi sau commit order | Order success, notification retry | Chưa chạy | — | Chưa đánh giá |
-| FAIL-02 | Cloudinary/DB lỗi, mạng ngắt | Không half-write, retry an toàn | Chưa chạy | — | Chưa đánh giá |
-| OPS-01 | Restart sau deadline | Catch-up đúng, late money exception | Chưa chạy | — | Chưa đánh giá |
-| OPS-02 | Backup/restore sang DB khác | Đơn/kho/tiền đối chiếu đúng | Chưa chạy | — | Chưa đánh giá |
-| UI-01 | Deep refresh/Back/cart/mobile/Instagram | State/route hợp lệ, UI không vỡ | Chưa chạy | — | Chưa đánh giá |
-| ZAP-01 | ZAP có auth trên owned demo | Cảnh báo phân tích và retest | Chưa chạy | — | Chưa đánh giá |
+| FAIL-02 | Ghi file ảnh/DB lỗi, mạng ngắt | Không half-write, retry an toàn | Chưa chạy | — | Chưa đánh giá |
+| OPS-01 | Restart/deploy VPS sau deadline | Catch-up đúng, late money exception | Chưa chạy | — | Chưa đánh giá |
+| OPS-02 | Backup ngoài VPS rồi restore sang DB/thư mục khác | Đơn/kho/tiền đối chiếu đúng, ảnh hiển thị lại | Chưa chạy | — | Chưa đánh giá |
+| OPS-03 | Restart/deploy lại trên VPS | Ảnh, phiên admin hợp lệ và đơn còn nguyên; HTTPS và cookie đúng | Chưa chạy | — | Chưa đánh giá |
+| UI-01 | Deep refresh/Back/cart/checkout/mobile/mở từ Instagram | State/route hợp lệ, UI không vỡ | Chưa chạy | — | Chưa đánh giá |
+| ZAP-01 | ZAP có auth trên môi trường thuộc shop (không quét website khác) | Cảnh báo phân tích và retest | Chưa chạy | — | Chưa đánh giá |
+
+Đổi trả xử lý thủ công từ 29/10/2026 nên các ca returns/exchange tự động (RET-01/02, EXC-01..03 cũ) ra khỏi phạm vi; thêm lại khi làm luồng tự động.
 
 ## Khung ASVS
 
@@ -52,7 +54,7 @@ Tham chiếu ASVS **5.0.0 stable** theo https://asvs.owasp.org/ lúc khảo sát
 | Validation/injection/XSS/CSRF | Áp dụng | Chưa kiểm tra |
 | API/cookie/CORS/HTTPS/headers | Áp dụng | Chưa kiểm tra |
 | Upload/resources/data/log/secret/config/dependency | Áp dụng | Chưa kiểm tra |
-| Business logic kho/đơn/tiền/returns | Áp dụng | Chưa kiểm tra |
+| Business logic kho/đơn/tiền, đơn khách vãng lai | Áp dụng | Chưa kiểm tra |
 | JWT/OAuth/GraphQL | Không áp dụng theo thiết kế | Đánh giá lại nếu thêm |
 | Cổng thanh toán thật | Không tích hợp trong MVP | Kiểm soát tiền thủ công vẫn áp dụng |
 
@@ -62,8 +64,8 @@ Tham chiếu ASVS **5.0.0 stable** theo https://asvs.owasp.org/ lúc khảo sát
 - [ ] Không còn Critical/High đã xác nhận chưa xử lý; remaining findings có mức ảnh hưởng/cách xử lý/người chấp nhận.
 - [ ] Retest sau fix, không chỉ scan lại đếm cảnh báo.
 - [ ] Restore thật thành công, đối chiếu kho/tiền/đơn.
-- [ ] Ghi giới hạn cold start, job khi asleep, quota và email không sender domain.
-- [ ] Hướng dẫn admin/deploy/backup và quyền sở hữu dịch vụ được bàn giao.
-- [ ] Trước bán thật duyệt lại chính sách/PII/retention/MFA/hạ tầng/email và trách nhiệm vận hành.
+- [ ] Ghi giới hạn đã biết: một instance trên VPS, dung lượng ổ đĩa/ảnh, quota email, rate limit reset khi restart.
+- [ ] Hướng dẫn admin/deploy/backup và quyền sở hữu dịch vụ (VPS, domain, email, tài khoản ngân hàng) được bàn giao cho chủ shop.
+- [ ] Trước mở bán: chính sách giao hàng/đổi trả/thanh toán/bảo mật thật đã đăng; thông tin người bán hiển thị; thủ tục website bán hàng với Bộ Công Thương do chủ shop hoàn tất; MFA admin bật; email gửi từ domain riêng; backup ngoài VPS đã khôi phục thử.
 
 Không tuyên bố an toàn tuyệt đối, đạt toàn bộ ASVS hoặc production-ready nếu chưa có bằng chứng tương ứng.

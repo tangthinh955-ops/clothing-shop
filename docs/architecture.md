@@ -13,12 +13,12 @@ React UI → API client → Controller (DTO/guard) → Service (nghiệp vụ/ow
 | Inventory | Toàn bộ quy tắc thay đổi kho và ledger | Prisma |
 | Payments | Thu, phân bổ, nghĩa vụ hoàn, hoàn và đối soát | Prisma |
 | Orders | Tạo/hủy/xuất/giao, payment/expiry coordination, giao thất bại | Inventory/Payments/Products/Settings |
-| Returns | Điều kiện, claim, review/receive/inspect/resolve | Orders/Inventory/Payments |
-| Uploads/Mail/Settings | Ảnh, gửi thông báo, cấu hình | Prisma + dịch vụ ngoài khi cần |
+| Returns (ngoài phạm vi mở bán) | Điều kiện, claim, review/receive/inspect/resolve — chỉ làm khi chủ shop yêu cầu luồng tự động | Orders/Inventory/Payments |
+| Uploads/Mail/Settings | Ảnh, gửi thông báo, cấu hình (phí giao, hạn chuyển khoản, tài khoản VietQR) | Prisma + dịch vụ ngoài khi cần |
 
 Payments không gọi Orders; Orders không import Returns. Dùng cùng Prisma.TransactionClient giữa các service trong một nghiệp vụ. Không dùng forwardRef che dependency vòng. Không Repository bọc Prisma thuần túy.
 
-Returns đọc ExchangeLink và trạng thái replacement để suy ra needsResolution; giữ ACTION_PENDING đến giao replacement thành công hoặc hoàn xong. Resolve do Returns điều phối dưới khóa lineage; Orders không gọi ngược Returns hoặc cập nhật bảng Returns. Nhận lại giao thất bại do Orders xử lý cả kho và nghĩa vụ tiền theo business-rules.
+Từ 29/10/2026 đổi trả xử lý thủ công (business-rules § Đổi/trả). Nếu sau này làm Returns tự động: Returns đọc ExchangeLink và trạng thái replacement để suy ra needsResolution; Orders không gọi ngược Returns hoặc cập nhật bảng Returns. Nhận lại giao thất bại luôn do Orders xử lý cả kho và nghĩa vụ tiền theo business-rules.
 
 ## Cấu trúc và trách nhiệm
 
@@ -58,24 +58,22 @@ File nhiều trách nhiệm hoặc khoảng trên 300 dòng cần đánh giá t�
 
 ## Sitemap, UI và state
 
-Public: `/`, `/shop`, `/products/:slug`, `/cart`, `/size-guide`, `/contact`, `/shipping`, `/returns-policy`.
+Public: `/`, `/shop`, `/products/:slug`, `/cart`, `/checkout`, `/orders/lookup`, `/orders/:code` (link có token tra cứu), `/size-guide`, `/contact`, `/shipping`, `/returns-policy`, `/privacy` (chính sách bảo mật), trang thông tin người bán.
 
-Auth: `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`.
+Auth: `/login` (admin), `/verify-email`, `/forgot-password`, `/reset-password`. `/register` và tài khoản khách của M2 ẩn khỏi cửa hàng từ 29/10/2026; code giữ lại cho nhu cầu sau.
 
-Customer: `/checkout`, `/account`, `/account/orders`, `/account/orders/:id`, `/account/returns/:id`.
-
-Admin: `/admin/{products,categories,inventory,orders,payments,refunds,returns,reports,settings}`.
+Admin: `/admin/{products,categories,inventory,orders,payments,refunds,reports,settings}`. Không có `/admin/returns` khi mở bán.
 
 ```text
 AppProviders (Theme, Query, Auth, Cart)
 └── Router
-    ├── StoreLayout (Header, Navigation, CartBadge, Footer)
+    ├── StoreLayout (Header, Navigation, CartBadge, Footer có thông tin người bán)
     │   ├── CatalogPage → Filters, ProductGrid → ProductCard, Pagination
     │   ├── ProductDetail → Gallery, VariantSelector, QuantityInput
     │   ├── CartPage → CartItems, Summary
-    │   ├── CheckoutPage → AddressForm, PaymentMethod, OrderReview
-    │   └── Account → OrderList/Detail, ReturnForm/Detail
-    ├── AuthLayout → AuthPage → AuthForm
+    │   ├── CheckoutPage → ContactAddressForm, PaymentMethod, OrderReview
+    │   └── OrderLookup / OrderDetail → Timeline, PaymentSummary (VietQR), CancelAction
+    ├── AuthLayout → AuthPage → AuthForm (admin đăng nhập)
     └── AdminLayout → FeaturePage → Table/Cards, Editor, Actions
 ```
 
@@ -93,17 +91,19 @@ Refresh deep URL phải tới SPA. HTML ban đầu có metadata chung; `/share/p
 - Cookie deploy HttpOnly/Secure/SameSite=Lax/host-only, prefix __Host- phù hợp. Local HTTP dùng cấu hình cookie local riêng.
 - Khách absolute 7d/idle 24h; admin absolute 12h/idle 30min. Rotate sau login; logout/reset/vô hiệu hóa thu hồi phiên theo quy tắc.
 - CSRF synchronizer token + kiểm tra Origin cho write, kể cả login với pre-session. Không mutation qua GET.
-- Bản free: Render Static public origin; rewrite /api/* và /share/* tới API, trước /* → index.html. FE gọi URL tương đối.
+- VPS: một reverse proxy HTTPS (ví dụ Caddy hoặc nginx) là public origin duy nhất; phục vụ SPA đã build, chuyển `/api/*` (và `/share/*` khi có) tới backend nội bộ, còn lại → `index.html`. FE gọi URL tương đối nên cookie cùng origin, không cần CORS. Backend chỉ nghe trong mạng nội bộ của VPS, bật `TRUST_PROXY` đúng số hop.
 - Phải thử forwarding method/body/Set-Cookie/headers, CSRF và no-store trên deploy; không tự coi proxy đã đạt từ tài liệu.
-- Nếu dùng domain riêng sau này: cùng site shop.example/api.example, khác origin cần credentials và CORS allowlist chính xác.
+- Proxy đặt header bảo mật cho SPA: CSP, `frame-ancestors 'none'`, HSTS, `nosniff`.
 - Role/owner ở backend mỗi endpoint; không cho client chọn role/payment status; DTO whitelist + forbid unknown, query sort allowlist, giới hạn body/page.
-- Rate limit ban đầu: login 5/min theo IP và tài khoản; reset/resend 3/15min/tài khoản; create order 5/min/user; upload 10 ảnh/min/admin. Ghi hạn chế store khi restart/scale.
-- Swagger local bật, deploy tắt mặc định hoặc bảo vệ ADMIN; bảo vệ cả JSON specification. Admin cần đánh giá MFA trước bán thật.
+- Rate limit ban đầu: login 5/min theo IP + email **và** giới hạn theo tài khoản độc lập IP (M3.17); reset/resend 3/15min/tài khoản; tạo đơn khách vãng lai theo IP và SĐT, tra cứu đơn theo IP (con số chốt ở M4.3/M4.4); upload 10 ảnh/min/admin. Một instance trên VPS nên store in-memory chấp nhận được; restart làm reset bộ đếm.
+- Swagger local bật, deploy tắt. ADMIN bắt buộc xác thực 2 bước TOTP trước mở bán (M3.17).
 - Secret chỉ server, không VITE_*. Log che cookie/token/hash/password/address. Không stack trace/hạ tầng trong error response.
 
 ## Dữ liệu đích
 
-User, Session, AuthToken; Category, Product, Variant, ProductImage; Inventory, InventoryMovement; Order, OrderItem, OrderStatusHistory, CancellationRequest; Payment, PaymentAllocation, RefundObligation, Refund; ReturnRequest/Item, ExchangeLink; ShopSettings, UploadAsset, NotificationDelivery, IdempotencyRecord, AuditLog.
+User, Session, AuthToken; Category, Product, Variant, ProductImage; Inventory, InventoryMovement; Order, OrderItem, OrderStatusHistory, CancellationRequest; Payment, PaymentAllocation, RefundObligation, Refund; ShopSettings, UploadAsset, NotificationDelivery, IdempotencyRecord, AuditLog. ReturnRequest/Item và ExchangeLink chỉ tạo khi làm lại đổi trả tự động.
+
+Order của khách vãng lai: `userId` nullable; snapshot tên, SĐT đã chuẩn hóa, địa chỉ, email tùy chọn; `code` (mã đơn, unique) và băm của token tra cứu. ShopSettings: phí giao, hạn chuyển khoản, ngân hàng/số tài khoản/tên chủ tài khoản cho VietQR, thông tin người bán, `version`.
 
 Tiền numeric(14,0), integer VND và API safe number trong giới hạn nghiệp vụ; thời gian UTC timestamptz, API ISO UTC, UI Asia/Ho_Chi_Minh. Snapshot tên/SKU/size/màu/giá/địa chỉ/phí/policy. Không hard-delete lịch sử. FK/check/unique cần migration SQL khi Prisma không mô tả đủ. Index theo query, không tự thêm hàng loạt.
 
@@ -129,12 +129,11 @@ Mutation nghiệp vụ cần `Idempotency-Key`, update cần expectedVersion. Re
 | Admin Auth | GET /admin/access | → allowed boolean; kiểm chứng quyền cho trang vào admin M2, không thay đổi dữ liệu |
 | Public Catalog | GET /categories, /products, /products/:slug | filter/sort/page → public catalog; 400/404 |
 | Public Settings | GET /shop-settings/public | → fees/policy public only |
-| Customer | POST /checkout/quote | items/address/method → quoteId, currency, subtotal, shippingFee, total, expiresAt, settingsVersion; 400/409 |
-| Customer Orders | POST /orders | quoteId/items/address/method → snapshot order; 400/401/409 |
-| Owner Orders | GET /orders, /orders/:id | → owned orders; 401/404 |
-| Owner Orders | POST /orders/:id/cancel, /cancellation-requests | reason/version → order/request; 409 |
-| Owner Returns | POST /orders/:id/returns | type/items/qty/reason/targetSize → claim; 400/409 |
-| Owner Returns | GET /returns/:id, POST /returns/:id/withdraw | → request; 404/409 |
+| Public Checkout | POST /checkout/quote | items/method → quoteId, currency, subtotal, shippingFee, total, expiresAt, settingsVersion; 400/409 |
+| Public Orders | POST /orders | Idempotency-Key + quoteId/items/contact/address/method → mã đơn + link tra cứu (token chỉ trả một lần); 400/409/429 |
+| Public Orders | GET /orders/:code (token trong header/body, không trong log), POST /orders/lookup | token hoặc mã đơn + SĐT → đơn đó (kèm VietQR nếu chuyển khoản); 404 đồng nhất/429 |
+| Public Orders | POST /orders/:code/cancel, /cancellation-requests | token + reason/version → order/request; 404/409 |
+| (Ngoài phạm vi) Returns | POST /orders/:id/returns, GET /returns/:id | chỉ khi làm lại đổi trả tự động |
 | Admin Categories | GET/POST/PATCH /admin/categories[/:id] | category fields → category; 400/409 |
 | Admin Products | GET/POST/PATCH /admin/products[/:id] | catalog/variant fields → admin product; 400/409 |
 | Admin Products | POST /admin/products/:id/publish, /hide | version → state; 409 |
@@ -148,20 +147,26 @@ Mutation nghiệp vụ cần `Idempotency-Key`, update cần expectedVersion. Re
 | Admin Orders | POST /admin/orders/:id/cancel, /cancellation-decisions | reason/decision/version → result; 409 |
 | Admin Orders | POST /admin/orders/:id/delivery-failure, /return-receipt | failure/inspection → order+stock; 409 |
 | Admin Orders/Payments | POST /admin/orders/:id/payments | amount/time/method/account/reference/note → receipt+allocation+exception; 409 |
-| Admin Returns | GET /admin/returns[/:id] | → list/detail |
-| Admin Returns | POST /admin/returns/:id/review, /receive, /inspect | version/reason/per-line qty/result → request; 409 |
-| Admin Returns | POST /admin/returns/:id/replacement, /convert-to-refund | decision/target → replacement/obligation; 409 |
+| (Ngoài phạm vi) Admin Returns | /admin/returns… review/receive/inspect/replacement | chỉ khi làm lại đổi trả tự động |
 | Admin Payments | GET /admin/payments, /refund-obligations, /refunds | → ledger |
 | Admin Payments | POST /admin/refund-obligations/:id/refunds | amount/status/time/reference → manual result; 409 |
 | Admin Settings | GET/PATCH /admin/settings | allowlisted settings/version → settings; 400/409 |
 | Admin Reports | GET /admin/reports/summary | date range → defined metrics; 400 |
 | Ops | GET /health/live, /health/ready | minimal health; 503 if not ready |
 
-## Deploy, chi phí và giới hạn đã khảo sát
+## Deploy trên VPS (quyết định 29/10/2026)
 
-Ưu tiên Render Static Free + Render API Free + Neon Free + Cloudinary Free + Resend Free. Không Render Postgres Free lâu dài vì hết hạn 30 ngày. API free ngủ sau 15min; Neon free100CUh/1GB, Cloudinary25 shared credits, Resend3k/month100/day. Chưa có sender domain thì Resend chỉ gửi thử tới chủ tài khoản; không coi đã nghiệm thu email mọi tester.
+Chủ shop thuê VPS; agent không tự thuê/mua. Bố cục dự kiến trên một VPS (chi tiết chốt ở M3.16/M6):
 
-Phương án thay thế Render API $7 + PostgreSQL $6 ≈ $13/tháng; domain .com Cloudflare được khảo sát $10.46/năm. Quy đổi dự toán 26.000đ/USD, chưa thuế/vượt quota, không phải tỷ giá ngân hàng. Không tự mua/kích hoạt. Giá phải kiểm tra lại trước khi dùng.
+- Reverse proxy HTTPS (Caddy/nginx, chứng chỉ tự gia hạn) → SPA tĩnh + `/api` tới backend Node chạy như service tự khởi động lại.
+- PostgreSQL trên cùng VPS (hoặc dịch vụ quản lý nếu chủ shop chọn), chỉ nghe nội bộ; `migrate deploy` trước khi bật bản mới.
+- Ảnh lưu trên ổ đĩa VPS tại đường dẫn tuyệt đối cấu hình được (không phụ thuộc thư mục làm việc); proxy hoặc backend phục vụ ảnh công khai với cache dài.
+- Backup hằng ngày `pg_dump` + thư mục ảnh ra **ngoài VPS** (dịch vụ lưu trữ khác), có mã hóa/kiểm soát truy cập; diễn tập khôi phục sang DB khác trước mở bán.
+- Email gửi qua Resend (hoặc tương đương) với domain riêng đã cấu hình SPF/DKIM/DMARC; chưa có domain thì email chỉ tới chủ tài khoản.
+- Server chạy liên tục nên quét hết hạn chuyển khoản chạy định kỳ; vẫn giữ catch-up lúc khởi động cho restart/deploy.
+- Bảo vệ VPS: SSH chỉ bằng key, tường lửa chỉ mở 22/80/443, cập nhật bảo mật tự động; báo động khi `/api/v1/health/ready` lỗi.
+
+Khảo sát hạ tầng miễn phí cũ (Render/Neon/Cloudinary, 23/10/2026) không còn là phương án chính: free tier ngủ sau 15 phút và ổ đĩa tạm mất ảnh khi deploy lại. Nguồn tham khảo giữ lại bên dưới.
 
 Nguồn chính thức khảo sát ngày 23/10/2026:
 - https://render.com/docs/free
@@ -174,7 +179,7 @@ Nguồn chính thức khảo sát ngày 23/10/2026:
 - https://pricing.registrar.cloudflare.com/
 - https://asvs.owasp.org/
 
-Health/log/env fail-fast, migration review, seed tường minh, admin riêng không password mặc định, backup ngoài môi trường và restore thật. Không cam kết RPO/RTO free demo. App rollback chỉ khi schema tương thích; không tự rollback data.
+Health/log/env fail-fast, migration review, seed tường minh, admin riêng không password mặc định, backup ngoài môi trường và restore thật. RPO mục tiêu ≤ 24 giờ theo backup hằng ngày; chủ shop chốt lại RPO/RTO ở M6. App rollback chỉ khi schema tương thích; không tự rollback data.
 
 ## Dependency và phiên bản
 
@@ -182,4 +187,4 @@ Health/log/env fail-fast, migration review, seed tường minh, admin riêng kh�
 
 Dependency chỉ thêm kèm lý do: TanStack Query (server cache), DTO validator/transformer (runtime), session+PGstore (phiên), Argon2 (hash), Prisma PGadapter/driver, Nest scheduler (jobs), Vitest/React test/Supertest/Playwright (test). Chưa Redux/Axios/shared-contract library.
 
-Local M2 dùng adapter preview mail riêng, không cần tài khoản ngoài. Playwright chỉ test trình duyệt, concurrently chỉ dev watch TS + API; không đưa vào runtime sản phẩm. Guard hiện có hai bucket IP và IP+email, login 5/min trên identity, reset/resend/register 3/15min trên identity; IP chung 120/min để không khóa cả khách dùng proxy chung. Store in-memory có hạn chế restart/scale, cần đánh giá lại trước bán thật.
+Local M2 dùng adapter preview mail riêng, không cần tài khoản ngoài. Playwright chỉ test trình duyệt, concurrently chỉ dev watch TS + API; không đưa vào runtime sản phẩm. Guard hiện có hai bucket IP và IP+email, login 5/min trên identity, reset/resend/register 3/15min trên identity; IP chung 120/min để không khóa cả khách dùng proxy chung. Store in-memory có hạn chế restart/scale; chấp nhận được với một instance trên VPS, cần store dùng chung nếu sau này chạy nhiều instance.

@@ -2,6 +2,29 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 29/10/2026 — P0: chuyển tài liệu gốc từ demo sang shop thật
+
+**Bối cảnh:** chủ shop xác nhận website là kênh bán hàng thật, không còn là demo. Đánh giá lại M1–M3 theo chuẩn bán thật (nghiệp vụ/pháp lý, bảo mật, vận hành). Giữ nguyên nền tảng auth/session/CSRF/role, kho có lịch sử, catalog. Phát hiện chặn mở bán: upload bị tắt ở production và chỉ lưu ổ đĩa local; API chỉ nghe `127.0.0.1`; `TRUST_PROXY` không bắt buộc; chưa có deploy/backup; admin chỉ có mật khẩu, giới hạn đăng nhập theo IP + email; UI không cho sửa sản phẩm đã xuất bản (backend cho phép); chính sách và banner còn ghi demo; `seed:demo` chạy được trên production.
+
+**Quyết định của chủ shop:** đặt hàng không cần đăng ký; deploy trên VPS; chuyển khoản hiển thị VietQR; đổi trả xử lý thủ công; phí giao 30.000đ. Theo đề xuất được duyệt: hạn chuyển khoản 2 giờ (sửa trong Cài đặt), ẩn Đăng ký/Đăng nhập của khách trên cửa hàng.
+
+**Phạm vi đã duyệt:** chỉ sửa tài liệu, không đổi code.
+
+| File | Thay đổi |
+|---|---|
+| `docs/plan.md` | Mục tiêu shop thật; ràng buộc mới (dữ liệu khách thật, VPS, chính sách đã chốt); mục "Chuyển sang shop thật" với bảng quyết định và lộ trình P0 → M3.13b–M3.17 → M4 → M6 → mở bán; bảng mốc và phân công A/B mới; M4 theo đơn khách vãng lai + VietQR; M5 ngoài phạm vi; M6 trên VPS; M7 rút gọn |
+| `docs/business-rules.md` | Bỏ "đặc tả demo"; thêm mục đơn khách vãng lai (thông tin bắt buộc, mã đơn + token tra cứu băm, chống đơn ảo) và dữ liệu cá nhân của khách; hạn chuyển khoản 2 giờ + VietQR; đổi trả thủ công, thiết kế tự động giữ làm tham khảo |
+| `docs/architecture.md` | Sitemap không còn tài khoản khách/returns, thêm tra cứu đơn và trang chính sách bảo mật; API đơn công khai theo token; Order/ShopSettings mới; deploy VPS (reverse proxy, ảnh trên ổ đĩa + backup ngoài VPS, bảo vệ VPS); rate limit và MFA admin |
+| `AGENTS.md` | Mục 5: shop thật, không đưa dữ liệu khách thật vào local/log/chat, không đụng production khi chưa được yêu cầu, `seed:demo` không chạy production |
+| `README.md` | Mô tả shop thật trên VPS; điểm dừng mới; `seed:demo` chỉ dùng local |
+| `docs/acceptance-checklist.md` | Bỏ ca returns/exchange tự động; thêm AUTH-04 (MFA/đoán mật khẩu nhiều IP), ACL-01 theo token/mã đơn, GUEST-01 (đơn ảo), PRIV-01 (PII trong log), PAY-05 (VietQR), OPS-03 (restart VPS); cổng mở bán gồm chính sách thật, thông tin người bán, thủ tục Bộ Công Thương |
+
+**Phát hiện thêm khi rà:** PR #13 (M3.13a import CSV, Người B) đã merge nhưng progress của PR ghi còn 2 lỗi mở (tham số `--dir`/`--draft` từ root; xuất bản vào danh mục đang tắt). Đưa vào lộ trình thành M3.13b; các phần chuẩn bị bán thật đánh số M3.14–M3.17 để không trùng.
+
+**Kiểm tra:** rà diff; quét lại "demo/dữ liệu giả/miễn phí/free/Cloudinary" trong 6 tài liệu: còn lại là tên lệnh `seed:demo`, câu "không còn là demo" và nguồn khảo sát hạ tầng cũ đã ghi rõ không còn dùng. Không chạy test vì không đổi code.
+
+**Điểm dừng:** chờ người dùng đọc lại tài liệu và duyệt. Phần tiếp theo cần kế hoạch riêng: M3.14 (A, sửa sản phẩm đang bán) và M3.13b (B, sửa import).
+
 ## Ngày 29/10/2026 — Chuẩn bị commit và PR M3.13a vào main
 
 - Theo yêu cầu commit và MR của người dùng, fetch `origin` và xác nhận M3.9–M3.12 đã vào `main` qua PR #12 (`29fdd89`). Tạo nhánh `codex/m3.13a-product-import` từ `origin/main`; PR mới chỉ chứa CLI import CSV M3.13a, test, npm scripts, ignore dữ liệu local và tài liệu đang có. Không nhận các thay đổi có sẵn này là phần triển khai trong lượt Git.

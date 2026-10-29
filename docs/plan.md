@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Clothing Shop
 
-**Mục tiêu:** Một website demo một shop có frontend, backend, PostgreSQL và upload ảnh thật; có thể kiểm thử, deploy và bàn giao.
+**Mục tiêu:** Website bán hàng **thật** của shop quần áo (khách chủ yếu đến từ Instagram): frontend, backend, PostgreSQL và ảnh thật, chạy trên VPS của chủ shop, nhận đơn của khách thật. Từ 29/10/2026 dự án không còn là bản demo; quyết định và lộ trình mới ở mục [Chuyển sang shop thật](#chuyển-sang-shop-thật-29102026).
 
 **Kiến trúc:** React SPA → API client → Nest Controller/DTO/Guard → Service → Prisma → PostgreSQL. Backend là modular monolith. Hai app build/deploy riêng; chưa thêm Repository, Redis, queue, microservices, GraphQL hoặc Next.js.
 
@@ -15,15 +15,44 @@
 - npm workspaces, một lockfile ở root; kiểm tra phiên bản trước cài, khóa major trong tính năng.
 - Backend tính giá/phí/tổng, kiểm tra quyền sở hữu; không dùng `any` che lỗi.
 - Mọi thay đổi kho đi qua Inventory; nghiệp vụ nhiều module dùng chung transaction; không external I/O trong transaction.
-- Dữ liệu giả, dịch vụ miễn phí ưu tiên; không kích hoạt gói trả phí.
-- Không reset DB có đơn, seed không tự phá dữ liệu khi startup; không công khai mật khẩu admin mặc định.
-- Các chính sách 30.000đ, 30 phút, 7 ngày là giả định demo, chưa được shop duyệt.
+- Dữ liệu khách là dữ liệu thật: chỉ thu thông tin cần để giao hàng, không ghi PII vào log/tài liệu/chat, backup có kiểm soát. Hạ tầng là VPS chủ shop thuê; agent không tự mua hoặc kích hoạt dịch vụ trả phí khác.
+- Không reset DB có đơn, seed không tự phá dữ liệu khi startup; không công khai mật khẩu admin mặc định; dữ liệu demo (`seed:demo`) không được vào production.
+- Chính sách đã chốt ngày 29/10/2026: đặt hàng không cần tài khoản; phí giao cố định 30.000đ/đơn; hạn chuyển khoản 2 giờ (sửa trong Cài đặt); chuyển khoản hiển thị VietQR; đổi trả xử lý thủ công.
+
+## Chuyển sang shop thật (29/10/2026)
+
+Chủ shop xác nhận website là kênh bán thật, không còn là demo. Đánh giá lại M1–M3 theo chuẩn bán thật: nền tảng auth/session/CSRF/role, kho có lịch sử và catalog giữ nguyên; còn thiếu bán hàng (M4), hạ tầng chạy thật (cấu hình VPS, deploy, backup) và một số việc chặn mở bán.
+
+| Quyết định | Ảnh hưởng thiết kế |
+|---|---|
+| Đặt hàng không cần đăng ký | Đơn khách vãng lai: tên, SĐT, địa chỉ bắt buộc, email tùy chọn; truy cập đơn bằng link bí mật hoặc mã đơn + SĐT; chống đơn ảo giữ kho bằng giới hạn theo IP/SĐT và số đơn đang chờ mỗi SĐT. Ẩn Đăng ký/Đăng nhập của khách trên cửa hàng; trang đăng nhập giữ cho admin |
+| Deploy trên VPS | Server chạy liên tục nên quét hết hạn chạy đúng giờ; ảnh lưu trên ổ đĩa VPS (đường dẫn cấu hình được) và **bắt buộc backup DB + ảnh ra ngoài VPS hằng ngày**; PostgreSQL không mở ra internet; một instance nên rate limit trong RAM chấp nhận được |
+| Chuyển khoản hiển thị VietQR | Cài đặt lưu ngân hàng, số tài khoản, tên chủ tài khoản; mã QR (số tiền + mã đơn) tạo trên server của shop; admin vẫn xác nhận tiền về |
+| Đổi trả thủ công | M5 tự động ra khỏi phạm vi mở bán; admin dùng điều chỉnh kho có lý do khi nhận lại hàng |
+| Phí giao 30.000đ | Chính sách thật, lưu trong Cài đặt và snapshot vào đơn |
+
+Lộ trình đến khi mở bán (mỗi phần vẫn gửi kế hoạch riêng và chờ duyệt trước khi code):
+
+| Mã | Thay đổi người dùng thấy được | Người |
+|---|---|---|
+| P0 | Tài liệu gốc chuyển từ demo sang shop thật | A |
+| M3.13b | Sửa 2 lỗi còn mở của lệnh nhập CSV M3.13a: chuyển tham số `--dir`/`--draft` từ root, không xuất bản vào danh mục đang tắt | B |
+| M3.14 | Admin sửa được sản phẩm đang bán (backend đã cho phép, UI đang chặn) | A |
+| M3.15 | Bỏ dấu vết demo trên cửa hàng; `seed:demo` từ chối chạy ở production; trang thông tin người bán, chính sách bảo mật và các chính sách thật (chủ shop cung cấp nội dung) | B |
+| M3.16 | Cấu hình chạy trên VPS: host lắng nghe cấu hình được, bắt buộc `TRUST_PROXY` ở production, bật upload với thư mục ảnh tuyệt đối, cache ảnh công khai | A |
+| M3.17 | Bảo vệ admin: giới hạn đăng nhập theo tài khoản (không chỉ IP) và xác thực 2 bước TOTP | B |
+| M4.1–M4.11 | Bán hàng: cài đặt shop, giỏ + tạm tính, đặt hàng COD không cần tài khoản, tra cứu/hủy đơn, admin xử lý đơn, VietQR + ghi nhận tiền, hết hạn + tiền muộn, đơn Instagram, giao thất bại, email, E2E chốt (chi tiết ở mục M4) | A/B |
+| M6.1–M6.3 | Deploy VPS + HTTPS + deploy sau CI; backup ngoài VPS + diễn tập khôi phục; bảo vệ VPS + báo động khi web sập | A/B |
+| Mở bán | Khi xong các phần trên, chính sách thật đã đăng, thủ tục website bán hàng với Bộ Công Thương do chủ shop hoàn tất | Chủ shop |
+| Sau mở bán | Link sản phẩm hiện ảnh/tên khi chia sẻ Instagram/Zalo, nhật ký hoạt động admin, kiểm thử bảo mật định kỳ (M7 rút gọn) | A/B |
 
 ## Thời gian và bản trình diễn
 
 Người dùng có 10 giờ/tuần. Ước lượng intern: 310–460 giờ, cộng 25% dự phòng: 388–575 giờ, khoảng 39–58 tuần. Ước lượng lại sau hai mốc đầu theo tốc độ thực tế; không coi đây là hạn bàn giao cam kết.
 
 Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy thử. Không hứa hoàn thành toàn bộ kho/tiền/đổi trả trong một tháng. Bản trình diễn danh mục sớm nếu được ưu tiên không thay thế nghiệm thu nghiệp vụ.
+
+Sau quyết định 29/10/2026 (bỏ M5 tự động, M7 rút gọn), phần còn lại đến mở bán ước khoảng 130–190 giờ cho hai người; con số chỉ để sắp ưu tiên, không phải hạn cam kết.
 
 ## Các mốc
 
@@ -32,10 +61,11 @@ Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy
 | M1 | Quy tắc, UI/state, API/database, checklist nhất quán | 24–36 |
 | M2 | Tài khoản/session/role chạy FE–API–DB local; cấu hình CI; deploy thử hoãn theo yêu cầu local trước | 40–60 |
 | M3 | Admin đăng hàng/ảnh, catalog công khai, kho có lịch sử | 48–68 |
-| M4 | Giỏ, quote, đơn, COD/chuyển khoản, hủy, đơn Instagram | 70–100 |
-| M5 | Đổi/trả một phần, hoàn tiền, đơn thay thế, kiểm tra đồng thời | 64–92 |
-| M6 | Deploy đầy đủ, restart, smoke test, backup/restore và rollback | 24–40 |
-| M7 | ASVS/ZAP/E2E, sửa và kiểm tra lại, nghiệm thu/bàn giao | 40–64 |
+| Chuẩn bị bán thật | M3.13b–M3.17: sửa import, sửa hàng đang bán, bỏ demo + chính sách thật, cấu hình VPS, bảo vệ admin | 30–45 |
+| M4 | Giỏ, quote, đơn khách vãng lai, COD/chuyển khoản VietQR, hủy, đơn Instagram, giao thất bại | 75–105 |
+| M5 | Ngoài phạm vi mở bán: đổi trả xử lý thủ công (quyết định 29/10/2026) | 0 |
+| M6 | Deploy VPS, HTTPS, restart, smoke test, backup ngoài VPS/khôi phục và rollback — làm ngay sau M4, trước mở bán | 24–40 |
+| M7 | Rút gọn: kiểm thử bảo mật trước mở bán; ASVS/ZAP đầy đủ, link preview, nhật ký admin sau mở bán | 20–40 |
 
 ## Nhịp triển khai và chạy thử từng phần
 
@@ -47,15 +77,17 @@ Tháng đầu khoảng 40 giờ: ưu tiên thiết kế, nền tảng và deploy
 
 ## Phân công hai người
 
-Từ 29/10/2026 phần còn lại chia cho hai người. Chi tiết M3 ở [m3-implementation-plan.md](m3-implementation-plan.md#phân-công-hai-người-29102026). M4–M7 dưới đây là khung, sẽ chia lại thành `Mx.y` và duyệt trước khi bắt đầu mỗi mốc.
+Từ 29/10/2026 phần còn lại chia cho hai người. Chi tiết M3 ở [m3-implementation-plan.md](m3-implementation-plan.md#phân-công-hai-người-29102026). Phân công dưới đây theo lộ trình shop thật; từng phần vẫn chia nhỏ và duyệt trước khi bắt đầu.
 
-| Mốc | Người A | Người B |
+| Giai đoạn | Người A | Người B |
 |---|---|---|
-| M4.0 | Schema/migration Order, Payment, Settings, Idempotency | Review migration trước merge |
-| M4 | Khách: giỏ local → quote → tạo đơn COD giữ kho atomic → đơn của tôi → hủy | Admin/tiền: chuyển trạng thái đơn, chuyển khoản (deadline, ghi khoản thu, sweep hết hạn), đơn Instagram, email ngoài transaction |
-| M5 | Trả hàng: yêu cầu → duyệt → nhận/kiểm → restock | Nghĩa vụ hoàn/refund, đơn thay thế đổi size |
-| M6 | Deploy + smoke HTTPS/proxy | Backup/restore + rollback |
-| M7 | E2E, mobile, UI Instagram | ASVS/ZAP, hướng dẫn admin |
+| Chuẩn bị bán thật | P0, M3.14 sửa hàng đang bán, M3.16 cấu hình VPS | M3.13b sửa import, M3.15 bỏ demo + chính sách, M3.17 bảo vệ admin |
+| M4 | M4.1 cài đặt, M4.3 đặt hàng COD, M4.5 admin xử lý đơn, M4.8 đơn Instagram, M4.9 giao thất bại | M4.2 giỏ + tạm tính, M4.4 tra cứu/hủy đơn, M4.6 VietQR + ghi nhận tiền, M4.7 hết hạn + tiền muộn, M4.10 email |
+| M4.11 | E2E toàn luồng + chốt (chung) | E2E toàn luồng + chốt (chung) |
+| M6 | M6.1 deploy VPS + HTTPS + deploy sau CI | M6.2 backup/khôi phục, M6.3 bảo vệ VPS + báo động |
+| M7 rút gọn | E2E mobile/Instagram, link preview | Kiểm thử bảo mật, hướng dẫn admin |
+
+M4.1 → M4.2 → M4.3 làm tuần tự (xương sống); sau M4.3 hai người song song. Nhiều phần thêm migration (M4.1, M4.3, M4.6, M4.7): merge theo thứ tự và rebase trên `main` trước khi tạo migration mới.
 
 Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có migration tại một thời điểm.
 
@@ -94,52 +126,50 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 - State: filter trên URL, dữ liệu server ở query cache, form/ảnh tạm ở editor.
 - Flow: upload ngoài transaction → asset tạm → lưu sản phẩm/gắn ảnh; cập nhật kho qua Inventory.
 - Hoàn thành khi admin sửa hàng không deploy lại, ảnh thật tồn tại và kho có lịch sử.
+- M3.13a (Người B) đã thêm lệnh nhập sản phẩm thật từ CSV (`import:products`); còn 2 lỗi mở sửa ở M3.13b.
+- Chuẩn bị bán thật (sau đánh giá 29/10/2026), xem bảng ở mục [Chuyển sang shop thật](#chuyển-sang-shop-thật-29102026):
+- [ ] M3.13b sửa import CSV; M3.14 sửa sản phẩm đang bán; M3.15 bỏ demo + chính sách thật; M3.16 cấu hình VPS; M3.17 bảo vệ admin.
 
 ### M4 — Bán hàng
 
-- [ ] [CREATE] orders/payments/settings và features cart/checkout/account orders/admin orders/payments; [MODIFY] Mail bổ sung notification của đơn.
+- [ ] [CREATE] orders/payments/settings và features cart/checkout/order lookup/admin orders/payments; [MODIFY] Mail bổ sung notification của đơn.
 - [ ] [MODIFY] schema/migration; thêm idempotency và lịch sử.
-- [ ] Test PostgreSQL thật: hàng cuối, tạo lặp, hủy/xuất, xác nhận tiền/hết hạn, trùng khoản thu.
-- [ ] Checkout → AddressForm/PaymentMethod/OrderReview; OrderDetail → Timeline/PaymentSummary/CancelAction.
-- State: giỏ local không PII/token; quote/đơn server; form địa chỉ trong page, không persist localStorage.
-- Flow: quote không giữ kho → create recheck → giữ atomic → xác nhận/đóng gói/xuất; hủy giải phóng và tạo nghĩa vụ hoàn.
-- Hoàn thành khi luồng COD/chuyển khoản/Instagram đúng, không vượt kho hoặc tạo trùng nghiệp vụ.
+- [ ] Test PostgreSQL thật: hàng cuối, tạo lặp, spam đơn khách vãng lai, hủy/xuất, xác nhận tiền/hết hạn, trùng khoản thu.
+- [ ] Checkout → ContactAddressForm/PaymentMethod/OrderReview; OrderLookup/OrderDetail → Timeline/PaymentSummary(VietQR)/CancelAction.
+- State: giỏ local chỉ variantId/quantity/version; quote/đơn server; form tên/SĐT/địa chỉ trong page, không persist localStorage; token tra cứu đơn chỉ nằm trong link, server lưu bản băm.
+- Flow: quote không giữ kho → create recheck + chống spam → giữ atomic → xác nhận/đóng gói/xuất; hủy giải phóng giữ và tạo nghĩa vụ hoàn phần đã thu.
+- Phần dự kiến (mỗi phần duyệt riêng): M4.1 cài đặt shop (phí 30.000đ, hạn chuyển khoản 2 giờ, tài khoản VietQR); M4.2 giỏ + tạm tính; M4.3 đặt hàng COD không cần tài khoản; M4.4 tra cứu/hủy đơn; M4.5 admin xử lý đơn; M4.6 VietQR + ghi nhận tiền; M4.7 hết hạn + tiền muộn/sau hủy; M4.8 đơn Instagram; M4.9 giao thất bại/nhận lại; M4.10 email shop + khách có email; M4.11 E2E chốt.
+- Hoàn thành khi luồng COD/chuyển khoản VietQR/Instagram đúng, không vượt kho, không tạo trùng nghiệp vụ và đơn ảo không giữ kho vượt giới hạn.
 
-### M5 — Sau bán hàng
+### M5 — Sau bán hàng (ngoài phạm vi mở bán)
 
-- [ ] [CREATE] returns và frontend account/admin returns/refunds.
-- [ ] [MODIFY] Orders/Payments/Inventory/schema/migrations trong ranh giới đã chốt.
-- [ ] Test claim trùng, trả một phần, nhận hàng lặp, refund đồng thời, lineage đơn thay thế.
-- [ ] ReturnForm → EligibleItems/Reason/TargetSize; AdminDetail → Review/Receive/Inspection/Resolution.
-- State: dữ liệu server query cache; bản kiểm tra chưa lưu là form local.
-- Flow: yêu cầu → duyệt → nhận kiểm → restock phần bán được → replacement/refund obligation → kết quả.
-- Hoàn thành khi không nhập/hoàn hai lần và đơn thay thế không ghi doanh thu mới.
+Quyết định 29/10/2026: đổi trả xử lý thủ công. Admin nhận lại hàng thì dùng điều chỉnh kho có lý do (M3.7.2); hoàn tiền ngoài hệ thống và ghi chú vào đơn khi M4 có ghi chú. Thiết kế returns/exchange tự động trong business-rules và architecture giữ làm tham khảo, chỉ làm lại khi chủ shop yêu cầu.
 
-### M6 — Vận hành
+### M6 — Vận hành trên VPS (trước mở bán)
 
-- [ ] [CREATE] cấu hình rewrite/deploy, `docs/deployment-guide.md`, quy trình backup/restore.
-- [ ] [MODIFY] health/log/CI/README theo môi trường thật.
-- [ ] Smoke test HTTPS/proxy/refresh, restart/catch-up, ảnh/đơn còn nguyên, restore sang DB khác, rollback app tương thích schema.
+- [ ] [CREATE] cấu hình deploy VPS (reverse proxy HTTPS phục vụ SPA + `/api`, service backend tự khởi động lại), `docs/deployment-guide.md`, quy trình backup/restore DB + thư mục ảnh ra ngoài VPS.
+- [ ] [MODIFY] health/log/CI/README theo môi trường thật; deploy chỉ sau khi CI xanh.
+- [ ] Bảo vệ VPS: chỉ SSH bằng key, tường lửa chỉ mở 22/80/443, PostgreSQL không mở ra ngoài, cập nhật bảo mật tự động; báo động khi `/api/v1/health/ready` lỗi.
+- [ ] Smoke test HTTPS/proxy/refresh, restart/catch-up, ảnh/đơn còn nguyên sau restart, restore sang DB khác, rollback app tương thích schema.
 - Hoàn thành khi có bằng chứng deploy/restore; chưa đạt nếu chỉ có hướng dẫn chưa chạy.
 
-### M7 — Nghiệm thu
+### M7 — Nghiệm thu (rút gọn)
 
-- [ ] [CREATE] `docs/security-test-plan.md`, `docs/admin-guide.md` đúng lúc cần.
-- [ ] Chạy ASVS 5.0.0 được map đúng ID, ZAP có auth trên ứng dụng thuộc quyền quản lý, UI mobile/Instagram, E2E.
-- [ ] Sửa lỗi xác nhận, kiểm tra lại; không ghi pass trước khi chạy.
-- [ ] Ghi commit/môi trường/dataset, phát hiện còn lại và giới hạn free tier.
+- [ ] Trước mở bán: kiểm thử bảo mật các luồng auth admin, đơn khách vãng lai, VietQR/ghi nhận tiền; sửa và kiểm tra lại.
+- [ ] Sau mở bán: ASVS 5.0.0 map đúng ID, ZAP có auth trên ứng dụng thuộc quyền quản lý, link preview sản phẩm cho Instagram/Zalo, nhật ký hoạt động admin, `docs/admin-guide.md`.
+- [ ] Ghi commit/môi trường/dataset và phát hiện còn lại; không ghi pass trước khi chạy.
 - Hoàn thành theo [acceptance-checklist.md](acceptance-checklist.md).
 
 ## Trọng tâm review xuyên suốt
 
-1. Mạng ngắt sau commit: tạo đơn/thu/hoàn phải truy lại được mà không tạo mới; M4/M5 kiểm tra idempotency thật.
-2. Hai thao tác cùng thời điểm: khóa đơn/nguồn tiền và kho theo thứ tự thống nhất; M4/M5 test đồng thời thật.
-3. Backend ngủ/restart: deadline không dựa timer RAM; M4/M6 thử catch-up và tiền muộn.
-4. Đơn thay thế rồi trả lại: dùng nguồn tiền gốc, không hoàn/ghi doanh thu hai lần; M5 test lineage.
-5. Proxy/SPA: deep link, Set-Cookie, CSRF, POST body, không cache dữ liệu riêng tư; M2/M6 kiểm chứng deploy.
+1. Mạng ngắt sau commit: tạo đơn/thu/hoàn phải truy lại được mà không tạo mới; M4 kiểm tra idempotency thật.
+2. Hai thao tác cùng thời điểm: khóa đơn/nguồn tiền và kho theo thứ tự thống nhất; M4 test đồng thời thật.
+3. Restart/deploy trên VPS: deadline không dựa timer RAM; M4/M6 thử catch-up và tiền muộn.
+4. Đơn khách vãng lai: không đăng nhập nên phải chống đơn ảo giữ kho và chống dò đơn của người khác (token băm, giới hạn tra cứu); M4 test.
+5. Proxy/SPA: deep link, Set-Cookie, CSRF, POST body, không cache dữ liệu riêng tư; M3.16/M6 kiểm chứng deploy.
 
 ## Kiểm tra dự kiến
 
 CI: clean install từ lockfile, lint/typecheck, build độc lập, unit và PostgreSQL integration quan trọng; E2E cho luồng trọng yếu. Không thêm test chỉ soi cấu trúc file hoặc để tăng số lượng.
 
-Không tự triển khai dịch vụ có phí hoặc mua domain. Tài khoản/secret dịch vụ là bước người dùng cung cấp hoặc tự thiết lập; không lưu secret vào progress/log.
+Agent không tự thuê VPS, mua domain hoặc kích hoạt dịch vụ có phí. VPS, domain, tài khoản email gửi đi và tài khoản ngân hàng nhận tiền do chủ shop cung cấp hoặc tự thiết lập; không lưu secret hay dữ liệu khách vào progress/log.
