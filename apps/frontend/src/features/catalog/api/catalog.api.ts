@@ -27,6 +27,7 @@ export interface CatalogFilters { q: string; page: number; sort: string; categor
 export const CATALOG_PAGE_SIZE = 12;
 export const catalogKey = ['shop-catalog'] as const;
 export const catalogCategoriesKey = ['shop-catalog-categories'] as const;
+export const catalogDetailKey = ['shop-catalog-detail'] as const;
 
 export const catalogApi = {
   // GET /api/v1/products — danh sách hàng công khai; chỉ trạng thái PUBLISHED (backend lọc).
@@ -42,5 +43,9 @@ export const catalogApi = {
   // GET /api/v1/categories — danh mục đang bật cho ô lọc.
   categories() {
     return request<CatalogCategory[]>('/categories');
+  },
+  // GET /api/v1/products/:slug — chi tiết hàng công khai; 404 khi hàng ẩn, danh mục tắt hoặc slug sai.
+  detail(slug: string) {
+    return request<CatalogProduct>(`/products/${encodeURIComponent(slug)}`);
   },
 };

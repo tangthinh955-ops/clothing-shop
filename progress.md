@@ -22,6 +22,57 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — M3.10 (Người B): trang chi tiết sản phẩm công khai và chọn biến thể
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.10 trong chat: route `/products/:slug` (StoreLayout) — breadcrumb 'Bộ sưu tập → danh mục → tên'; nhóm ảnh chính + thumbnail ('Xem ảnh N'), khối 'Chưa có ảnh' khi trống; mô tả khi có; chọn biến thể bằng nút `size · màu` trong nhóm 'Chọn biến thể' (không chọn sẵn — chưa chọn hiện 'Giá từ …'); chọn xong hiện giá biến thể + 'Còn N sản phẩm' / 'Hết hàng'; hàng ẩn/slug sai → Alert 'Không tìm thấy sản phẩm.' có 'Quay lại bộ sưu tập', lỗi khác có 'Tải lại sản phẩm'. Backend `GET /products/:slug` có sẵn từ M3.4/M3.8 — không đổi code backend. Không làm nút thêm giỏ (giỏ thuộc mốc sau — tránh UI giả). `e2e/catalog.spec.ts` vẫn ngoài `test:e2e:implemented` (M3.12 ghép). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/api/catalog.api.ts` | Thêm `catalogApi.detail(slug)` → `GET /api/v1/products/:slug` (slug qua `encodeURIComponent`) và `catalogDetailKey`; tái dùng kiểu `CatalogProduct` |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.tsx` (mới) | Trang chi tiết: breadcrumb (nav 'Breadcrumb sản phẩm' có link danh mục về `/shop?categoryId=…`), Gallery (ảnh chính đổi khi bấm thumbnail, placeholder không ảnh), h1 tên, giá/dòng tồn theo biến thể chọn, nhóm nút biến thể, mô tả; loading 'Đang tải sản phẩm…'; 404 chỉ có 'Quay lại bộ sưu tập', lỗi khác thêm 'Tải lại sản phẩm' |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.test.tsx` (mới) | 10 test UI qua `App` (harness `renderDetail`, mock `client.request` theo đường dẫn): tải theo slug + breadcrumb + mô tả + 'Giá từ …' khi chưa chọn; gallery đổi ảnh theo thumbnail + aria-pressed; nhóm biến thể đủ tên; chọn 'M · đen' → 'Còn 10 sản phẩm' + giá; đổi 'S · trắng' → 'Còn 3 sản phẩm'; available 0 → 'Hết hàng'; 'Chưa có ảnh'; 404 alert + không nút tải lại + về `/shop`; lỗi mạng + tải lại thành công; loading chờ response |
+| `apps/frontend/src/app/App.tsx` | Thêm route `products/:slug` → `ProductDetailPage` |
+| `apps/frontend/e2e/catalog-detail.spec.ts` (mới) | 3 ca trên DB `_test` (seed Prisma, token uuid, SKU HOA, cleanup afterAll): vào từ `/shop` theo token → URL `/products/<slug>` + breadcrumb + mô tả + 'Giá từ 200.000 ₫' + thứ tự nút theo sku tăng ('M · đen', 'S · trắng') → chọn M 'Còn 10 sản phẩm' + 250.000, chọn S 'Còn 3 sản phẩm' + 200.000; reload giữ trang, lựa chọn không giữ sau reload, mobile 390px không tràn (kèm ảnh chụp); hàng HIDDEN và slug lạ → alert 'Không tìm thấy sản phẩm' + 'Quay lại bộ sưu tập' |
+| `package.json`, `.github/workflows/ci.yml` | `test:e2e:implemented` và tên bước CI thêm `catalog-detail.spec.ts` (trước catalog-list theo bảng chữ cái → 10 spec) |
+| `progress.md`, `docs/local-trial-m3.md` | Mục này và hướng dẫn chạy thử M3.10 |
+
+### Data flow / key quan trọng
+
+Khách bấm link tên trên `/shop` → `/products/<slug>` → `useQuery([...catalogDetailKey, slug])` gọi `GET /api/v1/products/:slug` → backend lọc `visible` (PUBLISHED + danh mục bật + biến thể bật), trả ảnh (URL `/api/v1/media/<assetId>`) và variants (size viết hoa, màu viết thường, `available = onHand − reserved`) sắp theo sku tăng → UI render; bấm nút biến thể chỉ đổi `variantId` state cục bộ — giá và dòng tồn đổi ngay, không gọi API thêm.
+
+- Nhãn nút là `${variant.size} · ${variant.color}` — form admin viết thường màu trước khi lưu (`variantDrafts.ts`) và DTO viết hoa size, nên 'M · đen' khớp chính xác `/M · đen/` trong `catalog.spec.ts` (M3.12).
+- Lỗi phân loại theo `ApiError.status === 404`: đúng hàng không có/hàng ẩn chỉ hiện đường về `/shop`; lỗi khác (mạng, dịch vụ) hiện 'Tải lại sản phẩm' (`refetch`, `retry: false`).
+- Lựa chọn biến thể nằm trong state (không URL): F5 giữ đúng trang chi tiết nhưng về mặc định 'Giá từ …' — deep link/refresh hoạt động, chỉ mất lựa chọn.
+
+### Kiểm tra thực tế (Node 24.22.1 qua `tools/npm.ps1`, E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test trang trước khi code | 10 test fail đúng lý do: `/products/<slug>` rơi vào NotFoundPage, thiếu heading/alert/gallery (RED) |
+| `vitest ProductDetailPage.test.tsx` | Lượt 1: 7/10 — thiếu import `Alert` (MUI) và query link 'Bộ sưu tập' trùng nav header (thu hẹp trong breadcrumb); lượt 2: 10/10 |
+| `vitest` frontend toàn bộ | 180/180 — baseline 170 ở M3.9 + 10 mới |
+| `test` toàn workspace | tools 8 + backend 9 + frontend 180 đạt |
+| `run typecheck` | 1 lần chạm `exact` không thuộc `ByRoleOptions` (test UI viết theo kiểu Playwright), gỡ khỏi role query → đạt |
+| `run build` | Exit 0 đã xác minh (`EXITCODE=0`); cảnh báo chunk Vite có sẵn; lượt đầu PowerShell phiên dịch stderr thành exit 1, không phải lỗi build |
+| `run test:integration` | 29/29 (exit 0 xác minh) |
+| E2E riêng `catalog-detail.spec.ts` | Lượt 1: 2/3 — sai kỳ vọng thứ tự nút (seed theo mảng, backend trả theo sku asc); sửa kỳ vọng → 3/3 |
+| E2E implemented 10 spec | 33/33 (37.3s), lượt này không gặp flake Vite |
+
+### Vấn đề gặp trong phần này
+
+- Seed E2E trực tiếp qua Prisma vẫn cần SKU viết HOA (CHECK `variant_fields_valid`) — đã nêu ở M3.9, giữ nguyên quy tắc.
+- Lỗi trong lượt này đều là sai sót của bản test (import thiếu, kỳ vọng thứ tự), không có thay đổi thiết kế phát sinh so với bảng kế hoạch.
+- E2E không seed ảnh thật (cần asset upload phức tạp) — gallery chỉ được phủ ở test UI với ảnh mock; khi M3.12 ghép `catalog.spec.ts` (upload ảnh thật qua admin) sẽ phủ thêm trang chi tiết có ảnh.
+
+### Chạy thử / điểm dừng
+
+- Mở `http://localhost:5173/shop` → bấm một card sản phẩm → thấy chi tiết: breadcrumb, ảnh/thumbnail (hàng có ảnh upload từ admin trước đó), mô tả; bấm 'M · đen' → giá + 'Còn N sản phẩm'; đổi variant khác đổi theo; F5 không mất trang, chỉ mất lựa chọn; 'Quay lại bộ sưu tập' về `/shop`.
+- Hàng ẩn: vào `/products/<slug>` của hàng chưa xuất bản hoặc gõ slug lạ → 'Không tìm thấy sản phẩm.'.
+- Hướng dẫn chi tiết: [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.10.
+- **Dừng ở M3.10 chờ người dùng chạy thử.** M3.11 (seed demo) sẽ gửi kế hoạch riêng khi được yêu cầu. Commit/push/PR chỉ khi người dùng yêu cầu.
+
 ## Ngày 29/10/2026 — M3.9 (Người B): catalog khách tìm và lọc danh sách hàng công khai
 
 **Phạm vi:** người dùng duyệt kế hoạch M3.9 trong chat: thay trang giới thiệu tại `/shop` bằng trang danh sách thật (tìm theo tên/SKU, chọn danh mục, sắp thứ tự, phân trang; bộ lọc nằm trên URL nên refresh/Back giữ đúng; card là liên kết tới `/products/<slug>` — trang chi tiết thuộc M3.10, bấm vào sẽ 404 tạm). `e2e/catalog.spec.ts` vẫn ở ngoài `test:e2e:implemented` theo chỉ dẫn cũ (M3.12 ghép khi đủ chi tiết + dữ liệu demo). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.

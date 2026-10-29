@@ -10,6 +10,7 @@ import { ProductsPage } from '../features/admin/products/pages/ProductsPage';
 import { ProductCreatePage } from '../features/admin/products/pages/ProductCreatePage';
 import { ProductEditPage } from '../features/admin/products/pages/ProductEditPage';
 import { CatalogPage } from '../features/catalog/pages/CatalogPage';
+import { ProductDetailPage } from '../features/catalog/pages/ProductDetailPage';
 import { policyPages } from '../features/information/content/policies';
 import { PolicyPage } from '../features/information/pages/PolicyPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -20,6 +21,7 @@ export function App() {
     <Route element={<StoreLayout />}>
       <Route index element={<Navigate to="/shop" replace />} />
       <Route path="shop" element={<CatalogPage />} />
+      <Route path="products/:slug" element={<ProductDetailPage />} />
       <Route path="login" element={<AuthPage key="login" mode="login" />} />
       <Route path="register" element={<AuthPage key="register" mode="register" />} />
       <Route path="forgot-password" element={<AuthPage key="forgot" mode="forgot" />} />

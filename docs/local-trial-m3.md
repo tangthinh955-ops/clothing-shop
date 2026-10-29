@@ -206,6 +206,37 @@ URL là nguồn sự thật: `q`/`categoryId`/`sort`/`page` được đọc và 
 
 Kiểm tra tự động riêng phần này: 15 test UI + E2E `catalog-list.spec.ts` (4 ca; cả bộ implemented 9 spec 30/30) — chi tiết và giới hạn xem [progress.md](../progress.md).
 
+## M3.10 — Người B: chi tiết sản phẩm công khai và chọn biến thể
+
+Phần này KHÔNG cần đăng nhập. Giữ hai terminal dev như M3.1, mở **http://127.0.0.1:5173/shop** rồi bấm vào một sản phẩm Đã xuất bản. Muốn thấy ảnh thật, thumbnail và dòng tồn đúng con số, làm trước M3.5/M3.6 (ảnh), M3.7.2 (nhập kho) và M3.8 (xuất bản).
+
+### Các tình huống cần thử
+
+| Thao tác | Kết quả |
+|---|---|
+| Bấm tên sản phẩm từ `/shop` | Tới `/products/<slug>`; breadcrumb 'Bộ sưu tập › danh mục › tên sản phẩm'; tên hiện ở heading; mô tả hiện khi admin đã nhập |
+| Xem khi chưa chọn biến thể | Chỉ hiện 'Giá từ <mức thấp nhất>'; chưa có dòng tồn |
+| Chọn nút 'M · đen' | Giá đổi thành giá của biến thể; hiện 'Còn N sản phẩm' (N là còn bán server trả: tồn thực có − đang giữ) |
+| Chọn nút khác, ví dụ 'S · trắng' | Giá và 'Còn N sản phẩm' đổi theo biến thể mới, không gọi API thêm |
+| Chọn biến thể còn bán 0 | Thay 'Còn N sản phẩm' bằng 'Hết hàng' |
+| Bấm thumbnail 'Xem ảnh 2' | Ảnh chính đổi theo; nút đang chọn được đánh dấu `aria-pressed`; hàng không ảnh → khối 'Chưa có ảnh' |
+| F5 tại đường chi tiết | Vẫn đúng sản phẩm đó; 'Giá từ …' trở lại vì lựa chọn không giữ (deep link/refresh hoạt động, chỉ mất lựa chọn) |
+| Gõ slug lạ, ví dụ `/products/ao-o-la` | Alert 'Không tìm thấy sản phẩm.'; có 'Quay lại bộ sưu tập'; KHÔNG có nút 'Tải lại sản phẩm' (thử lại với 404 sẽ không hết) |
+| Tắt backend rồi mở một slug | Alert 'Không thể kết nối…' + nút 'Tải lại sản phẩm'; bật lại và bấm → trang hiện |
+| Bấm link danh mục trong breadcrumb | Về `/shop` đã lọc sẵn `categoryId` của danh mục đó |
+| Mở hàng chưa xuất bản theo slug | Alert 'Không tìm thấy sản phẩm.' — hàng ẩn/nháp như hàng không tồn tại với khách |
+| Thu hẹp cửa sổ ~390px | Gallery trên, thông tin dưới; nút biến thể xếp dọc wrap, không tràn ngang |
+
+### Luồng dữ liệu / key M3.10
+
+Từ `/shop` bấm link → `/products/<slug>` → `useQuery([...catalogDetailKey, slug])` gọi `GET /api/v1/products/:slug` → backend lọc `visible` (PUBLISHED + danh mục bật + biến thể bật) và trả 404 'Không tìm thấy sản phẩm.' khi hàng ẩn/slug sai → trang hiển thị ảnh (`/api/v1/media/<assetId>`), mô tả và variants sắp theo SKU tăng dần; bấm nút biến thể chỉ đổi `variantId` trong state cục bộ, giá và dòng tồn cập nhật ngay.
+
+- `catalogApi.detail(slug)` trong `features/catalog/api/catalog.api.ts`: gọi API chi tiết; slug đi qua `encodeURIComponent`.
+- Phân loại lỗi theo `ApiError.status`: 404 → chỉ 'Quay lại bộ sưu tập'; lỗi khác → thêm 'Tải lại sản phẩm' (refetch).
+- Nhãn nút là `size · màu` như server lưu (size viết hoa, màu viết thường) — chuẩn khớp kỳ vọng E2E tổng `catalog.spec.ts` ở M3.12.
+
+Kiểm tra tự động riêng phần này: 10 test UI + E2E `catalog-detail.spec.ts` (3 ca; cả bộ implemented giờ 10 spec 33/33) — chi tiết và giới hạn xem [progress.md](../progress.md).
+
 ## M3.7.3 — Người B: lịch sử tồn kho của từng SKU
 
 Giữ hai terminal backend/frontend như Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**. Backend đã có sẵn `GET /api/v1/admin/inventory/movements`; phần này chỉ thêm UI đọc.
