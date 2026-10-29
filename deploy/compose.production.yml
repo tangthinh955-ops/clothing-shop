@@ -1,0 +1,103 @@
+name: rmg-shop
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rmg_shop_production
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    secrets:
+      - db_admin_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks: [database]
+    mem_limit: 256m
+    command: [postgres, -c, max_connections=40, -c, shared_buffers=64MB]
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  migrate:
+    image: rmg-shop-migrate:${RMG_RELEASE:?Set RMG_RELEASE to the tested release tag}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: migrate
+    profiles: [tools]
+    env_file: /etc/rmg-shop/backend.env
+    networks: [database]
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 512m
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  api:
+    image: rmg-shop-api:${RMG_RELEASE:?Set RMG_RELEASE to the tested release tag}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+    restart: unless-stopped
+    env_file: /etc/rmg-shop/backend.env
+    ports: ['127.0.0.1:4200:3000']
+    volumes:
+      - /var/lib/rmg-shop/uploads:/var/lib/rmg-shop/uploads
+    networks: [default, database]
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 384m
+    pids_limit: 128
+    read_only: true
+    tmpfs: ['/tmp:size=32m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/v1/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    logging: *logging
+
+  web:
+    image: rmg-shop-web:${RMG_RELEASE:?Set RMG_RELEASE to the tested release tag}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    restart: unless-stopped
+    ports: ['127.0.0.1:4180:8080']
+    mem_limit: 64m
+    pids_limit: 64
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/shop]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+volumes:
+  postgres_data:
+
+networks:
+  database:
+    internal: true
+
+secrets:
+  db_admin_password:
+    file: /etc/rmg-shop/db-admin-password

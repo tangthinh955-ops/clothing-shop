@@ -1,14 +1,14 @@
 # Clothing Shop
 
-Website bán hàng thật của một shop quần áo, phục vụ khách từ Instagram. React/Vite và NestJS là hai ứng dụng build độc lập, deploy trên VPS của chủ shop sau một reverse proxy HTTPS; PostgreSQL lưu dữ liệu nghiệp vụ, ảnh lưu trên ổ đĩa VPS và được backup ra ngoài.
+Website bán hàng thật của một shop quần áo, phục vụ khách từ Instagram. React/Vite và NestJS là hai ứng dụng build độc lập, deploy trên VPS của chủ shop sau một reverse proxy HTTPS; PostgreSQL lưu dữ liệu nghiệp vụ, ảnh lưu trên ổ đĩa VPS và cần backup ra ngoài trước mở bán.
 
 ## Trạng thái
 
 Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (quyết định và lộ trình mới ở [kế hoạch](docs/plan.md#chuyển-sang-shop-thật-29102026)). Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng: M3.1–M3.12 và M3.13a (nhập sản phẩm thật từ CSV) đã triển khai, chờ người dùng chạy thử và nghiệm thu. Tiếp theo là giai đoạn chuẩn bị bán thật (M3.13b–M3.17), rồi M4 bán hàng và M6 deploy VPS. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md).
+Điểm dừng hiện tại: M3.16.1 đã deploy catalog/API tại [rmglabels.duckdns.org/shop](https://rmglabels.duckdns.org/shop), kiểm tra HTTPS/proxy, restart/persistence và gia hạn chứng chỉ đạt; chờ người dùng chạy thử. Database VPS mới chưa có sản phẩm hoặc admin; source deploy chưa gồm M3.15 nên UI còn nhãn demo. Xem [hướng dẫn deploy](docs/deployment-guide.md), [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn tài khoản M2](docs/local-trial-m2.md).
 
-**Chưa mở bán:** chưa có giỏ hàng/đặt hàng (M4), chưa deploy và backup (M6). Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
+**Chưa mở bán:** chưa có giỏ hàng/đặt hàng (M4), backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
 ## Tài liệu
 
@@ -109,6 +109,23 @@ name,category,color,sizes,price,stock,description,files
 | quyền | Cần một tài khoản ADMIN làm chủ ảnh (`ADMIN_EMAIL` nếu có; thiếu admin → exit 1 kèm hướng dẫn `admin:create`) |
 
 Không thêm cột mới, không đổi bước này: dữ liệu thật chỉ vào web qua lệnh tường minh này. Nhập tồn hoạt động qua UI Kho (M3.7.2) để có lịch sử giao dịch.
+
+## Cấu hình production trên VPS (M3.16)
+
+Backend chạy sau một reverse proxy HTTPS trên VPS. M3.16.1 thực hiện sớm phần deploy catalog/API của M6.1 theo kế hoạch được duyệt: nginx hiện có → container frontend/API riêng của RMG → PostgreSQL riêng; ảnh nằm trên ổ đĩa giữ lâu dài. Xem [hướng dẫn deploy, kiểm tra và rollback](docs/deployment-guide.md). Backup ngoài VPS/diễn tập khôi phục và luồng đơn hàng còn thuộc các phần tiếp theo. Biến môi trường cần cho production, ngoài `DATABASE_URL`, `SESSION_SECRET`, `MAIL_MODE=resend`, `RESEND_API_KEY`, `MAIL_FROM`:
+
+| Biến | Giá trị trên VPS | Nếu thiếu/sai |
+|---|---|---|
+| `NODE_ENV` | `production` | — |
+| `APP_ORIGIN` | `https://<domain của shop>` | Không khởi động (bắt buộc HTTPS) |
+| `HOST` | `127.0.0.1` khi proxy chạy cùng VPS (mặc định); `0.0.0.0` chỉ khi API chạy trong mạng container | — |
+| `PORT` | Cổng nội bộ proxy chuyển tới, ví dụ `3000` | — |
+| `TRUST_PROXY` | Số proxy đứng trước API: `1` cho Caddy/nginx | Không khởi động (thiếu thì cookie đăng nhập bảo mật không được gửi và mọi khách bị coi chung một IP) |
+| `UPLOADS_DIR` | Đường dẫn **tuyệt đối** trên ổ đĩa giữ lâu dài và có backup, ví dụ `/var/lib/rmg-shop/uploads` | Không khởi động; đường dẫn tương đối bị từ chối |
+
+Khi cấu hình sai, backend in rõ tên biến cần sửa (không in giá trị). Ảnh công khai trả `Cache-Control: public, max-age=86400`; mọi phản hồi khác giữ `no-store`. Lệnh `import:products` chạy trên VPS ghi ảnh vào cùng `UPLOADS_DIR`.
+
+Các file triển khai nằm trong `deploy/`: Dockerfile build Linux với OpenSSL cho Prisma, Compose project `rmg-shop`, nginx cho SPA/deep link và virtual host `rmglabels.duckdns.org`. Cổng web/API chỉ bind `127.0.0.1:4180`/`127.0.0.1:4200`; PostgreSQL không publish cổng. File env thật ở `/etc/rmg-shop/backend.env` trên VPS, không nằm trong image/source; tạo database/session secret riêng và không dùng cấu hình local. `MAIL_FROM=onboarding@resend.dev` hiện chỉ dành cho thư thử tới email tài khoản Resend; gửi cho khách cần domain gửi đã xác minh.
 
 ## File đưa lên Git
 

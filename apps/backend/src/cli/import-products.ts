@@ -144,8 +144,8 @@ async function discard(db: PrismaService, created: CreatedAsset[]) {
 }
 
 // CLI entry: node dist/cli/import-products.js [--dir <folder>] [--draft]
-const uploadsRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '.local',
-  readEnvironment(process.env).nodeEnv === 'test' ? 'test-uploads' : 'uploads');
+// Same folder the API serves from: the repo .local folder locally, UPLOADS_DIR on the VPS.
+const uploadsRoot = readEnvironment(process.env).uploadsDir;
 
 const args = process.argv.slice(2);
 const dirFlag = args.indexOf('--dir');
