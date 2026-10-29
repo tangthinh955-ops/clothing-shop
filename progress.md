@@ -22,6 +22,52 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
 
+## Ngày 29/10/2026 — M3.11 (Người B): bộ dữ liệu demo bằng lệnh seed
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.11 trong chat theo định nghĩa m3-implementation-plan: Seed CLI có kiểm soát, idempotent theo slug `demo-*`, không ghi đè dữ liệu người dùng, không tự seed khi startup. Backend/UI/E2E/CI không đổi — chỉ thêm CLI, test tích hợp, script `seed:demo` và tài liệu. Tồn kho demo ghi lúc tạo biến thể, mỗi lượng nhập kèm một `InventoryMovement` 'Nhập kho demo' (đổi sau review, xem "Bản sửa sau review M3.9–M3.12") → "chạy lại không nhập kho lặp" hợp bởi cấu trúc. **Đã viết, agent đã kiểm tra trên `_test`; chờ người dùng chạy `seed:demo` trên DB local. Chưa commit/push.**
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/cli/seed-demo.ts` (mới) | CLI theo khuôn `create-admin.ts`: 2 danh mục, 4 sản phẩm (3 PUBLISHED — hai ảnh/một ảnh/không ảnh; 1 HIDDEN `demo-ao-an`), 7 biến thể SKU `DEMO-*` + inventory (dư 13/8, ít 1, hết 0, 10...; đang giữ luôn 0); ảnh webp 750×1000 sinh bằng sharp ghi `.local/uploads` (NODE_ENV=test → `test-uploads`), `storageKey` cố định `demo-<slug>-<n>.webp`; owner ảnh là ADMIN (ưu tiên `ADMIN_EMAIL`, nếu không → ADMIN mới nhất có `disabledAt` null), thiếu admin → exit 1 kèm hướng dẫn `admin:create`; tổng kết 'Đã tạo…'/'… đã có sẵn.' và dòng cuối phân biệt 'Bộ dữ liệu demo đã sẵn sàng…' (đã tạo gì đó) hay 'Toàn bộ bộ dữ liệu demo đã có sẵn…' (lượt chạy no-op) |
+| `apps/backend/test/seed-demo.integration.spec.ts` (mới) | Spawn CLI hai lượt bằng `process.execPath`; snapshot (sản phẩm/trạng thái/giá/variants/available/assetKey + `access` file) phải bằng nhau sâu giữa hai lượt; assert 4 sản phẩm, 7 biến thể, ảnh 2/1/0/0 (PUBLISHED không ảnh duy nhất là `demo-quan-jean`), `priceFrom` = min biến thể, available có 0 và 1; cleanup `demo-*` trước/sau lượt chạy (bảng + file webp test-uploads), tự tạo xóa admin riêng của test |
+| `apps/backend/package.json`, root `package.json` | Thêm `"seed:demo"` — backend: `npm run build && node --env-file-if-exists=.env dist/cli/seed-demo.js`; root: `npm run seed:demo -w @clothing/backend` |
+| `README.md` | Mục mới 'Bộ dữ liệu demo (M3.11)' (điều kiện, hành vi chạy lại, cách dọn). Ngoài ra sửa 2 dòng bảng E2E bị lạc hậu từ trước M3.9 (số ca 18 → 33 và phạm vi catalog M3.9/M3.10) — ngoài danh sách file kế hoạch, cho phép để doc không nói sai |
+| `docs/local-trial-m3.md`, `progress.md` | Mục M3.11 (bảng thao tác/thử) và mục này + bảng trạng thái |
+
+### Data flow / key quan trọng
+
+Lệnh `seed:demo` → backend tự build → `node --env-file-if-exists=.env dist/cli/seed-demo.js` → `readEnvironment(.env)` (DB dev) → chọn admin chủ ảnh → từng mục: tra slug → còn thiếu thì tạo ảnh ngoài transaction (file sharp rồi row asset, lỗi thì xóa lại) → một nested create sản phẩm + variants + inventory + movements + productImages → in log tổng kết. Đã có thì chỉ log 'Đã có sẵn', không ghi gì.
+
+- Idempotency theo slug/`storageKey` cố định trong CLI (không thêm ràng buộc DB); chạy lại là no-op, tồn kho chỉ ghi một lần cùng lúc tạo biến thể.
+- `uploadsRoot` suy 4 cấp từ `dist/cli` qua `import.meta.url` → độc lập cwd, luôn trùng `.local/uploads` của dev server (test → `test-uploads`).
+- Không auto seed: CLI chỉ chạy qua npm script tường minh; không import trong bootstrap/module nào.
+
+### Kiểm tra thực tế (Node 24.22.1; integration qua `vitest.integration.config.ts` với `.env.test`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test integration mới trước khi có CLI | FAIL đúng lý do: `Cannot find module .../dist/cli/seed-demo.js` (RED) |
+| Lượt test sau CLI | FAIL vì lỗi của chính test: đọc `image.storageKey` thay `image.asset.storageKey`, và assert số sản phẩm không ảnh = 1 (thiếu sản phẩm ẩn); sửa xong lại FAIL vì dòng tổng kết CLI in vô điều kiện → thêm đếm `createdCategories/createdProducts` phân nhánh 'sẵn sàng'/'Toàn bộ… đã có sẵn' |
+| `test\seed-demo.integration.spec.ts` | GREEN — Bộ dữ liệu hai lượt deep-equal quay lại ví dụ nhau, ảnh webp tồn tại |
+| `test:integration` toàn bộ | 30/30 (29 cũ + 1 mới) |
+| `run typecheck` | Exit 0 |
+| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 |
+| `run build` | Exit 0 |
+| E2E/CI | Không đổi (không spec mới); khung xanh 33/33 từ M3.10 giữ nguyên |
+
+### Vấn đề gặp trong phần này
+
+- `powershell tools/npm.ps1 run build -w @clothing/backend` không nhận `-w` (wrapper từ chối tham số) — agent build backend trực tiếp bằng tsc cục bộ; script `test:integration` của backend đã tự `npm run build` nên luồng chuẩn không bị ảnh hưởng.
+- Lỗi còn lại nằm ở test tổng kết/assert của riêng phần này; không có thay đổi nghiệp vụ phát sinh ngoài bảng kế hoạch.
+
+### Chạy thử / điểm dừng
+
+- Chạy `.\tools\npm.ps1 run seed:demo` lần 1 (xem log 'Đã tạo…' + 'Bộ dữ liệu demo đã sẵn sàng…'), lần 2 thấy chỉ 'Đã có sẵn' + 'Toàn bộ… không tạo thêm'.
+- Mở `http://127.0.0.1:5173/shop` → kiểm bảng từng tình huống ở [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.11 (gallery 2 ảnh, 'Còn 1 sản phẩm', 'Hết hàng', 'Chưa có ảnh', `/products/demo-ao-an` → 'Không tìm thấy sản phẩm.', kho admin thấy SKU `DEMO-*`, lịch sử kho có dòng 'Nhập kho demo').
+- **Dừng ở M3.11 chờ người dùng chạy thử.** M3.12 (ghép `catalog.spec.ts` + checklist chốt M3) sẽ gửi kế hoạch riêng khi được yêu cầu. Commit/push/PR chỉ khi người dùng yêu cầu.
+
 ## Ngày 29/10/2026 — M3.10 (Người B): trang chi tiết sản phẩm công khai và chọn biến thể
 
 **Phạm vi:** người dùng duyệt kế hoạch M3.10 trong chat: route `/products/:slug` (StoreLayout) — breadcrumb 'Bộ sưu tập → danh mục → tên'; nhóm ảnh chính + thumbnail ('Xem ảnh N'), khối 'Chưa có ảnh' khi trống; mô tả khi có; chọn biến thể bằng nút `size · màu` trong nhóm 'Chọn biến thể' (không chọn sẵn — chưa chọn hiện 'Giá từ …'); chọn xong hiện giá biến thể + 'Còn N sản phẩm' / 'Hết hàng'; hàng ẩn/slug sai → Alert 'Không tìm thấy sản phẩm.' có 'Quay lại bộ sưu tập', lỗi khác có 'Tải lại sản phẩm'. Backend `GET /products/:slug` có sẵn từ M3.4/M3.8 — không đổi code backend. Không làm nút thêm giỏ (giỏ thuộc mốc sau — tránh UI giả). `e2e/catalog.spec.ts` vẫn ngoài `test:e2e:implemented` (M3.12 ghép). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.** Chưa commit/push phần này.

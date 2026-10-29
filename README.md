@@ -72,6 +72,16 @@ Không có mật khẩu admin mặc định. Để tạo admin, đặt `ADMIN_EM
 
 Mật khẩu 12–128 ký tự; xóa `ADMIN_PASSWORD` khỏi môi trường/tệp sau khi tạo. Lệnh chỉ tạo mới, không tự nâng quyền hay ghi đè tài khoản cũ. Không đưa mật khẩu vào tham số dòng lệnh hoặc commit.
 
+## Bộ dữ liệu demo (M3.11)
+
+Sau khi có tài khoản ADMIN (lệnh trên), chạy một lần để `/shop` có hàng thật:
+
+```powershell
+.\tools\npm.ps1 run seed:demo
+```
+
+Lệnh tạo phía backend CLI (`apps/backend/src/cli/seed-demo.ts`): 2 danh mục và 4 sản phẩm có slug `demo-*` (3 xuất bản: một bản hai ảnh, một bản một ảnh, một bản không ảnh; 1 bản ẩn), 7 biến thể `DEMO-*` kèm tồn kho đa dạng (mỗi lượng nhập có một dòng lịch sử kho 'Nhập kho demo', không có hàng đang giữ vì không có đơn) và ảnh webp 750×1000 ghi vào `.local/uploads`. Chạy lại lệnh là an toàn: phần đã có được bỏ qua — không tạo trùng, không nhập kho thêm, không đụng dữ liệu bạn đã tạo. Ảnh demo cần một tài khoản ADMIN làm chủ (ưu tiên `ADMIN_EMAIL` nếu có, nếu không dùng ADMIN mới nhất); chưa có admin thì lệnh báo lỗi và hướng dẫn tạo. Backend không tự seed khi startup. Dữ liệu demo là dữ liệu nghiệp vụ bình thường: có thể Ẩn/Xuất bản lại qua admin hoặc dọn bằng Prisma Studio theo slug `demo-*`.
+
 ## File đưa lên Git
 
 | Đưa lên Git | Giữ ở máy local |

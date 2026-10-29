@@ -237,6 +237,28 @@ Từ `/shop` bấm link → `/products/<slug>` → `useQuery([...catalogDetailKe
 
 Kiểm tra tự động riêng phần này: 10 test UI + E2E `catalog-detail.spec.ts` (3 ca; cả bộ implemented giờ 10 spec 33/33) — chi tiết và giới hạn xem [progress.md](../progress.md).
 
+## M3.11 — Người B: bộ dữ liệu demo bằng lệnh seed
+
+Một lệnh, chạy từ root: `.\tools\npm.ps1 run seed:demo`. Điều kiện: backend đã build (lệnh tự build) và DB local hoạt động; cần ít nhất một tài khoản ADMIN (làm chủ ảnh demo — thông tin trong [README](../README.md#bộ-dữ-liệu-demo-m311)). Lệnh không đổi code ứng dụng và không tự seed khi server start.
+
+| Thao tác | Kết quả |
+|---|---|
+| Chạy `seed:demo` lần đầu | Dòng log 'Đã tạo danh mục…/Đã tạo sản phẩm…' theo từng mục; tổng kết 'Bộ dữ liệu demo đã sẵn sàng…' |
+| Chạy `seed:demo` lần 2 | Chỉ dòng 'Danh mục … đã có sẵn.'/'Sản phẩm … đã có sẵn.' + 'Toàn bộ bộ dữ liệu demo đã có sẵn. Không tạo sản phẩm/danh mục hay nhập kho thêm.' |
+| Mở `/shop` | Thấy 3 sản phẩm demo xuất bản (2 danh mục): một bản 2 ảnh, một bản 1 ảnh, 'Quần jean mỗi ngày' khối 'Chưa có ảnh'; giá 'Giá từ 250.000/320.000/500.000 ₫' tương ứng |
+| Bấm 'Áo cotton hợp ngày' | Chi tiết có 2 nút 'S · đen'/'M · đen'; chọn S 'Còn 13 sản phẩm' giá 250.000; M 'Còn 8' giá 290.000; bấm thumbnail đổi ảnh chính |
+| Bấm 'Áo cotton giới hạn demo' | Chọn 'M · trắng' → 'Còn 1 sản phẩm'; chọn 'L · hồng' → 'Hết hàng' (tồn thực có 0) |
+| Bấm 'Quần jean mỗi ngày' | Chi tiết không ảnh ('Chưa có ảnh'); 'M · xanh' 'Còn 10 sản phẩm'; 'S · xanh' 'Còn 10 sản phẩm' |
+| Lịch sử kho (M3.7.3) của biến thể demo | Mỗi biến thể có tồn có đúng một giao dịch '+N', `0 → N`, lý do 'Nhập kho demo', người thực hiện là admin chủ ảnh; biến thể hết hàng ('L · hồng') chưa có giao dịch |
+| Kho admin (M3.7.1) | SKU `DEMO-*` xuất hiện; đang giữ luôn là 0 vì demo không có đơn |
+| Mở `/products/demo-ao-an` | 'Không tìm thấy sản phẩm.' — sản phẩm demo ẩn |
+| Admin Danh mục | Thấy 'Áo thun demo'/'Quần jean demo'; có thể sửa/ẩn như dữ liệu thường |
+| Xóa dữ liệu demo | Dùng Prisma Studio theo slug `demo-*` (không có nút xóa sản phẩm trên admin UI); không ảnh hưởng dữ liệu khác |
+
+Chạy lại lệnh không tạo trùng và không cộng kho: skip theo slug; tồn kho và dòng lịch sử 'Nhập kho demo' chỉ ghi cùng lúc tạo sản phẩm lần đầu. Nếu bạn đã có sản phẩm trùng slug `demo-*`, seed bỏ qua bản đó (không ghi đè). Nếu một sản phẩm demo tạo lỗi (ví dụ SKU `DEMO-*` đã bị dùng), lệnh dừng với lỗi và xóa lại ảnh vừa tạo cho sản phẩm đó, không để file mồ côi.
+
+Kiểm tra tự động riêng phần này: 2 test integration spawn CLI trên `_test` — chạy hai lượt (số liệu bằng nhau, đang giữ 0, mỗi biến thể có tồn có một dòng lịch sử, ảnh webp tồn tại) và lượt lỗi giữa chừng không để lại ảnh/asset — đã vào `test:integration`; chi tiết xem [progress.md](../progress.md) § M3.11.
+
 ## M3.7.3 — Người B: lịch sử tồn kho của từng SKU
 
 Giữ hai terminal backend/frontend như Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**. Backend đã có sẵn `GET /api/v1/admin/inventory/movements`; phần này chỉ thêm UI đọc.

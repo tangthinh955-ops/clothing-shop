@@ -23,7 +23,8 @@
     "test:e2e:install": "node tools/test-e2e.mjs install",
     "db:generate": "npm run db:generate -w @clothing/backend",
     "db:migrate": "npm run db:migrate -w @clothing/backend",
-    "admin:create": "npm run admin:create -w @clothing/backend"
+    "admin:create": "npm run admin:create -w @clothing/backend",
+    "seed:demo": "npm run seed:demo -w @clothing/backend"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
