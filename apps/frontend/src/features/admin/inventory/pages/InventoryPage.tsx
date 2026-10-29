@@ -1,19 +1,38 @@
 import { Alert, Box, Button, Pagination, Paper, Stack, TextField, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ApiError } from '../../../../shared/api/client';
-import { inventoryApi, inventoryKey } from '../api/inventory.api';
+import { inventoryApi, inventoryKey, type AdjustmentInput, type AdjustmentResult, type InventoryItem, type InventoryList } from '../api/inventory.api';
+import { AdjustmentDialog } from '../components/AdjustmentDialog';
+
+const VARIANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Apply a saved adjustment to every cached inventory page so the row stays correct without a refetch.
+function applyStockUpdate(cache: { setQueriesData: ReturnType<typeof useQueryClient>['setQueriesData'] }, updated: AdjustmentResult) {
+  cache.setQueriesData<InventoryList>({ queryKey: inventoryKey }, (list) => list ? {
+    ...list,
+    items: list.items.map((item) => item.variantId === updated.variantId ? {
+      ...item, onHand: updated.onHand, reserved: updated.reserved, available: updated.available, version: updated.version,
+    } : item),
+  } : list);
+}
 
 export function InventoryPage() {
+  const cache = useQueryClient();
   const [search, setSearch] = useSearchParams();
+  const [adjusting, setAdjusting] = useState<InventoryItem | null>(null);
+  const variantId = search.get('variantId') ?? '';
   const q = (search.get('q') ?? '').trim();
   const rawPage = search.get('page') ?? '1';
   const page = Number(rawPage);
   const validPage = /^\d+$/.test(rawPage) && Number.isInteger(page) && page >= 1 && page <= 100000;
   const validSearch = q.length <= 80;
+  const validVariant = variantId === '' || VARIANT_ID_PATTERN.test(variantId);
   const inventory = useQuery({
-    queryKey: [...inventoryKey, q, page], queryFn: () => inventoryApi.list(q, page),
-    enabled: validPage && validSearch, retry: false,
+    queryKey: [...inventoryKey, variantId, q, page],
+    queryFn: () => inventoryApi.list(q, page, validVariant ? variantId : undefined),
+    enabled: validPage && validSearch && validVariant, retry: false,
   });
 
   function changeSearch(term: string, nextPage: number) {
@@ -24,6 +43,18 @@ export function InventoryPage() {
       next.set('page', String(nextPage));
       return next;
     });
+  }
+
+  function saveAdjustment(input: Parameters<typeof inventoryApi.adjust>[0], key: string) {
+    return inventoryApi.adjust(input, key).then((updated) => {
+      applyStockUpdate(cache, updated);
+      return updated;
+    });
+  }
+
+  function reloadInventory() {
+    void cache.invalidateQueries({ queryKey: inventoryKey });
+    setAdjusting(null);
   }
 
   return <Box sx={{ maxWidth: 1080, mx: 'auto', py: { xs: 4, md: 6 }, minWidth: 0 }}>
@@ -46,9 +77,15 @@ export function InventoryPage() {
         </Stack>
       </Stack>
     </Box>
-    {!validPage || !validSearch ? <Stack spacing={2}>
-      <Alert severity="error">{!validPage ? 'Số trang không hợp lệ.' : 'Từ khóa tối đa 80 ký tự.'}</Alert>
+    {!validPage || !validSearch || !validVariant ? <Stack spacing={2}>
+      <Alert severity="error">{!validPage ? 'Số trang không hợp lệ.' : !validSearch ? 'Từ khóa tối đa 80 ký tự.'
+        : 'Lọc biến thể không hợp lệ.'}</Alert>
       {!validPage && <Button variant="outlined" onClick={() => changeSearch(q, 1)}>Về trang đầu</Button>}
+      {!validVariant && <Button variant="outlined" onClick={() => setSearch((previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete('variantId');
+        return next;
+      })}>Xóa lọc sản phẩm</Button>}
     </Stack> : <Stack spacing={3}>
       {inventory.isPending && <Typography role="status">Đang tải tồn kho…</Typography>}
       {inventory.isError && <Stack spacing={2}>
@@ -78,6 +115,9 @@ export function InventoryPage() {
                 <Typography component="dd" variant="h6" sx={{ m: 0 }}>{value}</Typography>
               </Box>)}
             </Box>
+            <Stack direction="row" useFlexGap sx={{ gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
+              <Button variant="outlined" aria-label={`Điều chỉnh ${item.sku}`} onClick={() => setAdjusting(item)}>Điều chỉnh</Button>
+            </Stack>
           </Paper>)}
         </Stack>}
         {inventory.data.total > 24 && <Pagination count={Math.min(100000, Math.ceil(inventory.data.total / 24))} page={page}
@@ -86,5 +126,7 @@ export function InventoryPage() {
             : type === 'next' ? 'Trang sau' : type === 'previous' ? 'Trang trước' : type === 'first' ? 'Trang đầu' : 'Trang cuối'} />}
       </>}
     </Stack>}
+    {adjusting && <AdjustmentDialog stock={adjusting} onSave={saveAdjustment} onReload={reloadInventory}
+      onClose={() => setAdjusting(null)} />}
   </Box>;
 }
