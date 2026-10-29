@@ -28,6 +28,109 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 **Còn trước mở bán:** SĐT/Zalo và email của shop (sửa `shared/shop.ts`); thủ tục website bán hàng với Bộ Công Thương do chủ shop làm. **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.15. **Dừng chờ người dùng thử.**
 
+## Ngày 29/10/2026 — Chốt Git M3.16 và M3.16.1
+
+- Người dùng yêu cầu commit/push rồi bổ sung tạo PR vào `main`. Phạm vi là 21 file cấu hình backend production, test, Docker/nginx, template env và tài liệu M3.16/M3.16.1 trên nhánh `feat/m3.16-vps-config`; không gộp M3.15, không tự merge PR hoặc triển khai lại VPS trong bước Git.
+- Trước commit đã fetch `origin`, xác nhận remote `https://github.com/tangthinh955-ops/clothing-shop.git`, nhánh đích `main` và chưa có PR của nhánh này. Giữ tác giả Git hiện tại, không thêm dòng ghi công AI.
+- Kiểm tra mới trong lượt Git: `./tools/npm.ps1 run typecheck`, `./tools/npm.ps1 run build` và `./tools/npm.ps1 test` đều exit 0; test đạt 8 công cụ + 13 backend + 184 frontend. Build vẫn có cảnh báo chunk >500 kB. Integration 37/37, E2E 34/34 và các smoke test VPS ở mục M3.16.1 bên dưới là bằng chứng của lượt deploy trước, không chạy lại trong bước Git vì code không đổi.
+- Rà diff, index, danh sách file, mẫu token/private key và ignore: không phát hiện secret theo mẫu; `git ls-files -ci --exclude-standard` rỗng. Chỉ đưa template env vào commit; env thật, khóa Resend, dữ liệu shop, `.local/`, dependency và build artifact giữ ngoài Git.
+- Điểm dừng của yêu cầu Git: commit/push nhánh và mở PR vào `main` để review; chưa merge, chưa xác nhận CI của commit mới. Trạng thái vận hành/giới hạn VPS giữ như mục M3.16.1.
+
+## Ngày 29/10/2026 — M3.16.1: deploy catalog/API lên VPS qua HTTPS
+
+**Phạm vi đã duyệt:** bảng kế hoạch M3.16.1 trong chat, người dùng đồng ý triển khai lên VPS/domain được cung cấp. Thực hiện sớm phần deploy catalog/API của M6.1; giữ riêng nhập sản phẩm, tạo admin, backup ngoài VPS và các luồng M4/M3.17. **Đã deploy và agent đã kiểm tra URL công khai, persistence và gia hạn chứng chỉ; chờ người dùng chạy thử.**
+
+### Bản triển khai và quyền sở hữu thay đổi
+
+- Dùng nhánh sẵn có `feat/m3.16-vps-config`, base `2e3c2cb`, giữ toàn bộ 13 file M3.16 có sẵn trước lượt này; không nhận phần cấu hình HOST/trustProxyHops/uploadsDir và production tests cũ là mới viết trong lượt deploy. Chưa commit/push, chưa có CI cho snapshot thủ công này. Kế hoạch cụ thể được duyệt dùng kiểm tra local trước deploy; pipeline deploy sau CI vẫn thuộc M6.1.
+- Release `/srv/rmg-shop/releases/m3-16-1-20261029-174430`, symlink `/srv/rmg-shop/current`. Source cuối lưu trong `source-reviewed.tar.gz`, SHA256 `e57b1babc40a0d955c29b915865817116a8805d8971abe98f543917aa0dfe923`; archive đã loại env thật, dữ liệu ảnh/CSV, dependency Windows và build artifact. Build lại trên Linux.
+- API image ID `sha256:3e69d8349803136239018590c44444fb268cb2f82ea695005f59d6344eefe3b7`; web `sha256:17f6a1347185ee5fbb7a349756c1ac7fbdd7688ef163e4fed5e3a0fb0bfb11e6`; migration runner `sha256:8a001c680ea8eac876d686e80407b6f7beb298c235dc7a1033c5e87e5ada52f6`.
+- Chỉ thêm Compose project `rmg-shop`, virtual host RMG và hook gia hạn riêng; nginx cũ được sao lưu tại `/srv/rmg-shop/backups/nginx-before-rmg.tar.gz` trên VPS. Các container ứng dụng cũ giữ uptime và trạng thái; không sửa DB/volume của chúng.
+
+### File thực tế thêm/sửa trong lượt này
+
+| File | Thay đổi |
+|---|---|
+| `.dockerignore` (mới) | Loại env, dependency, generated/build/test artifact, dữ liệu local và thư mục agent khỏi build context |
+| `deploy/Dockerfile` (mới) | Multi-stage Node 24.22.1/OpenSSL, generate Prisma/build Linux, runtime API chạy user node, frontend nginx và migration runner riêng |
+| `deploy/compose.production.yml` (mới) | Dịch vụ DB/API/web riêng, migration tường minh, healthcheck, restart policy, giới hạn tài nguyên/log, ảnh persistent và secret mount |
+| `deploy/nginx/frontend.conf` (mới) | SPA/deep link và cache asset có hash |
+| `deploy/nginx/rmglabels.conf` (mới) | HTTP→HTTPS, ACME, proxy API giữ nguyên `/api`, ghi đè forwarded headers; CSP/HSTS cho SPA |
+| `deploy/production.env.example` (mới) | Placeholder cho cấu hình production; không chứa key/password thật |
+| `docs/deployment-guide.md` (mới) | Bố cục VPS, build/start/migration/HTTPS, kiểm tra, cập nhật/rollback và giới hạn |
+| `README.md` | Thêm hướng dẫn deploy production và giới hạn email thử; giữ các thay đổi M3.16 đã có |
+| `docs/plan.md` | Ghi M3.16.1 triển khai sớm phần M6.1, không đánh dấu toàn bộ vận hành/CI/backup hoàn tất |
+| `apps/backend/src/modules/uploads/media.controller.ts` | Sửa blocker review trong phần M3.16 đã có: chỉ đặt cache public sau khi đọc ảnh thành công |
+| `apps/backend/test/catalog.integration.spec.ts` | Thêm kiểm tra lỗi media 404/400 phải giữ `no-store`; giữ các thay đổi cũ |
+| `progress.md` | Ghi phạm vi, nguồn gốc thay đổi, bằng chứng và điểm dừng của lượt deploy |
+
+Hai file media/test được sửa thêm so với bảng deploy ban đầu để xử lý blocker thuộc cấu hình M3.16 trước khi đưa lên VPS. Không đổi nghiệp vụ catalog/kho, không thêm dependency ứng dụng hoặc migration mới.
+
+### Data flow và key
+
+Trình duyệt → nginx HTTPS của host → frontend ở `127.0.0.1:4180` hoặc API ở `127.0.0.1:4200` → PostgreSQL riêng trên mạng Docker nội bộ và thư mục ảnh `/var/lib/rmg-shop/uploads`. API chạy production, nhận HTTPS/IP qua đúng một reverse proxy; ảnh đọc thành công mới được cache công khai, lỗi vẫn `no-store`.
+
+- `rmg-shop`: tên Compose project cố định, tách network/volume/container khỏi ứng dụng khác.
+- `RMG_RELEASE`: tag chung cho ba image; source snapshot và image ID ghi ở trên giúp đối chiếu/rollback.
+- `UPLOADS_DIR`: bind mount persistent, UID/GID 1000 và quyền 0750; API vẫn chạy với root filesystem chỉ đọc.
+- `TRUST_PROXY=1`: backend hiểu HTTPS phía nginx, phát cookie `__Host-shop.sid` bảo mật; nginx ghi đè forwarded headers.
+- Role DB `rmg_shop`: LOGIN và owner database mới, không SUPERUSER/CREATEDB/CREATEROLE/REPLICATION. Secret DB/session sinh trực tiếp trên VPS; file env/secret root:root 0600 trong thư mục 0700, không đưa vào Git/image/source/log.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `./tools/npm.ps1 run typecheck`, `run build` | Exit 0; frontend còn cảnh báo chunk >500 kB có sẵn |
+| `./tools/npm.ps1 test` sau sửa review | 8 công cụ + 13 backend + 184 frontend đạt |
+| Regression cache media | RED đúng lý do: 404 nhận `public, max-age=86400` thay vì `no-store`; sửa sau `await read` → GREEN |
+| `./tools/npm.ps1 run test:integration` sau sửa | 37/37 trên DB `_test` |
+| `./tools/npm.ps1 run test:e2e:implemented` sau sửa | 34/34 (42.1s). Lượt trước 33/34, trace xác định login bị `net::ERR_NO_BUFFER_SPACE` của Windows, không có HTTP response; không sửa auth để che lỗi, chạy lại tuần tự đạt |
+| Build ba image trên Linux | Đạt; migration runner xác nhận OpenSSL 3.0.22. Sửa ba Important từ review: OpenSSL, CSP/HSTS SPA, cache lỗi media |
+| Compose/nginx và khởi động | `config --quiet`, `nginx -t` đạt; DB/API/web healthy. Lượt đầu Docker từ chối tmpfs do YAML tách dấu phẩy thành hai mục; quote cả chuỗi rồi khởi động đạt |
+| Migration production | Hai migration auth/catalog áp dụng thành công vào DB mới `rmg_shop_production`, không reset/seed |
+| HTTPS/proxy smoke chỉ đọc | TLS hợp lệ đúng domain; HTTP redirect; `/shop` + JS asset 200; readiness 200; cookie Secure/HttpOnly/SameSite=Lax/Path=/ và host-only; admin API 401; Swagger 404; media lỗi 400/404 `no-store`; CSP/HSTS có trên SPA |
+| Browser production chỉ đọc | Chromium do Playwright quản lý, desktop và mobile 390px render được, không lỗi runtime/CSP hoặc tràn ngang; browser đã đóng đúng cách |
+| Persistence | Restart riêng DB RMG, recreate API; hai bản ghi migration còn. File probe của lần deploy do API user ghi vẫn còn sau recreate, đã đọc/xóa đúng probe; không tạo hoặc xóa sản phẩm thật |
+| Quyền/cổng/dịch vụ khác | Env/secret 0600, folder 0700; cổng 4180/4200 chỉ loopback; DB không publish; container ứng dụng cũ vẫn chạy, không restart chúng |
+| Secret/source/image | Đối chiếu giá trị secret thật ngay trên VPS: không nằm trong source archive, biến runtime nhạy cảm không nằm trong cấu hình image; quét mẫu repo không phát hiện token/private key; không in giá trị khi đối chiếu |
+| Gia hạn HTTPS | Certbot cấp chứng chỉ thật đúng domain, hết hạn 27/01/2027; timer active. `certbot renew --dry-run --cert-name rmglabels.duckdns.org --non-interactive --run-deploy-hooks` exit 0, simulated renewal thành công và hook kiểm tra/reload nginx chạy đạt; lệnh có random delay khoảng 238s trước khi thử |
+
+### Chạy thử và điểm dừng
+
+- Mở `https://rmglabels.duckdns.org/shop` hoặc readiness `https://rmglabels.duckdns.org/api/v1/health/ready`.
+- Catalog hiện 0 sản phẩm vì database mới. Chưa tạo tài khoản ADMIN, chưa nhập ảnh/sản phẩm local. Snapshot nhánh M3.16 này chưa gồm M3.15/PR #17 nên UI còn nhãn demo; chưa tự gộp phần ngoài phạm vi deploy.
+- Email cấu hình qua Resend với sender thử `onboarding@resend.dev`, chưa gửi mail kiểm thử và chưa có domain gửi đã xác minh để gửi khách. Không ghi khóa hoặc địa chỉ nhận riêng vào tài liệu.
+- Chưa làm backup ngoài VPS/restore, tự động deploy sau CI, diễn tập rollback về phiên bản ứng dụng cũ (đây là release RMG đầu tiên), M3.17 hoặc M4; chưa nghiệm thu mở bán. Hướng dẫn chi tiết ở [deployment-guide.md](docs/deployment-guide.md).
+- Dừng để người dùng chạy thử URL. Các phần tiếp theo cần yêu cầu/kế hoạch riêng; chưa commit/push trong lượt này.
+
+## Ngày 29/10/2026 — M3.16: cấu hình để backend chạy được trên VPS
+
+**Phạm vi:** người dùng yêu cầu "commit và mở PR [M3.15] đi sau đó cấu hình trên VPS". Làm M3.16 theo lộ trình P0: sửa code/cấu hình để backend chạy sau reverse proxy HTTPS trên VPS. Deploy thật (proxy, service, backup) thuộc M6, cần VPS và domain của chủ shop. Nhánh `feat/m3.16-vps-config` từ `main` (chưa gồm M3.15/PR #17). **Đã viết, agent đã kiểm tra local; chờ người dùng xem. Chưa commit.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/config/environment.ts` | `HOST` (mặc định `127.0.0.1`, kiểm tra ký tự); `TRUST_PROXY` → `trustProxyHops` (false/true/1–5), **bắt buộc ≥ 1 ở production**; `UPLOADS_DIR` tuyệt đối, **bắt buộc ở production**, mặc định `.local/uploads` (test: `.local/test-uploads`) tính từ vị trí file, không phụ thuộc thư mục làm việc |
+| `apps/backend/src/main.ts` | Nghe `config.host`; lỗi `Invalid configuration: …` (chỉ có tên biến) được in ra, lỗi khác vẫn thông báo chung để không lộ URL/credential |
+| `apps/backend/src/application.ts` | `trust proxy` theo số hop cấu hình |
+| `apps/backend/src/modules/uploads/uploads.service.ts` | Bỏ chặn `UPLOAD_NOT_CONFIGURED` ở production; thư mục ảnh lấy từ `config.uploadsDir` |
+| `apps/backend/src/modules/uploads/media.controller.ts` | Ảnh công khai `Cache-Control: public, max-age=86400`; lỗi và phản hồi khác giữ `no-store` |
+| `apps/backend/src/cli/import-products.ts` | Ghi ảnh vào `uploadsDir` từ cấu hình (trên VPS là `UPLOADS_DIR`). `seed-demo.ts` không đổi (chỉ dùng local, M3.15 chặn production) để tránh xung đột với PR #17 |
+| `apps/backend/.env.example` | Thêm `HOST`, `UPLOADS_DIR`, giải thích `TRUST_PROXY` |
+| Test | `environment.spec.ts` +5 (sửa 1); mới `test/production-config.integration.spec.ts` (2); `catalog.integration.spec.ts` thêm kiểm tra header cache |
+| `README.md`, `docs/local-trial-m3.md` | Mục cấu hình production trên VPS; mục M3.16 |
+
+**TDD:** 5 test cấu hình RED (chưa có `host`/`trustProxyHops`/`uploadsDir`) và header cache RED (`no-store`) → GREEN. Test upload production RED đúng lý do (`Chưa cấu hình lưu ảnh cho môi trường deploy.`) → GREEN sau khi bỏ chặn. Test cookie `__Host-` qua proxy đạt ngay (hành vi có sẵn, giữ làm test hồi quy cho cấu hình proxy).
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 13 backend + 184 frontend |
+| `npm run test:integration` | 37/37 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (41.7s) |
+| Khởi động `NODE_ENV=production` bằng giá trị giả, thiếu `TRUST_PROXY` / `UPLOADS_DIR` | In đúng "Invalid configuration: TRUST_PROXY is required in production" / "…UPLOADS_DIR…", exit 1, không kết nối DB |
+
+**Còn lại:** M3.17 (bảo vệ admin); M6.1 deploy thật cần VPS + domain. **Dừng chờ người dùng xem.**
+
 ## Ngày 29/10/2026 — M3.13b (lộ trình giao Người B, agent của Người A làm theo yêu cầu): sửa lệnh nhập CSV
 
 **Phạm vi:** người dùng yêu cầu làm luôn M3.13b: sửa 2 lỗi còn mở của M3.13a đã ghi ở PR #13. Nhánh `fix/m3.13b-import-args` từ `main`, PR #16; sau khi PR #15 (M3.14) merge, đã merge `main` vào nhánh để giải xung đột `progress.md` (giữ cả hai mục). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**

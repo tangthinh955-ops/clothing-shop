@@ -179,6 +179,18 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
 
+## M3.16 — cấu hình để backend chạy được trên VPS
+
+Phần này không có thay đổi giao diện; nó làm backend sẵn sàng chạy sau reverse proxy HTTPS trên VPS. Danh sách biến môi trường production ở [README § Cấu hình production trên VPS](../README.md#cấu-hình-production-trên-vps-m316). Deploy thật (proxy, service, backup) thuộc M6 khi có VPS và domain.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Chạy local như cũ (`dev:backend`, `dev:frontend`) | Không đổi gì: API nghe `127.0.0.1`, ảnh vẫn ở `.local/uploads` dù chạy lệnh từ thư mục nào |
+| Đăng ảnh sản phẩm ở admin, mở ảnh ở trang khách, xem DevTools → Network | Ảnh công khai (`/api/v1/media/...`) có `Cache-Control: public, max-age=86400`; ảnh xem trong admin và các API khác vẫn `no-store` |
+| Thử khởi động với `NODE_ENV=production` mà thiếu `TRUST_PROXY` hoặc `UPLOADS_DIR` | Backend dừng và in "Invalid configuration: TRUST_PROXY is required in production" (hoặc UPLOADS_DIR), không in giá trị bí mật |
+
+Kiểm tra tự động: `environment.spec.ts` (HOST, số hop proxy, thư mục ảnh, ràng buộc production), integration `production-config.integration.spec.ts` (upload chạy ở production và ghi vào `UPLOADS_DIR`; cookie `__Host-` Secure khi proxy chuyển HTTPS), `catalog.integration.spec.ts` (header cache ảnh).
+
 ## M3.15 — cửa hàng mang thông tin thật, bỏ dấu vết demo
 
 Cửa hàng hiển thị tên **RMG Labels**, thông tin người bán (cá nhân kinh doanh, TP. Hồ Chí Minh, Instagram @rmglabels) và các chính sách thật đã được chủ shop duyệt. SĐT/Zalo và email chưa có nên chưa hiển thị; bổ sung trong `apps/frontend/src/shared/shop.ts` trước khi mở bán (M4.1 sẽ chuyển sang Cài đặt shop).

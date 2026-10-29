@@ -142,8 +142,9 @@ describe('M3 catalog, actual uploads and inventory', () => {
     const result = await admin.post('/api/v1/admin/uploads/images').set('Origin', origin).set('X-CSRF-Token', csrf)
       .attach('file', image, { filename: 'real.png', contentType: 'image/png' }).expect(201);
     assetId = result.body.id as string;
-    await supertest(server).get(`/api/v1/media/${assetId}`).expect(404);
-    await admin.get(`/api/v1/admin/uploads/images/${assetId}`).expect(200).expect('Content-Type', /image\/webp/);
+    await supertest(server).get(`/api/v1/media/${assetId}`).expect(404).expect('Cache-Control', 'no-store');
+    await supertest(server).get('/api/v1/media/not-a-uuid').expect(400).expect('Cache-Control', 'no-store');
+    await admin.get(`/api/v1/admin/uploads/images/${assetId}`).expect(200).expect('Content-Type', /image\/webp/).expect('Cache-Control', 'no-store');
   });
   it('attaches an owned asset and publishes a public product without private data', async () => {
     const images = await write(`/admin/products/${productId}/images`, { assetIds: [assetId], expectedVersion: productVersion }, 'put');
@@ -154,7 +155,8 @@ describe('M3 catalog, actual uploads and inventory', () => {
     expect(detail.body.variants[0].sku).toBe(sku);
     expect(detail.body.variants[0].available).toBeGreaterThan(0);
     expect(JSON.stringify(detail.body)).not.toMatch(/ownerId|actorId|storageKey|passwordHash/);
-    await supertest(server).get(`/api/v1/media/${assetId}`).expect(200);
+    // Published images are public and never change for an asset id, so browsers may cache them; private reads stay no-store.
+    await supertest(server).get(`/api/v1/media/${assetId}`).expect(200).expect('Cache-Control', 'public, max-age=86400');
     const list = await supertest(server).get(`/api/v1/products?categoryId=${categoryId}&q=${encodeURIComponent('Áo thử')}`).expect(200);
     expect(list.body.items.some((item: { id: string }) => item.id === productId)).toBe(true);
   });

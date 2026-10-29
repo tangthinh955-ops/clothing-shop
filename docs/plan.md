@@ -40,6 +40,7 @@ Lộ trình đến khi mở bán (mỗi phần vẫn gửi kế hoạch riêng v
 | M3.14 | Admin sửa được sản phẩm đang bán (backend đã cho phép, UI đang chặn) | A |
 | M3.15 | Bỏ dấu vết demo trên cửa hàng; `seed:demo` từ chối chạy ở production; trang thông tin người bán, chính sách bảo mật và các chính sách thật (chủ shop cung cấp nội dung) | B |
 | M3.16 | Cấu hình chạy trên VPS: host lắng nghe cấu hình được, bắt buộc `TRUST_PROXY` ở production, bật upload với thư mục ảnh tuyệt đối, cache ảnh công khai | A |
+| M3.16.1 | Theo kế hoạch được người dùng duyệt: deploy sớm catalog/API lên VPS qua HTTPS, nginx hiện có + Docker project riêng + DB/ảnh persistent; bàn giao URL để thử, chưa nhập dữ liệu shop | A |
 | M3.17 | Bảo vệ admin: giới hạn đăng nhập theo tài khoản (không chỉ IP) và xác thực 2 bước TOTP | B |
 | M4.1–M4.11 | Bán hàng: cài đặt shop, giỏ + tạm tính, đặt hàng COD không cần tài khoản, tra cứu/hủy đơn, admin xử lý đơn, VietQR + ghi nhận tiền, hết hạn + tiền muộn, đơn Instagram, giao thất bại, email, E2E chốt (chi tiết ở mục M4) | A/B |
 | M6.1–M6.3 | Deploy VPS + HTTPS + deploy sau CI; backup ngoài VPS + diễn tập khôi phục; bảo vệ VPS + báo động khi web sập | A/B |
@@ -64,7 +65,7 @@ Sau quyết định 29/10/2026 (bỏ M5 tự động, M7 rút gọn), phần cò
 | Chuẩn bị bán thật | M3.13b–M3.17: sửa import, sửa hàng đang bán, bỏ demo + chính sách thật, cấu hình VPS, bảo vệ admin | 30–45 |
 | M4 | Giỏ, quote, đơn khách vãng lai, COD/chuyển khoản VietQR, hủy, đơn Instagram, giao thất bại | 75–105 |
 | M5 | Ngoài phạm vi mở bán: đổi trả xử lý thủ công (quyết định 29/10/2026) | 0 |
-| M6 | Deploy VPS, HTTPS, restart, smoke test, backup ngoài VPS/khôi phục và rollback — làm ngay sau M4, trước mở bán | 24–40 |
+| M6 | VPS, HTTPS, restart, smoke test, backup ngoài VPS/khôi phục và rollback — deploy catalog/API được làm sớm ở M3.16.1; hoàn tất vận hành trước mở bán | 24–40 |
 | M7 | Rút gọn: kiểm thử bảo mật trước mở bán; ASVS/ZAP đầy đủ, link preview, nhật ký admin sau mở bán | 20–40 |
 
 ## Nhịp triển khai và chạy thử từng phần
@@ -147,8 +148,9 @@ Quyết định 29/10/2026: đổi trả xử lý thủ công. Admin nhận lạ
 
 ### M6 — Vận hành trên VPS (trước mở bán)
 
-- [ ] [CREATE] cấu hình deploy VPS (reverse proxy HTTPS phục vụ SPA + `/api`, service backend tự khởi động lại), `docs/deployment-guide.md`, quy trình backup/restore DB + thư mục ảnh ra ngoài VPS.
-- [ ] [MODIFY] health/log/CI/README theo môi trường thật; deploy chỉ sau khi CI xanh.
+- M3.16.1 thực hiện sớm phần deploy đầu tiên theo bảng kế hoạch đã duyệt trong chat: snapshot source hiện tại được kiểm tra local, build trên Linux, database mới riêng cho RMG, nginx/HTTPS và smoke test. Kết quả thật ghi trong `progress.md`; không nhận kết quả local là CI. Chưa coi toàn M6 đạt.
+- [ ] [CREATE] Hoàn tất vận hành deploy VPS: cấu hình proxy/service và `docs/deployment-guide.md` được làm ở M3.16.1; còn quy trình backup/restore DB + thư mục ảnh ra ngoài VPS.
+- [ ] [MODIFY] health/log/CI/README theo môi trường thật; các lượt deploy qua pipeline chỉ chạy sau khi CI xanh. Snapshot thủ công M3.16.1 chưa có kết quả CI riêng.
 - [ ] Bảo vệ VPS: chỉ SSH bằng key, tường lửa chỉ mở 22/80/443, PostgreSQL không mở ra ngoài, cập nhật bảo mật tự động; báo động khi `/api/v1/health/ready` lỗi.
 - [ ] Smoke test HTTPS/proxy/refresh, restart/catch-up, ảnh/đơn còn nguyên sau restart, restore sang DB khác, rollback app tương thích schema.
 - Hoàn thành khi có bằng chứng deploy/restore; chưa đạt nếu chỉ có hướng dẫn chưa chạy.
