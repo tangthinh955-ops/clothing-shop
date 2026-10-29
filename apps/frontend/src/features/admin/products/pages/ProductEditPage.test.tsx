@@ -69,7 +69,7 @@ describe('edit a draft product', () => {
     fireEvent.change(screen.getByLabelText('Tên sản phẩm'), { target: { value: expectedPatchBody.name } });
     fireEvent.change(screen.getByLabelText('Mô tả'), { target: { value: expectedPatchBody.description } });
     await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
-    expect(await screen.findByText('Đã cập nhật sản phẩm nháp “Áo cotton đã sửa”.')).toBeVisible();
+    expect(await screen.findByText('Đã cập nhật sản phẩm “Áo cotton đã sửa”.')).toBeVisible();
     expect(await screen.findByRole('heading', { name: 'Áo cotton đã sửa' })).toBeVisible();
     const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
     expect(patch?.[0]).toBe('/admin/products/product-test');
@@ -199,7 +199,7 @@ describe('edit a draft product', () => {
     });
   });
 
-  it('publishes a ready draft with the captured version, then shows status management without the edit form', async () => {
+  it('publishes and hides with the captured version and keeps editing, saving with the version those changes returned', async () => {
     const { spy, stubs } = stubApi();
     stubs.detail = withImage;
     renderPage();
@@ -208,12 +208,19 @@ describe('edit a draft product', () => {
     expect(await screen.findByText('Đã xuất bản sản phẩm.')).toBeVisible();
     const publish = spy.mock.calls.find(([path]) => path === '/admin/products/product-test/publish');
     expect(publish?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 3 } });
-    expect(screen.getByRole('heading', { name: 'Quản lý sản phẩm', level: 1 })).toBeVisible();
-    expect(screen.queryByLabelText('Tên sản phẩm')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();
+    expect(screen.getByLabelText('Tên sản phẩm')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Ẩn sản phẩm' }));
     expect(await screen.findByText('Đã ẩn sản phẩm.')).toBeVisible();
     const hide = spy.mock.calls.find(([path]) => path === '/admin/products/product-test/hide');
     expect(hide?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 4 } });
+    expect(screen.getByRole('heading', { name: 'Sửa sản phẩm đã ẩn', level: 1 })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Tên sản phẩm'), { target: { value: 'Áo cotton sửa sau khi ẩn' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => {
+      const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
+      expect((patch?.[1]?.body as Record<string, unknown>)?.['expectedVersion']).toBe(5);
+    });
   });
 
   it('locks Xuất bản while product info is unsaved and unlocks when the edit is reverted', async () => {
@@ -282,25 +289,50 @@ describe('edit a draft product', () => {
     expect(screen.getByLabelText('Tên sản phẩm')).toHaveValue('Chưa lưu');
   });
 
-  it('stops editing when the explicit reload finds the product is no longer a draft', async () => {
+  it('keeps editing with the live warning when the explicit reload finds the product published', async () => {
     const { stubs } = stubApi();
     renderPage();
     await screen.findByLabelText('Tên sản phẩm');
-    stubs.detail = { ...detail, status: 'PUBLISHED' };
+    stubs.detail = { ...withImage, name: 'Áo cotton đang bán', status: 'PUBLISHED', version: 7 };
     await userEvent.click(screen.getByRole('button', { name: 'Tải dữ liệu mới' }));
-    expect(await screen.findByText(/Chỉ sản phẩm nháp được sửa ở phần này/)).toBeVisible();
-    expect(screen.queryByLabelText('Tên sản phẩm')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Lưu thay đổi' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();
+    expect(screen.getByText(/Khách đang xem sản phẩm này: thay đổi hiển thị ngay khi lưu/)).toBeVisible();
+    expect(screen.getByLabelText('Tên sản phẩm')).toHaveValue('Áo cotton đang bán');
   });
 
-  it('refuses editing for a product that is not a draft', async () => {
+  it('edits a published product: live warning, images and form, saving with the captured version', async () => {
     const { spy, stubs } = stubApi();
-    stubs.detail = { ...detail, status: 'PUBLISHED' };
+    stubs.detail = { ...withImage, status: 'PUBLISHED' };
+    stubs.patch = { ...withImage, status: 'PUBLISHED', name: 'Áo cotton đã sửa', version: 4 };
     renderPage();
-    expect(await screen.findByText(/Chỉ sản phẩm nháp được sửa ở phần này/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Lưu thay đổi' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Tên sản phẩm')).not.toBeInTheDocument();
-    expect(spy.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false);
+    expect(await screen.findByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();
+    expect(screen.getByText(/Đổi đường dẫn sẽ làm link cũ đã chia sẻ/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Gỡ ảnh 1' })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Tên sản phẩm'), { target: { value: 'Áo cotton đã sửa' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    expect(await screen.findByText('Đã cập nhật sản phẩm “Áo cotton đã sửa”.')).toBeVisible();
+    const patch = spy.mock.calls.find(([, options]) => options?.method === 'PATCH');
+    expect((patch?.[1]?.body as Record<string, unknown>)?.['expectedVersion']).toBe(3);
+  });
+
+  it('shows the publish-rule reason as is when saving a published product breaks it', async () => {
+    const { stubs } = stubApi();
+    stubs.detail = { ...withImage, status: 'PUBLISHED' };
+    stubs.patch = new client.ApiError('PUBLISH_RULE', 'Sản phẩm đang xuất bản cần danh mục và biến thể đang bật.', 409);
+    renderPage();
+    await screen.findByLabelText('Tên sản phẩm');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    expect(await screen.findByText('Sản phẩm đang xuất bản cần danh mục và biến thể đang bật.')).toBeVisible();
+    expect(screen.queryByText(/Sản phẩm đã thay đổi, hoặc đường dẫn/)).not.toBeInTheDocument();
+  });
+
+  it('notes that a hidden product stays off the shop until it is published again', async () => {
+    const { stubs } = stubApi();
+    stubs.detail = { ...withImage, status: 'HIDDEN' };
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Sửa sản phẩm đã ẩn', level: 1 })).toBeVisible();
+    expect(screen.getByText(/Sản phẩm đang ẩn: khách chưa thấy thay đổi cho tới khi xuất bản lại/)).toBeVisible();
+    expect(screen.getByLabelText('Tên sản phẩm')).toBeVisible();
   });
 
   it('offers retry when the product cannot be loaded', async () => {

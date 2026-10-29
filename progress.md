@@ -2,6 +2,32 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 29/10/2026 — M3.14 (Người A): sửa sản phẩm đang bán hoặc đã ẩn
+
+**Phạm vi:** người dùng yêu cầu "làm luôn" M3.14 theo lộ trình P0. Backend vốn cho sửa sản phẩm mọi trạng thái (giữ ràng buộc khi đang bán); UI chặn khác nháp. Nhánh `feat/m3.14-edit-live-products` từ `main`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử. Đã commit trên nhánh local, chưa push.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/admin/products/pages/ProductEditPage.tsx` | Form và phần ảnh hiện cho mọi trạng thái; tiêu đề theo trạng thái (nháp/đang bán/đã ẩn); cảnh báo hàng đang bán (lưu là lên web, đổi đường dẫn làm hỏng link đã chia sẻ) và ghi chú hàng đã ẩn; khóa Xuất bản khi còn thay đổi chưa lưu áp dụng cho mọi trạng thái |
+| `apps/frontend/src/features/admin/products/components/ProductEditForm.tsx` | 409 mã `PUBLISH_RULE` hiện đúng lý do từ server thay vì thông báo chung "đã thay đổi/bị trùng"; nhãn form "Sửa sản phẩm" khi không phải nháp |
+| `apps/frontend/src/features/admin/products/pages/ProductsPage.tsx` | Thông báo sau lưu "Đã cập nhật sản phẩm “…”." cho mọi trạng thái |
+| `apps/backend/src/common/database-errors.ts`, `modules/products/products.service.ts` | Thêm `publishRuleConflict` (409, mã `PUBLISH_RULE`) cho 3 ràng buộc xuất bản: sửa hàng đang bán, xuất bản thiếu điều kiện, gỡ hết ảnh hàng đang bán. Thông báo giữ nguyên |
+| `ProductEditPage.test.tsx` | Thay 2 test "không sửa được hàng không phải nháp" bằng: sửa hàng đang bán, lý do 409 hiện nguyên văn, hàng đã ẩn, tải dữ liệu mới thấy đang bán vẫn sửa được; test xuất bản → ẩn → lưu dùng version trả về (5) |
+| `apps/backend/test/catalog.integration.spec.ts` | +1 ca: sửa tên/giá/mô tả hàng đang bán thì API công khai trả ngay giá trị mới; tắt hết biến thể hoặc gỡ hết ảnh trả 409 `PUBLISH_RULE` và không đổi version |
+| `apps/frontend/e2e/products.spec.ts`, `e2e/product-status.spec.ts` | Ca "từ chối sửa hàng đã xuất bản" thành "sửa hàng đang bán, khách thấy ngay"; sau xuất bản form vẫn còn; đổi chữ thông báo |
+| `docs/local-trial-m3.md` | Mục M3.14 |
+
+**TDD:** integration mới RED đúng lý do (sửa khi đang bán đã chạy, mã lỗi còn `CONFLICT`) → GREEN 13/13 sau khi thêm `PUBLISH_RULE`. UI: 6 test RED (trang còn chặn hàng không phải nháp) → GREEN 63/63; một lần fail giữa chừng do stub của chính test trả tên cũ, đã sửa test.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 184 frontend |
+| `npm run test:integration` | 33/33 |
+| `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (42.5s) |
+
+**Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.14. **Dừng chờ người dùng thử.**
+
 ## Ngày 29/10/2026 — P0: chuyển tài liệu gốc từ demo sang shop thật
 
 **Bối cảnh:** chủ shop xác nhận website là kênh bán hàng thật, không còn là demo. Đánh giá lại M1–M3 theo chuẩn bán thật (nghiệp vụ/pháp lý, bảo mật, vận hành). Giữ nguyên nền tảng auth/session/CSRF/role, kho có lịch sử, catalog. Phát hiện chặn mở bán: upload bị tắt ở production và chỉ lưu ổ đĩa local; API chỉ nghe `127.0.0.1`; `TRUST_PROXY` không bắt buộc; chưa có deploy/backup; admin chỉ có mật khẩu, giới hạn đăng nhập theo IP + email; UI không cho sửa sản phẩm đã xuất bản (backend cho phép); chính sách và banner còn ghi demo; `seed:demo` chạy được trên production.

@@ -158,6 +158,24 @@ describe('M3 catalog, actual uploads and inventory', () => {
     const list = await supertest(server).get(`/api/v1/products?categoryId=${categoryId}&q=${encodeURIComponent('Áo thử')}`).expect(200);
     expect(list.body.items.some((item: { id: string }) => item.id === productId)).toBe(true);
   });
+  it('edits a published product live and explains publish-rule conflicts', async () => {
+    const current = await admin.get(`/api/v1/admin/products/${productId}`).expect(200);
+    const variant = { id: current.body.variants[0].id as string, sku, size: 'M', color: 'Đen', active: true };
+    const edited = await write(`/admin/products/${productId}`, { ...product(), name: 'Áo thử đã sửa khi đang bán',
+      description: 'Mô tả mới.', expectedVersion: productVersion, variants: [{ ...variant, price: 270000 }] }, 'patch');
+    expect(edited.status).toBe(200); productVersion = edited.body.version as number;
+    const live = await supertest(server).get(`/api/v1/products/${slug}`).expect(200);
+    expect(live.body).toMatchObject({ name: 'Áo thử đã sửa khi đang bán', description: 'Mô tả mới.', priceFrom: 270000 });
+    // A published product must keep an active variant and an image; the reason has its own code so the UI can show it.
+    const noVariant = await write(`/admin/products/${productId}`, { ...product(), expectedVersion: productVersion,
+      variants: [{ ...variant, price: 270000, active: false }] }, 'patch');
+    expect(noVariant.status).toBe(409);
+    expect(noVariant.body).toMatchObject({ code: 'PUBLISH_RULE', message: 'Sản phẩm đang xuất bản cần danh mục và biến thể đang bật.' });
+    const noImage = await write(`/admin/products/${productId}/images`, { assetIds: [], expectedVersion: productVersion }, 'put');
+    expect(noImage.status).toBe(409);
+    expect(noImage.body).toMatchObject({ code: 'PUBLISH_RULE', message: 'Cần giữ ít nhất một ảnh cho sản phẩm đang xuất bản.' });
+    expect((await admin.get(`/api/v1/admin/products/${productId}`).expect(200)).body.version).toBe(productVersion);
+  });
   it('rejects stale updates and hides product details/media after hiding', async () => {
     expect((await write(`/admin/products/${productId}/hide`, { expectedVersion: 0 })).status).toBe(409);
     expect((await write(`/admin/products/${productId}/hide`, { expectedVersion: productVersion })).status).toBe(201);

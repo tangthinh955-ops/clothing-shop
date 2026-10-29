@@ -78,7 +78,8 @@ export function ProductEditForm({ product, categories, onSubmit, disabled = fals
       await onSubmit({ name: info.name, slug: info.slug, description: info.description, categoryId: info.categoryId,
         expectedVersion: product.version, variants: variants.map(toVariantInput) });
     } catch (cause: unknown) {
-      if (cause instanceof ApiError && cause.status === 409) setError(conflictMessage);
+      // A publish-rule 409 names the exact reason; other 409s are a stale version or a duplicate.
+      if (cause instanceof ApiError && cause.status === 409) setError(cause.code === 'PUBLISH_RULE' ? cause.message : conflictMessage);
       else setError(cause instanceof ApiError ? cause.message : 'Chưa cập nhật được sản phẩm. Vui lòng thử lại.');
       if (cause instanceof ApiError) setFields(Object.fromEntries(cause.fieldErrors.map((field) => [field.field, field.message])));
     } finally {
@@ -87,7 +88,7 @@ export function ProductEditForm({ product, categories, onSubmit, disabled = fals
     }
   }
 
-  return <Box component="form" aria-label="Sửa sản phẩm nháp" aria-busy={locked} onSubmit={(event) => { void submit(event); }}>
+  return <Box component="form" aria-label={product.status === 'DRAFT' ? 'Sửa sản phẩm nháp' : 'Sửa sản phẩm'} aria-busy={locked} onSubmit={(event) => { void submit(event); }}>
     <Stack spacing={2.5}>
       {error && <Alert severity="error" ref={errorSummary} tabIndex={-1}>{error}</Alert>}
       <Typography component="h2" variant="h5">Thông tin sản phẩm</Typography>
