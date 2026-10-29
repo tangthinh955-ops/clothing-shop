@@ -85,12 +85,12 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 
 ### M3 — Sản phẩm, ảnh và kho
 
-Điểm dừng hiện tại và kế hoạch tiếp tục theo phần: [m3-implementation-plan.md](m3-implementation-plan.md). **M3.8 — admin xuất bản và ẩn sản phẩm** (Người A) đã triển khai sau M3.4.2/M3.5/M3.6; kết quả kiểm tra ở progress, chờ người dùng chạy thử theo [hướng dẫn M3.1–M3.8](local-trial-m3.md). Chưa có UI kho (M3.7, Người B), catalog khách (M3.9 trở đi) và chưa nghiệm thu toàn M3.
+Điểm dừng hiện tại và kế hoạch tiếp tục theo phần: [m3-implementation-plan.md](m3-implementation-plan.md). M3 chia giữa hai người thành M3.1–M3.12 và đã triển khai xong: UI kho (M3.7.1–M3.7.3), admin xuất bản/ẩn (M3.8), catalog khách (M3.9/M3.10), seed demo (M3.11), ca chấp nhận toàn luồng `catalog.spec.ts` ghép vào bộ E2E implemented (M3.12) đạt local 34/34. Chỉ còn người dùng chạy thử và nghiệm thu toàn M3 theo [hướng dẫn M3](local-trial-m3.md); kết quả từng kiểm tra ở [progress.md](../progress.md).
 
-- [ ] [CREATE] backend categories/products/inventory/uploads; frontend catalog và admin sản phẩm/danh mục/kho.
-- [ ] [MODIFY] schema/migrations/routes; thêm seed giả chạy tường minh.
-- [ ] Test SKU trùng, biến thể, nháp/ẩn, ảnh mồ côi, điều chỉnh kho và input upload.
-- [ ] Catalog → Filters/ProductGrid/ProductCard/Pagination; Detail → Gallery/VariantSelector; Editor → Fields/Variants/ImageManager.
+- [x] [CREATE] backend categories/products/inventory/uploads; frontend catalog và admin sản phẩm/danh mục/kho (M3.1–M3.10).
+- [x] [MODIFY] schema/migrations/routes; thêm seed demo chạy tường minh qua `seed:demo`, không tự seed khi startup (M3.11).
+- [x] Test SKU trùng, biến thể, nháp/ẩn, ảnh mồ côi, điều chỉnh kho và input upload (unit/UI 199 + integration 31 + E2E implemented 34 ca).
+- [x] Catalog → Filters/ProductGrid/ProductCard/Pagination; Detail → Gallery/VariantSelector; Editor → Fields/Variants/ImageManager (ca tổng M3.12 chạy qua toàn luồng admin → khách).
 - State: filter trên URL, dữ liệu server ở query cache, form/ảnh tạm ở editor.
 - Flow: upload ngoài transaction → asset tạm → lưu sản phẩm/gắn ảnh; cập nhật kho qua Inventory.
 - Hoàn thành khi admin sửa hàng không deploy lại, ảnh thật tồn tại và kho có lịch sử.

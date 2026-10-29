@@ -16,11 +16,86 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho, M3.7.2 (Người B) đã có dialog điều chỉnh tồn lọc theo biến thể, M3.7.3 (Người B) đã có lịch sử giao dịch của từng SKU; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có catalog khách (M3.9 trở đi) |
+| M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; kết quả ở các mục riêng bên dưới, chờ người dùng chạy thử và nghiệm thu toàn mốc |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |
+
+## Ngày 29/10/2026 — Bản sửa sau review M3.9–M3.12
+
+Người dùng duyệt "làm hết" cho 6 điểm review:
+
+| Điểm | Sửa |
+|---|---|
+| Seed tạo `reserved` 2/3/2 không có đơn — trái quy tắc reserved chỉ tăng khi tạo đơn, sang M4 sẽ kẹt không giải phóng được | `seed-demo.ts`: bỏ `reserved`; biến thể hết hàng dùng `onHand: 0`. Còn bán giữ nguyên số cũ (13, 8, 1, 0, 10, 10, 5) |
+| Seed ghi thẳng `onHand`, lịch sử kho trống | Mỗi biến thể có tồn tạo kèm một `InventoryMovement` 'Nhập kho demo' (0 → N, actor = admin chủ ảnh, key `seed-demo-<SKU>`), inventory `version` 1 như sau một lần điều chỉnh thật |
+| Ghi file ảnh trong `$transaction` (AGENTS.md cấm), transaction lỗi để lại file mồ côi | Ảnh tạo ngoài transaction theo khuôn `uploads.service` (file → row, lỗi thì xóa lại); sản phẩm tạo bằng một nested create; tạo sản phẩm lỗi thì xóa asset/file vừa tạo. `ADMIN_EMAIL` bị khóa (`disabledAt`) không được chọn làm chủ ảnh |
+| `progress.md` mất tiêu đề mục M3.11 | Thêm lại tiêu đề |
+| `/shop?categoryId=<danh mục đã tắt>` hiện 'Tất cả danh mục' trong khi vẫn lọc | `CatalogPage.tsx`: cảnh báo 'Danh mục này không còn hiển thị.', ô Danh mục ghi 'Danh mục không còn hiển thị', nút 'Xóa lọc' về `/shop` |
+| Sang trang `/shop` làm lưới biến mất rồi hiện lại | `placeholderData: keepPreviousData`: giữ card trang cũ kèm 'Đang cập nhật bộ sưu tập…', thanh phân trang khóa trong lúc tải |
+
+Test mới, đều fail trước khi sửa đúng lý do rồi đạt sau khi sửa:
+- `seed-demo.integration.spec.ts`: thêm ca "lượt lỗi giữa chừng không để lại ảnh/asset" (RED: còn `demo-ao-cotton-1/2.webp`); ca hai lượt thêm kiểm tra đang giữ 0, lịch sử 'Nhập kho demo' và version (RED: `reserved` khác 0). Cleanup test xóa thêm `InventoryMovement` của hàng demo.
+- `CatalogPage.test.tsx`: +2 test danh mục đã tắt và giữ card khi tải trang 2.
+
+Tài liệu: `docs/local-trial-m3.md` mục M3.9 (2 dòng thử mới) và M3.11 (giữ 0, lịch sử kho, lượt lỗi), câu mở đầu không còn ghi "còn ghép M3.12"; README mục seed; `docs/plan.md` số test.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 182 frontend |
+| `npm run test:integration` | 31/31 |
+| `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (39.6s) |
+
+Chưa chạy `seed:demo` trên DB local (chờ người dùng). Chưa commit/push.
+
+## Ngày 29/10/2026 — M3.12 (Người B): ca chấp nhận toàn luồng ghép vào E2E implemented — chốt M3 về mặt kỹ thuật
+
+**Phạm vi:** người dùng duyệt kế hoạch M3.12: đưa `catalog.spec.ts` vào `test:e2e:implemented` (kèm đổi tên bước CI), sửa spec cho khớp flow UI hiện hành ở mức tối thiểu (không đổi code runtime), cập nhật tài liệu chốt M3. **Đã viết, agent đã kiểm tra toàn bộ trên DB `_test`; chờ người dùng chạy thử theo mục M3.12 của local-trial. Chưa nghiệm thu toàn M3. Chưa commit/push.**
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/e2e/catalog.spec.ts` | 3 điều chỉnh khớp UI hiện hành: (1) đến khu Sản phẩm bằng `goto('/admin/products')` — các trang con admin không có nav 'Sản phẩm' (nút nav chỉ nằm trên landing `/admin`), trùng idiom `goto` của 10 spec còn lại; (2) sau 'Lưu sản phẩm' assert URL về `/admin/products` + alert 'Đã tạo sản phẩm nháp', lấy `productId` từ DB rồi `goto` trang sửa nháp, assert heading 'Sửa sản phẩm' (khớp 'Sửa sản phẩm nháp' vì getByRole string là substring) — luồng tạo nháp nay về danh sách, không còn nhảy thẳng trang sửa như spec cũ giả định; (3) assert chuyển trạng thái bằng text chính xác 'Đã xuất bản sản phẩm.'/'Đã ẩn sản phẩm.' như `product-status.spec.ts` — sau chuyển trạng thái trang hiển thị 2 alert cùng lúc nên `getByRole('alert')` vi phạm strict mode |
+| `package.json` (root) | `test:e2e:implemented` thêm `catalog.spec.ts` (chèn sau `catalog-detail`) → 11 spec |
+| `.github/workflows/ci.yml` | Tên bước E2E thêm 'full catalog M3.12' |
+| `docs/plan.md` | Đoạn tổng kết M3 ghi M3.1–M3.12 đã triển khai xong, chỉ còn nghiệm thu; tick 4 dòng tiêu chí với ba bằng chứng (unit/UI 197, integration 30, E2E implemented 34) |
+| `README.md` | Dòng điểm dừng: các phần M3.1–M3.12 xong, chờ chạy thử/nghiệm thu; bảng E2E: implemented = toàn bộ hiện hành 34 ca/11 spec, `test:e2e` trùng bộ implemented; ghi chú lịch sử CI `d5953cf` và tên bước mới chờ lượt chạy sau push |
+| `docs/local-trial-m3.md` | Mục M3.12: runbook toàn luồng (danh mục → nháp → ảnh thật → kho +10 → xuất bản → khách tìm/xem/chọn biến thể → mobile → reload → ẩn → 404) + bảng 'ảnh còn sau restart' + câu lệnh bộ E2E |
+| `progress.md` | Mục này + dòng trạng thái mốc M3 |
+
+### Data flow / key quan trọng
+
+Ca tự dựng dữ liệu bằng UI thật trên `_test` (đăng nhập → danh mục → nháp SKU `BROWSER-*` → upload ảnh sharp qua form → điều chỉnh kho +10 → Xuất bản), phía khách tìm `/shop?q&categoryId&sort` → chi tiết chọn 'M · đen' 'Còn 10 sản phẩm' → mobile 390 không tràn → reload → Ẩn → `/products/<slug>` 404; fixture tạo/xóa riêng của lượt chạy (beforeAll/afterAll).
+
+- Nav admin chỉ ở landing `/admin`: chuyển khu admin trong E2E đi bằng URL (`goto`), không còn link nav dùng được giữa các trang con.
+- Trang sửa sản phẩm sau chuyển trạng thái có nhiều alert: assert theo text chính xác thay vì `getByRole('alert')` chung.
+- 'Sửa sản phẩm' khớp substring với 'Sửa sản phẩm nháp'; sau lưu nháp, phần thông báo tạo thành công hiển thị trên danh sách thay vì điều hướng sang trang sửa.
+
+### Kiểm tra thực tế (Node 24.22.1; E2E qua `node tools/test-e2e.mjs`)
+
+| Lệnh | Kết quả |
+|---|---|
+| `catalog.spec.ts` trước sửa (quan sát hiện trạng) | FAIL đúng điểm dự đoán trước: timeout chờ link 'Sản phẩm' không tồn tại trên trang con admin — ghi nhận RED trước khi sửa |
+| `catalog.spec.ts` sau điều chỉnh (1) | FAIL vì strict mode 2 alert sau xuất bản — mới phát hiện điểm (3), sửa xong đạt |
+| `catalog.spec.ts` riêng, cuối | 1 passed (2.4s, exit 0) |
+| `test:e2e:implemented` 11 spec | **34/34 passed (40.4s, exit 0, không flake** — webServer Vite còn sống cả lượt) |
+| `npm run typecheck` | Exit 0 |
+| `npm run build` | Exit 0 (cảnh báo chunk có sẵn) |
+| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 |
+| `test:integration` | 30/30, exit 0 |
+
+### Vấn đề gặp trong phần này
+
+- Spec cũ được viết trước khi UI admin có flow 'lưu → về danh sách' và trước khi nav con bị bỏ: 2 điểm lệch được phát hiện bằng lượt chạy quan sát (không chỉ đoán); còn 1 điểm strict-mode alert chỉ lộ khi luồng chạy đến bước xuất bản.
+- Log lượt integration ghi sai chỗ do chuyển cwd trong `cmd /c`; exit 0 và 30/30 xác nhận từ log thật (`C:\Users\Admin\.local\integration-m312.log`).
+
+### Chạy thử / điểm dừng
+
+- Chạy thử ca này thủ công theo bảng [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.12: toàn luồng ở trên + dừng/restart backend rồi kiểm ảnh vẫn hiển thị. Lệnh bộ E2E: `./tools/npm.ps1 run test:e2e:implemented` (34 ca).
+- **Dừng chờ người dùng chạy thử và nghiệm thu toàn M3.** Sau nghiệm thu mới nói 'M3 hoàn thành'; commit/push/PR chỉ khi được yêu cầu (toàn bộ thay đổi M3.9–M3.12 đang uncommitted trên nhánh `feat/m3.7.2-inventory-adjust`).
 
 ## Ngày 29/10/2026 — M3.11 (Người B): bộ dữ liệu demo bằng lệnh seed
 

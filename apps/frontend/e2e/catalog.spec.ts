@@ -51,7 +51,7 @@ test('admin publishes actual product/image/stock; public filters/detail/mobile a
   await page.getByRole('button', { name: 'Thêm danh mục', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Đã lưu danh mục');
   const category = await db.category.findUniqueOrThrow({ where: { slug } });
-  await page.getByRole('link', { name: 'Sản phẩm', exact: true }).click();
+  await page.goto('/admin/products');
   await page.getByRole('link', { name: 'Thêm sản phẩm', exact: true }).click();
   await page.getByLabel('Tên sản phẩm', { exact: true }).fill('Áo cotton trình duyệt');
   await page.getByLabel('Đường dẫn sản phẩm').fill(slug);
@@ -60,6 +60,10 @@ test('admin publishes actual product/image/stock; public filters/detail/mobile a
   await page.getByLabel('Màu 1', { exact: true }).fill('Đen');
   await page.getByLabel('Giá 1 (VND)', { exact: true }).fill('250000');
   await page.getByRole('button', { name: 'Lưu sản phẩm', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/products$/);
+  await expect(page.getByRole('alert')).toContainText('Đã tạo sản phẩm nháp');
+  const product = await db.product.findUniqueOrThrow({ where: { slug } });
+  await page.goto(`/admin/products/${product.id}`);
   await expect(page.getByRole('heading', { name: 'Sửa sản phẩm' })).toBeVisible();
   const image = await sharp({ create: { width: 300, height: 400, channels: 3, background: '#b5a78f' } }).png().toBuffer();
   await page.getByLabel('Tải ảnh sản phẩm').setInputFiles({ name: 'cotton.png', mimeType: 'image/png', buffer: image });
@@ -72,10 +76,9 @@ test('admin publishes actual product/image/stock; public filters/detail/mobile a
   await page.getByLabel('Lý do điều chỉnh').fill('Nhập hàng thử trên browser');
   await page.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
   await expect(page.getByText('Khả dụng: 10', { exact: true })).toBeVisible();
-  const product = await db.product.findUniqueOrThrow({ where: { slug } });
   await page.goto(`/admin/products/${product.id}`);
   await page.getByRole('button', { name: 'Xuất bản', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Đã xuất bản');
+  await expect(page.getByText('Đã xuất bản sản phẩm.')).toBeVisible();
   await page.goto(`/shop?categoryId=${category.id}&q=${encodeURIComponent('cotton trình duyệt')}&sort=price-asc`);
   await page.getByRole('link', { name: 'Áo cotton trình duyệt', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Áo cotton trình duyệt', exact: true })).toBeVisible();
@@ -88,7 +91,7 @@ test('admin publishes actual product/image/stock; public filters/detail/mobile a
   await expect(page.getByRole('heading', { name: 'Áo cotton trình duyệt', exact: true })).toBeVisible();
   await page.goto(`/admin/products/${product.id}`);
   await page.getByRole('button', { name: 'Ẩn sản phẩm', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Đã ẩn');
+  await expect(page.getByText('Đã ẩn sản phẩm.')).toBeVisible();
   await page.goto(`/products/${slug}`);
   await expect(page.getByRole('alert')).toContainText('Không tìm thấy sản phẩm');
 });

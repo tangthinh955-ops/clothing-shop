@@ -6,7 +6,7 @@ Website một shop quần áo, phục vụ khách từ Instagram. React/Vite và
 
 Dự án đang triển khai M3 theo từng phần sau nền tảng/tài khoản local. Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng: **M3.8 (Người A) — xuất bản và ẩn sản phẩm** và **M3.7.1 (Người B) — xem/tìm tồn kho**, chờ người dùng chạy thử. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md). Chưa triển khai điều chỉnh tồn/lịch sử kho và catalog khách trên UI.
+Điểm dừng: các phần M3.1–M3.12 (danh mục, sản phẩm nháp, ảnh, điều chỉnh kho, xuất bản catalog khách, seed demo và ca E2E tổng) đã triển khai xong, chờ người dùng chạy thử và nghiệm thu. Xem [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn nền tảng/tài khoản M2](docs/local-trial-m2.md).
 
 Chỉ dùng dữ liệu giả. Chưa được nghiệm thu để bán thật.
 
@@ -109,12 +109,12 @@ Hai phạm vi E2E được giữ tường minh:
 
 | Lệnh từ root | Phạm vi |
 |---|---|
-| `./tools/npm.ps1 run test:e2e:implemented` | Auth + categories + products + product-images + product-status (tạo nháp, sửa thông tin/biến thể, ảnh, xuất bản/ẩn đến M3.8) + inventory (xem/tìm tồn M3.7.1), hiện 18 ca; CI dùng lệnh này và ghi rõ tên bước |
-| `./tools/npm.ps1 run test:e2e` | Toàn bộ E2E, gồm `catalog.spec.ts` kiểm tra sản phẩm/ảnh/kho/public catalog toàn M3; hiện chưa đạt vì các UI đó chưa có |
+| `./tools/npm.ps1 run test:e2e:implemented` | Toàn bộ E2E hiện hành gồm cả ca tổng `catalog.spec.ts` (M3.12): auth, danh mục, sản phẩm nháp/biến thể, ảnh, xuất bản/ẩn, kho (M3.7.1–M3.7.3), catalog khách (M3.9/M3.10), hiện 34 ca trên 11 spec; CI dùng lệnh này và ghi rõ tên bước |
+| `./tools/npm.ps1 run test:e2e` | Chạy cả thư mục `e2e/`; hiện trùng với bộ implemented vì toàn M3 đã ghép |
 
-Không xóa hoặc skip test catalog. Khi triển khai thêm các phần M3, phải cập nhật phạm vi E2E đã triển khai; khi toàn M3 sẵn sàng, CI cần chạy bộ đầy đủ. Kết quả xanh của bộ implemented không phải nghiệm thu toàn M3.
+Không xóa hoặc skip test catalog. Khi triển khai thêm phần mới, phải cập nhật phạm vi E2E đã triển khai; kết quả xanh của bộ E2E không phải nghiệm thu toàn mốc.
 
-Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy cleanup trên DB khác. E2E chạy API cổng 3001 và frontend 5174 riêng; Chromium tải vào `.local/ms-playwright`, không điều khiển browser cá nhân. Test chỉ dọn fixture do lần chạy đó tạo. CI được khai báo trong `.github/workflows/ci.yml`. Commit `d5953cf` đã chạy trên GitHub: typecheck/build/unit/integration đạt, E2E toàn M3 thất bại ở link Sản phẩm chưa có; kết quả cấu hình CI mới chỉ được xác nhận sau khi commit/push và có lượt chạy mới.
+Integration/E2E chỉ dùng database có hậu tố `_test`, từ chối chạy cleanup trên DB khác. E2E chạy API cổng 3001 và frontend 5174 riêng; Chromium tải vào `.local/ms-playwright`, không điều khiển browser cá nhân. Test chỉ dọn fixture do lần chạy đó tạo. CI được khai báo trong `.github/workflows/ci.yml`. Commit `d5953cf` đã chạy trên GitHub: typecheck/build/unit/integration đạt, E2E toàn M3 lúc đó thất bại ở link Sản phẩm chưa có; từ M3.12 ca tổng `catalog.spec.ts` đã nằm trong bộ implemented, tên bước CI mới được xác nhận bằng lượt chạy sau lần push tới.
 
 Build độc lập: `npm run build -w @clothing/backend` hoặc `npm run build -w @clothing/frontend`, sau khi generate Prisma ở môi trường build backend. Backend không tự migration/seed khi startup. Không dùng `prisma migrate reset` hoặc `docker compose down -v` với dữ liệu cần giữ.
 

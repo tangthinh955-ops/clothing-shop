@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU. Chưa có xóa danh mục hoặc trang khách (M3.9). Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU; M3.9 (Người B) thay trang giới thiệu `/shop` bằng catalog khách tìm/lọc/phân trang theo hướng dẫn phía dưới; M3.10 (Người B) bổ sung trang chi tiết `/products/:slug` và chọn biến thể theo hướng dẫn phía dưới; M3.11 (Người B) bổ sung lệnh `npm run seed:demo` nhập bộ dữ liệu demo. M3.12 ghép ca tổng `catalog.spec.ts` vào bộ E2E và có runbook toàn luồng phía dưới. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -497,3 +497,25 @@ Bấm **Xuất bản** → `productsApi.publish` POST `/api/v1/admin/products/<i
 - `operation = 'status'`: dùng chung khóa với lưu, lưu ảnh và tải dữ liệu mới.
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products`. E2E: `./tools/npm.ps1 run test:e2e -- product-status.spec.ts`.
+
+## M3.12 — Người B: chốt M3 — ca chấp nhận toàn luồng và ảnh còn sau restart
+
+Ca này chạy đúng luồng E2E tổng `apps/frontend/e2e/catalog.spec.ts` (đã ghép vào `test:e2e:implemented`). Chuẩn bị backend + frontend như Chuẩn bị ở M3.1 và một tài khoản ADMIN. Ví dụ dưới chỉ là khuôn; tên/đường dẫn bạn tự đặt.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đăng nhập ADMIN → **Sản phẩm** → **Thêm sản phẩm** | Tạo nháp được: tên riêng (vd. 'Áo checklist'), đường dẫn, chọn danh mục, SKU viết hoa, màu, giá → 'Lưu sản phẩm' |
+| Sau lưu | Về danh sách sản phẩm với alert 'Đã tạo sản phẩm nháp "…".'; bấm **Sửa** trên hàng mới tạo được trang 'Sửa sản phẩm nháp' |
+| Tải một file ảnh thật từ máy (png/jpg/webp, dưới giới hạn) → **Lưu thứ tự ảnh** | Alert 'Đã lưu ảnh sản phẩm.'; khối ảnh hiện thumbnail và nút gỡ/sắp xếp |
+| **Kho** → tìm hoặc lọc theo SKU biến thể vừa tạo | Thẻ tồn xuất hiện với ba lượng 0; bấm **Điều chỉnh** |
+| Nhập `+10`, lý do bất kỳ → **Lưu điều chỉnh** | 'Khả dụng: 10' ngay trong dialog; thẻ tồn đổi theo; tự động ghi chuyển kho vào lịch sử M3.7.3 |
+| Về trang sửa nháp → **Xuất bản** | 'Đã xuất bản sản phẩm.'; trang đổi sang khuôn 'Quản lý sản phẩm' |
+| Mở **http://127.0.0.1:5173/shop**, tìm theo tên/lọc theo danh mục vừa tạo | Thấy đúng 1 sản phẩm vừa dùng (bộ lọc q + categoryId + sort trả lời như M3.9) |
+| Bấm tên sản phẩm ở danh sách | Vào chi tiết như M3.10: breadcrumb, ảnh chính (hoặc 'Chưa có ảnh'), chọn biến thể thấy 'Còn 10 sản phẩm' với giá đã nhập |
+| Co nhỏ cửa sổ còn ~390 px (devtools) | Không tràn ngang; reload trang chi tiết vẫn hiển thị (deep-link giữ) |
+| Về `/admin/products/<mã>` theo URL đúng mã → **Ẩn sản phẩm** | 'Đã ẩn sản phẩm.' |
+| Mở `/products/<đường dẫn sản phẩm>` | Trang báo 'Không tìm thấy sản phẩm.' với hướng dẫn quay lại |
+
+Kiểm tra ảnh còn sau restart: dừng backend (Ctrl+C ở terminal 1) và chạy lại `npm run dev:backend`; mở lại trang admin sản phẩm và trang chi tiết khách — ảnh đã gắn vẫn hiển thị (tệp nằm tại `.local/uploads`, bản ghi upload giữ nguyên; ảnh không biến thành 'Chưa có ảnh').
+
+Kiểm tra tự động: ca này chính là spec E2E tổng đã ghép vào `test:e2e:implemented` — toàn bộ hiện 34 ca trên 11 spec, đạt local 40s (chi tiết [progress.md](../progress.md) § M3.12). Câu lệnh: `./tools/npm.ps1 run test:e2e:implemented`.
