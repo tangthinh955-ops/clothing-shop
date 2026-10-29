@@ -25,7 +25,7 @@
     "db:migrate": "npm run db:migrate -w @clothing/backend",
     "admin:create": "npm run admin:create -w @clothing/backend",
     "seed:demo": "npm run seed:demo -w @clothing/backend",
-    "import:products": "npm run import:products -w @clothing/backend"
+    "import:products": "npm run import:products -w @clothing/backend --"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

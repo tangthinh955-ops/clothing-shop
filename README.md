@@ -103,7 +103,8 @@ name,category,color,sizes,price,stock,description,files
 | sizes | `XS`,`S`,`M`,`L`,`XL`,`XXL`,`3XL`,`FREESIZE`; trống = `FREESIZE`; nhiều size cách nhau `|`, mỗi size một biến thể cùng giá |
 | price | số nguyên 1–100.000.000 (bắt buộc); `stock` trống = 0, tối đa 1.000.000 |
 | ảnh | 1–8 ảnh mỗi sản phẩm (file phải nằm cùng thư mục CSV); lưu vào `.local/uploads` dạng webp 750×1000 (cắt viền vừa khung) |
-| trạng thái | Mặc định PUBLISHED lên `/shop` ngay (cần danh mục bật + ≥1 ảnh + ≥1 biến thể); `--draft` để nhập nháp soát trước |
+| thư mục | `--dir` tương đối tính từ thư mục bạn đang đứng khi gõ lệnh (với `tools\npm.ps1` là thư mục gốc repo); đường dẫn tuyệt đối dùng nguyên |
+| trạng thái | Mặc định PUBLISHED lên `/shop` ngay (cần danh mục bật + ≥1 ảnh + ≥1 biến thể); `--draft` để nhập nháp soát trước. Danh mục đã có mà đang tắt thì dòng bị bỏ qua khi nhập PUBLISHED (khách sẽ không thấy); bật danh mục trong admin hoặc dùng `--draft` |
 | chạy lại | Theo slug từ tên: phần đã có bị bỏ qua (không ghi đè, không nhập kho thêm); đổi tên sản phẩm tạo sản phẩm mới |
 | quyền | Cần một tài khoản ADMIN làm chủ ảnh (`ADMIN_EMAIL` nếu có; thiếu admin → exit 1 kèm hướng dẫn `admin:create`) |
 

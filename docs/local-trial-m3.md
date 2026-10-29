@@ -541,5 +541,7 @@ Lưu ý:
 
 - Chạy lệnh khi CSV chưa điền giá là an toàn: toàn bộ dòng bị bỏ qua 'thiếu giá…', không tạo gì (đã chạy thử thật, nhận thấy exit 0, không dòng nào tạo).
 - `--draft` nếu muốn nhập nháp soát trước; sản phẩm DRAFT không hiện ở `/shop` cho tới khi **Xuất bản** qua admin (M3.8).
+- M3.13b: `.\tools\npm.ps1 run import:products -- --dir data\import-khac --draft` nay chuyển đúng cả hai tham số (trước đây npm nuốt mất, lệnh âm thầm đọc `data\import` và nhập PUBLISHED). `--dir` tương đối tính từ thư mục gốc repo.
+- M3.13b: dòng thuộc danh mục đã có nhưng đang tắt bị bỏ qua khi nhập PUBLISHED, log 'danh mục … đang tắt. Bật danh mục trong admin rồi chạy lại, hoặc nhập nháp bằng --draft.'; với `--draft` vẫn nhập nháp được.
 - Ảnh được crop vừa khung 750×1000 (cắt viền, không méo). Phần cắt không vừa ý thì thay/gắn lại ảnh qua admin (M3.5/3.6).
 - Chạy lại là an toàn theo slug: dòng trùng tên bị bỏ qua; đổi tên sản phẩm trong CSV sẽ tạo sản phẩm MỚI (không tự sửa cái cũ) — sau khi import, mọi chỉnh sửa về giá/tồn/khác làm qua admin, không qua CSV.
