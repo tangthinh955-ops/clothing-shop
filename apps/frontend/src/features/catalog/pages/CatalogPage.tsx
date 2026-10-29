@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useSearchParams } from 'react-router';
 import { ApiError } from '../../../shared/api/client';
 import { CATALOG_PAGE_SIZE, catalogApi, catalogCategoriesKey, catalogKey, type CatalogProduct } from '../api/catalog.api';
+import { pageTitle } from '../../../shared/shop';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const CATEGORY_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -101,7 +102,7 @@ export function CatalogPage() {
   }
 
   return <Box sx={{ py: { xs: 3, md: 5 }, minWidth: 0 }}>
-    <title>Bộ sưu tập | Clothing Shop</title>
+    <title>{pageTitle('Bộ sưu tập')}</title>
     <Typography variant="overline" sx={{ letterSpacing: '.2em' }}>EVERYDAY ESSENTIALS</Typography>
     <Typography component="h1" variant="h2" sx={{ fontFamily: 'Georgia, serif', fontSize: { xs: 36, md: 52 }, my: 2 }}>
       Bộ sưu tập

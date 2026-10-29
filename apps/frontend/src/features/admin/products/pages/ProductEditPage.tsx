@@ -8,6 +8,7 @@ import { productsApi, productsKey, type Product, type ProductImagesInput, type P
 import { ProductEditForm } from '../components/ProductEditForm';
 import { ProductImagesManager } from '../components/ProductImagesManager';
 import { ProductStatusPanel, type StatusAction } from '../components/ProductStatusPanel';
+import { pageTitle } from '../../../../shared/shop';
 
 type Operation = 'save' | 'reload' | 'images' | 'status';
 
@@ -90,7 +91,7 @@ export function ProductEditPage() {
   const categoryActive = snapshot ? categories.data?.find((category) => category.id === snapshot.categoryId)?.active : undefined;
 
   return <Box sx={{ maxWidth: 760, mx: 'auto', py: { xs: 4, md: 6 } }}>
-    <title>Sửa sản phẩm | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Sửa sản phẩm | Quản trị')}</title>
     <Button component={Link} to="/admin/products" sx={{ mb: 2 }}>Về danh sách sản phẩm</Button>
     <Typography component="h1" variant="h3" sx={{ mb: 3 }}>{snapshot ? headings[snapshot.status] : 'Sửa sản phẩm'}</Typography>
     {detail.isPending && <Typography role="status">Đang tải sản phẩm…</Typography>}

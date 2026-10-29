@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link as RouterLink, useParams } from 'react-router';
 import { ApiError } from '../../../shared/api/client';
 import { catalogApi, catalogDetailKey, type CatalogImage } from '../api/catalog.api';
+import { pageTitle } from '../../../shared/shop';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
@@ -41,7 +42,7 @@ export function ProductDetailPage() {
   const selected = product.data?.variants.find((variant) => variant.id === variantId) ?? undefined;
 
   return <Box sx={{ py: { xs: 3, md: 5 }, minWidth: 0 }}>
-    <title>{product.data ? `${product.data.name} | Clothing Shop` : 'Chi tiết sản phẩm | Clothing Shop'}</title>
+    <title>{pageTitle(product.data ? product.data.name : 'Chi tiết sản phẩm')}</title>
     {product.isPending && <Typography role="status">Đang tải sản phẩm…</Typography>}
     {product.isError && <Stack spacing={2} sx={{ maxWidth: 560 }}>
       <AlertMessage error={error} />

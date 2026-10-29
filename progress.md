@@ -2,6 +2,32 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 29/10/2026 — M3.15: cửa hàng mang thông tin thật, bỏ dấu vết demo
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.15 ("oke"): tên shop **RMG Labels**, người bán cá nhân ở TP. Hồ Chí Minh, Instagram @rmglabels, nội dung chính sách theo đề xuất (đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; giao toàn quốc 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; COD/VietQR hạn 2 giờ; bảo mật dữ liệu). SĐT/Zalo, email chưa có nên không hiển thị (không điền giả). Nhánh `feat/m3.15-real-storefront` từ `main`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/shared/shop.ts` (mới) | `SHOP_NAME`, `seller` (tên, người bán, khu vực, Instagram; phone/email null) và `pageTitle()`. Đặt ở `shared` thay vì `features/information/content/shop.ts` như kế hoạch vì trang admin và layout cùng dùng, tránh import chéo feature |
+| `apps/frontend/src/features/information/content/policies.ts`, `pages/PolicyPage.tsx` | Chính sách chia mục; nội dung thật cho Giao hàng, Đổi & trả, Liên hệ (lấy từ `seller`, chỉ hiện kênh đã có); thêm `/payment` và `/privacy` |
+| `apps/frontend/src/layouts/StoreLayout.tsx` | Bỏ banner/dòng demo; tên RMG LABELS; header không còn Đăng nhập/Tài khoản của khách (admin vẫn thấy Quản trị); chân trang có người bán, Instagram và 5 link chính sách |
+| `layouts/AuthLayout.tsx`, `features/auth/pages/AuthPage.tsx` | Tên shop; trang đăng nhập bỏ link "Đăng ký" (route `/register` giữ nguyên, không còn link tới) |
+| 10 trang khác (`AccountPage`, `AdminPage`, `CategoriesPage`, `InventoryPage`, 3 trang sản phẩm admin, `CatalogPage`, `ProductDetailPage`), `index.html` | Tiêu đề/thương hiệu dùng `pageTitle`/`SHOP_NAME` thay "Clothing Shop"; meta mô tả không tự thêm định vị thương hiệu |
+| `apps/backend/src/cli/seed-demo.ts` | `NODE_ENV=production` → báo lỗi và thoát trước khi đọc cấu hình hay kết nối DB |
+| Test | Mới `StoreLayout.test.tsx` (3), `PolicyPage.test.tsx` (5); `App.test.tsx` +1; `seed-demo.integration.spec.ts` +1; E2E `auth.spec.ts` theo header mới |
+| `README.md`, `docs/local-trial-m3.md` | Mục M3.15; `seed:demo` từ chối production |
+
+**TDD:** 8 test UI RED (còn banner demo, tên cũ, link đăng nhập/đăng ký, chưa có trang thanh toán/bảo mật) → GREEN 20/20. Seed: RED vì lệnh chỉ dừng tình cờ do cấu hình test không hợp lệ cho production (cấu hình production thật sẽ nhập demo) → GREEN sau chặn có chủ đích.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 193 frontend |
+| `npm run test:integration` | 36/36 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (42.8s) |
+
+**Còn trước mở bán:** SĐT/Zalo và email của shop (sửa `shared/shop.ts`); thủ tục website bán hàng với Bộ Công Thương do chủ shop làm. **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.15. **Dừng chờ người dùng thử.**
+
 ## Ngày 29/10/2026 — M3.13b (lộ trình giao Người B, agent của Người A làm theo yêu cầu): sửa lệnh nhập CSV
 
 **Phạm vi:** người dùng yêu cầu làm luôn M3.13b: sửa 2 lỗi còn mở của M3.13a đã ghi ở PR #13. Nhánh `fix/m3.13b-import-args` từ `main`, PR #16; sau khi PR #15 (M3.14) merge, đã merge `main` vào nhánh để giải xung đột `progress.md` (giữ cả hai mục). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**

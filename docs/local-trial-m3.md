@@ -179,6 +179,21 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
 
+## M3.15 — cửa hàng mang thông tin thật, bỏ dấu vết demo
+
+Cửa hàng hiển thị tên **RMG Labels**, thông tin người bán (cá nhân kinh doanh, TP. Hồ Chí Minh, Instagram @rmglabels) và các chính sách thật đã được chủ shop duyệt. SĐT/Zalo và email chưa có nên chưa hiển thị; bổ sung trong `apps/frontend/src/shared/shop.ts` trước khi mở bán (M4.1 sẽ chuyển sang Cài đặt shop).
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở `/shop` | Đầu trang "RMG LABELS", không còn banner "BẢN DEMO · DỮ LIỆU GIẢ"; header chỉ có Bộ sưu tập, Bảng size (admin đã đăng nhập thấy thêm Quản trị) |
+| Kéo xuống chân trang | "Cá nhân kinh doanh · TP. Hồ Chí Minh", link Instagram @rmglabels mở tab mới; link Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật |
+| Mở `/shipping`, `/returns-policy`, `/payment`, `/privacy`, `/contact` | Nội dung thật: phí 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; COD/VietQR, hạn 2 giờ; dữ liệu thu và quyền của khách; thông tin người bán |
+| Tab trình duyệt | Tiêu đề dạng "Giao hàng \| RMG Labels" |
+| Mở `/login` | Không còn "Chưa có tài khoản? Đăng ký"; admin vẫn đăng nhập ở đây |
+| Chạy `seed:demo` với `NODE_ENV=production` | Báo "seed:demo chỉ dùng trên máy local…, không chạy trên production." và dừng, không ghi gì |
+
+Kiểm tra tự động: `StoreLayout.test.tsx`, `PolicyPage.test.tsx`, `App.test.tsx` (trang đăng nhập không quảng cáo đăng ký), integration `seed-demo.integration.spec.ts` (chặn production), E2E `auth.spec.ts`.
+
 ## M3.14 — Người A: sửa sản phẩm đang bán hoặc đã ẩn
 
 Trước đây chỉ sản phẩm nháp mới sửa được. Từ M3.14, trang sửa mở form thông tin, biến thể và ảnh cho mọi trạng thái. Backend vẫn kiểm tra như cũ: sản phẩm đang bán phải còn danh mục bật, ít nhất một biến thể bật và ít nhất một ảnh.
