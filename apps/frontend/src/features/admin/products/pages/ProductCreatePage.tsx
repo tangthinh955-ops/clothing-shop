@@ -5,6 +5,7 @@ import { ApiError } from '../../../../shared/api/client';
 import { categoriesApi } from '../../categories/api/categories.api';
 import { productsApi, productsKey, type ProductInput } from '../api/products.api';
 import { ProductCreateForm } from '../components/ProductCreateForm';
+import { pageTitle } from '../../../../shared/shop';
 
 export function ProductCreatePage() {
   const categories = useQuery({ queryKey: ['admin-categories'], queryFn: categoriesApi.list, retry: false });
@@ -19,7 +20,7 @@ export function ProductCreatePage() {
   }
 
   return <Box sx={{ maxWidth: 760, mx: 'auto', py: { xs: 4, md: 6 } }}>
-    <title>Thêm sản phẩm | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Thêm sản phẩm | Quản trị')}</title>
     <Button component={Link} to="/admin/products" sx={{ mb: 2 }}>Về danh sách sản phẩm</Button>
     <Typography component="h1" variant="h3" sx={{ mb: 3 }}>Thêm sản phẩm nháp</Typography>
     {categories.isPending && <Typography role="status">Đang tải danh mục…</Typography>}

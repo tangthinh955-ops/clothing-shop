@@ -65,6 +65,14 @@ describe('login and registration with an existing session', () => {
     expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
   });
 
+  it('does not advertise customer sign-up on the login page, since shoppers order without an account', async () => {
+    vi.spyOn(authApi, 'me').mockResolvedValue(null);
+    renderApp('/login');
+    expect(await screen.findByRole('heading', { name: 'Chào bạn trở lại' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Đăng ký' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Quên mật khẩu?' })).toBeVisible();
+  });
+
   it('waits for the session before presenting a login form', async () => {
     let finish: (user: User | null) => void = () => { throw new Error('Session not requested'); };
     vi.spyOn(authApi, 'me').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));

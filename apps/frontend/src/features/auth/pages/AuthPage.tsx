@@ -1,4 +1,4 @@
-import { Alert, Button, CircularProgress, Link, Stack, Typography } from '@mui/material';
+import { Alert, Button, CircularProgress, Link, Stack } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router';
@@ -60,8 +60,8 @@ function AuthContent({ mode, token }: { mode: AuthMode; token: string }) {
       : mode === 'reset' && !token ? <Alert severity="warning">Liên kết chưa có mã hợp lệ. Hãy yêu cầu một liên kết mới.</Alert>
       : <AuthForm mode={mode} onSubmit={submit} />}
     <Stack spacing={1.5}>
-      {mode === 'login' && <><Link component={RouterLink} to="/forgot-password">Quên mật khẩu?</Link>
-        <Typography variant="body2">Chưa có tài khoản? <Link component={RouterLink} to="/register">Đăng ký</Link></Typography></>}
+      {/* Shoppers order without an account, so the login page no longer advertises sign-up; /register stays reachable. */}
+      {mode === 'login' && <Link component={RouterLink} to="/forgot-password">Quên mật khẩu?</Link>}
       {mode !== 'login' && <Link component={RouterLink} to="/login">Trở lại đăng nhập</Link>}
       {(mode === 'register' || mode === 'reset') && <Link component={RouterLink} to="/forgot-password">Yêu cầu liên kết đặt lại mật khẩu</Link>}
     </Stack>

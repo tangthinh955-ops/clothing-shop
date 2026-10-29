@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { ApiError } from '../../../../shared/api/client';
 import { productsApi, productsKey } from '../api/products.api';
+import { pageTitle } from '../../../../shared/shop';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const statusLabels = { DRAFT: 'Nháp', PUBLISHED: 'Đã xuất bản', HIDDEN: 'Đã ẩn' } as const;
@@ -26,7 +27,7 @@ export function ProductsPage() {
   }
 
   return <Box sx={{ maxWidth: 1080, mx: 'auto', py: { xs: 4, md: 6 } }}>
-    <title>Sản phẩm | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Sản phẩm | Quản trị')}</title>
     <Button component={Link} to="/admin" sx={{ mb: 2 }}>Về quản trị</Button>
     <Typography component="h1" variant="h3" sx={{ mb: 2 }}>Sản phẩm</Typography>
     <Button component={Link} to="/admin/products/new" variant="contained" sx={{ mb: 3 }}>Thêm sản phẩm</Button>

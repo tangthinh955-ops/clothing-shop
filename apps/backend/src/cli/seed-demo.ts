@@ -111,6 +111,12 @@ function demoVariant({ sku, size, color, price, onHand }: DemoVariant, actorId: 
     movements: { create: onHand > 0 ? [movement] : [] } };
 }
 
+// The live shop must never get demo-* products; refuse before reading config or touching the database.
+if (process.env['NODE_ENV'] === 'production') {
+  console.error('seed:demo chỉ dùng trên máy local để thử giao diện, không chạy trên production.');
+  process.exit(1);
+}
+
 const environment = readEnvironment(process.env);
 // Repo root from this compiled file (apps/backend/dist/cli) keeps the uploads folder identical to the
 // dev server's (.local/uploads for dev, .local/test-uploads for test) no matter which cwd the CLI runs from.

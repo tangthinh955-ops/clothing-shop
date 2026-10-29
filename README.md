@@ -74,7 +74,7 @@ Mật khẩu 12–128 ký tự; xóa `ADMIN_PASSWORD` khỏi môi trường/tệ
 
 ## Bộ dữ liệu demo (M3.11)
 
-**Chỉ dùng trên máy local để thử giao diện; không chạy trên production** (M3.15 sẽ cho lệnh từ chối chạy khi `NODE_ENV=production`). Hàng thật của shop nhập bằng admin hoặc lệnh `import:products` bên dưới.
+**Chỉ dùng trên máy local để thử giao diện; không chạy trên production**: từ M3.15 lệnh báo lỗi và dừng khi `NODE_ENV=production`, trước khi đọc cấu hình hay kết nối DB. Hàng thật của shop nhập bằng admin hoặc lệnh `import:products` bên dưới.
 
 Sau khi có tài khoản ADMIN (lệnh trên), chạy một lần để `/shop` local có hàng mẫu:
 

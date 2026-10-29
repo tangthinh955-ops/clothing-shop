@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { authApi, type User } from '../auth/api/auth.api';
 import { currentUserKey } from '../auth/hooks/useCurrentUser';
 import { ApiError } from '../../shared/api/client';
+import { pageTitle } from '../../shared/shop';
 
 export function AccountPage({ user }: { user: User }) {
   const queryClient = useQueryClient();
@@ -25,7 +26,7 @@ export function AccountPage({ user }: { user: User }) {
     await action(async () => { const updated = await authApi.profile(entry); queryClient.setQueryData(currentUserKey, updated); setMessage('Thông tin đã được cập nhật.'); });
   }
   return <Box sx={{ maxWidth: 680, mx: 'auto', py: 6 }}>
-    <title>Tài khoản | Clothing Shop</title>
+    <title>{pageTitle('Tài khoản')}</title>
     <Typography component="h1" variant="h3" sx={{ mb: 3 }}>Tài khoản của bạn</Typography>
     <Paper square elevation={0} sx={{ p: { xs: 3, md: 5 } }}><Stack spacing={3}>
       {error && <Alert severity="error">{error}</Alert>}{message && <Alert severity="success">{message}</Alert>}
