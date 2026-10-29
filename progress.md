@@ -16,7 +16,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có điều chỉnh tồn/lịch sử kho (M3.7.2/M3.7.3) và catalog khách (M3.9 trở đi) |
+| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho, M3.7.2 (Người B) đã có dialog điều chỉnh tồn lọc theo biến thể, M3.7.3 (Người B) đã có lịch sử giao dịch của từng SKU; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có catalog khách (M3.9 trở đi) |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
@@ -240,6 +240,143 @@ Các lệnh chạy bằng npm trực tiếp với Node 24.15.0 vì `tools/npm.ps
 - Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m342--admin-sửa-thêm-và-tắt-biến-thể-của-sản-phẩm-nháp).
 
 **Dừng ở M3.4.2 chờ người dùng thử.** M3.5 (ảnh) cần kế hoạch riêng được duyệt.
+
+## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.3: lịch sử tồn kho của từng SKU
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.7.3 bằng "duyệt". Nút "Lịch sử" mở dialog đọc-only về giao dịch của một SKU; chưa triển khai M3.9 catalog khách. Backend API `GET /api/v1/admin/inventory/movements` vốn có (guard ADMIN, sort `createdAt` desc, phân trang), nên backend/schema không đổi. Cùng nhánh `feat/m3.7.2-inventory-adjust` ngay sau M3.7.2, thay đổi chưa stage/commit.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/inventory/api/inventory.api.ts` | Thêm `movements(variantId, page)` với `pageSize=10`, kiểu `MovementRow/MovementList` khớp response backend (delta, before/after, reason, actor, createdAt) |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.tsx` | Mới: dialog "Lịch sử <SKU>" đọc-only, dùng query riêng theo variantId + page; loading/empty/error + "Tải lại lịch sử"; hàng thể hiện thời gian (`<time datetime>`), dấu `+/-`, `từ → thành`, lý do, người thực hiện; phân trang khi hơn 10 giao dịch |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.test.tsx` | Mới: 9 test — đúng tham số gọi API, nội dung hàng, delta âm, empty, loading, lỗi + retry cùng trang, phân trang giữ dialog mở, đóng, không refetch khi row cha refresh cùng variant |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.tsx` | Thêm state `history` + nút "Lịch sử <SKU>" trên mỗi hàng, mở dialog lịch sử (không đụng luồng điều chỉnh) |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.test.tsx` | +3 test: mở/đóng lịch sử với URL API đủ `?variantId&page=1&pageSize=10`, phân trang trong dialog không đổi URL, empty state cho biến thể chưa giao dịch |
+| `apps/frontend/e2e/inventory-history.spec.ts` | Mới: 3 E2E — điều chỉnh +5 rồi lịch sử hiện ngay 1 hàng `12 → 17` và meta khớp; 12 giao dịch seed qua Prisma chia 2 trang (10 + 2); biến thể không giao dịch hiển thị empty |
+| `package.json` (root) | Thêm `inventory-history.spec.ts` vào `test:e2e:implemented` |
+| `.github/workflows/ci.yml` | Tên bước E2E nêu rõ "+ history M3.7.3" |
+| `docs/local-trial-m3.md` | Hướng dẫn chạy thử M3.7.3 |
+| `progress.md` | Mục này |
+
+File chạy thử `e2e/inventory-history.spec.ts` phải scope `listitem` trong `<ul aria-label="Lịch sử <SKU>">` vì DOM của dialog còn chứa `<li>` phân trang lẫn vào — đã sửa sau khi E2E bắt Expected 10 / Received 14. Backend, migration, `features/admin/products/`, lockfile: không đổi. Chưa stage/commit.
+
+### Data flow / key quan trọng
+
+Luồng: nút "Lịch sử" trên hàng tồn → dialog mở → TanStack Query gọi `inventoryApi.movements` → `GET /api/v1/admin/inventory/movements?variantId=<id>&page=<n>&pageSize=10` (guard backend kiểm ADMIN; server sắp `createdAt` desc) → hàng hiển thị thời gian, `+5`/`-3`, `before → after`, lý do, người thực hiện; sang trang gọi lại trong cùng dialog; "Đóng" không đổi URL, không invalidate gì (chỉ đọc).
+
+- Query key `['admin-inventory-movements', variantId, page]`: cache tách theo biến thể + trang; dialog đổi trang không refetch danh sách tồn.
+- `<time datetime>`: giữ ISO nguyên vẹn cho máy, hiển thị giờ Việt Nam (`Intl.DateTimeFormat` + `Asia/Ho_Chi_Minh`) — cố định múi giờ nên số hiển thị không chạy theo máy admin.
+- Dấu `+`/`-`: nhập thêm hay xuất kho, tô xanh/đỏ để dễ nhìn; số lấy nguyên từ server.
+- Empty state: "Chưa có giao dịch cho SKU này." cho biến thể 0 giao dịch — phân biệt nội dung hàng tồn.
+- Read-only: không có PUT/POST trong dialog, không idempotency, thứ tự và tổng phụ thuộc API hoàn toàn.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| UI RED | MovementHistory chưa có (suite lỗi import) + 3 ca trang chưa có nút "Lịch sử" — 3 ca trang fail đúng lý do |
+| UI GREEN | 54/54 trong thư mục inventory (19 dialog điều chỉnh + 26 trang + 9 lịch sử); frontend tổng 159/159 sau lần chỉnh cuối |
+| `tools/npm.ps1 run typecheck` | 2 app 0 lỗi (lưu ý: hai lượt đầu gọi qua `cmd /c "tools\npm.ps1 ..."` không thật sự chạy file ps1, log trống; chạy lại bằng `powershell -File` hợp lệ) |
+| `tools/npm.ps1 test` | 176 đạt: 8 công cụ + 9 backend + 159 frontend |
+| `npm run test:integration` | 29/29 |
+| E2E implemented (8 spec) | 4 lượt: L1 25/26 (test phân trang của tôi bắt 14 thay vì 10 — lỗi scope `listitem` gộp `<li>` phân trang, đã sửa); L2 8 pass rồi webServer Vite crash 0xC0000409 (flake máy đã ghi ở M3.7.2); L3 25/26 (test ảnh của Người A chập chờn); L4 26/26 sạch (34.7s) |
+
+### Chạy thử / điểm dừng
+
+Giữ dev backend/frontend như trước, đăng nhập ADMIN → Kho → hàng nào đó → bấm **Lịch sử**. Xem thời gian, số cộng/trừ, `từ → thành`, lý do, người thực hiện; số SKU có hơn 10 giao dịch có phân trang; SKU vừa điều chỉnh ở M3.7.2 sẽ có dòng giao dịch tương ứng. Chi tiết theo [hướng dẫn M3.7.3](docs/local-trial-m3.md).
+
+**Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử/xác nhận. Dừng ở M3.7.3.** Catalog khách M3.9 cần duyệt riêng; chưa commit/push; chưa kiểm chứng CI GitHub.
+
+### Bản sửa sau review (29/10/2026)
+
+Người dùng duyệt "sửa lại hết" cho 4 điểm review:
+
+| Điểm | Sửa |
+|---|---|
+| Mở lại lịch sử thoáng hiện số cũ từ cache (mở → đóng → điều chỉnh → mở lại vẫn thấy "Tìm thấy 1" trước khi về 2) | `MovementHistory.tsx`: query lịch sử dùng `gcTime: 0`, đóng dialog là bỏ cache nên mở lại luôn "Đang tải lịch sử…" rồi số mới |
+| Sang trang làm danh sách và thanh phân trang biến mất, hiện "Đang tải…" rồi mới hiện lại | `placeholderData: keepPreviousData`: giữ trang hiện tại, thanh phân trang khóa trong lúc tải trang kế tiếp |
+| Nhánh `actor.name ?? 'Tài khoản đã xóa'` không thể xảy ra (DB bắt buộc tên, không cho xóa user có giao dịch) | Bỏ nhánh; `MovementRow.actor` thành `{ name: string }` trong `inventory.api.ts` |
+| Chữ lỗi | Mục M3.7.3 ở đây; mục M3.7.2 và M3.7.3 trong `docs/local-trial-m3.md` (kèm sửa giải thích ví dụ 409 -11, thêm dòng chạy thử Esc, mở lại lịch sử và sang trang; tên key/dấu trừ cho khớp code); comment seed trong `inventory-history.spec.ts` |
+
+`MovementHistory.test.tsx` +2 test: giữ trang và thanh phân trang khi đang tải trang 2; mở lại sau khi đóng thì tải mới, không hiện số cũ. Cả hai fail trước khi sửa đúng lý do ("Đang tải lịch sử…" thay danh sách; "Đang tải" không xuất hiện vì dùng cache cũ), đạt sau khi sửa.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 161 frontend đạt |
+| `npm run test:integration` | 29/29 |
+| `npm run test:e2e:implemented` (8 spec, DB `_test`) | 26/26 (34.4s) |
+
+Lệnh chạy bằng Node local `.local/node-v24.22.1-win-x64` trong Bash, vì `tools/npm.ps1` dừng khi webServer E2E ghi ra stderr (`ErrorActionPreference = 'Stop'`); không đổi Node toàn máy. Chưa commit/push.
+
+## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.2: điều chỉnh tồn kho, một lần ghi mỗi idempotency key
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.7.2 bằng "triển khai". Chỉ làm dialog điều chỉnh tồn lọc theo một biến thể; chưa triển khai M3.7.3 lịch sử. API `POST /api/v1/admin/inventory/adjustments` (transaction + idempotency) vốn có, phần này chỉ tiêu dùng từ FE; backend/schema không đổi. Nhánh `feat/m3.7.2-inventory-adjust` từ `main` `3b054ff`.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/inventory/components/AdjustmentDialog.tsx` | Mới: dialog điều chỉnh một SKU; snapshot tồn đóng băng theo version khi mở; máy trạng thái editing/pending/saved/unconfirmed/conflict; 409 chỉ hiện thông báo server + "Đóng và tải lại tồn"; lỗi mạng/5xx cho Gửi lại cùng key/body; khóa hoàn toàn khi pending hoặc không chắc chắn |
+| `apps/frontend/src/features/admin/inventory/components/AdjustmentDialog.test.tsx` | Mới: 17 test, gồm khóa phím khi pending, key không đổi qua Gửi lại, phiên bản hết hạn đã được tab khác ghi, 409 không có Gửi lại, hiển thị "Khả dụng" sau thành công |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.tsx` | Lọc `variantId` trên URL (UUID không hợp lệ tự về trang thường), nút "Điều chỉnh <SKU>", ghi thành công cập nhật số trong cache qua `setQueriesData` (không refetch), "Đóng và tải lại tồn" = invalidate + đóng |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.test.tsx` | +4 test: mở dialog khi lọc variantId, điều chỉnh +5, cache số tồn đổi tức thời, đóng và tải lại tồn |
+| `apps/frontend/src/features/admin/inventory/api/inventory.api.ts` | Thêm `list(q, page, variantId)` (URL `variantId` đứng trước `q`) và `adjust(input, key)` gửi header `Idempotency-Key` |
+| `apps/frontend/e2e/inventory-adjust.spec.ts` | Mới: 5 E2E thật — lọc variantId + giao dịch +5 đặt một lần (DB 17/tồn mới/version 1/1 movement), phản hồi mất khóa form và Gửi lại cùng key tại đúng một lần ghi, tái phát cùng key trả lại kết quả cũ không cộng kép (21/version 1/1 movement), xuất dưới mức giữ bị 409 không đổi tồn, CUSTOMER gửi API trực tiếp bị 403 qua `page.evaluate` |
+| `package.json` (root) | Thêm `inventory-adjust.spec.ts` vào `test:e2e:implemented` — khác kế hoạch vì spec tách file mới thay vì ghi vào `inventory.spec.ts` |
+| `.github/workflows/ci.yml` | Tên bước E2E nêu rõ "+ adjustments M3.7.2" đi cùng thay đổi trên |
+| `apps/frontend/vite.config.ts` | Thêm `preview.proxy` cho `/api` cùng quy tắc như dev — khác kế hoạch, dùng cho mitigation crash E2E dưới |
+| `apps/frontend/playwright.config.ts` | webServer frontend E2E đổi từ `vite dev` sang `npm run build && vite preview` — khác kế hoạch, cùng mitigation |
+| `docs/local-trial-m3.md` | Hướng dẫn chạy thử M3.7.2 và giải thích key |
+| `progress.md` | Mục này |
+
+Backend, migration, `features/admin/products/`, lockfile: không đổi. Chưa stage/commit.
+
+### Data flow / key quan trọng
+
+ADMIN mở Kho → tìm/nút "Điều chỉnh" theo SKU → URL `?variantId=<id>` → GET list lọc một biến thể → mở dialog: snapshot tồn được đóng băng (đồng bộ `version` từ server) → nhập delta → Gửi → `inventoryApi.adjust` POST với `Idempotency-Key` sinh mỗi lần mở dialog và `X-CSRF-Token` → backend chạy transaction: key trùng trả kết quả cũ (không cộng lại), `expectedVersion` hết hạn hoặc delta làm `available < reserved` thì 409, hợp lệ thì tạo `InventoryMovement` và cập nhật tồn → UI hiện `Khả dụng: <available>` và sửa số trong cache; đóng dialog bằng "Đóng và tải lại tồn" mới invalidate thật.
+
+- `variantId` (URL): một điều chỉnh chỉ diễn ra với một biến thể; sai định dạng tự về trang tồn thường.
+- `Idempotency-Key`: 1 key/phiên mở dialog; "Gửi lại" giữ nguyên key và body; đóng dialog hợp lệ mở lần sau dùng key mới.
+- Snapshot đóng băng: hiển thị và `expectedVersion` chốt lúc mở dialog; người khác ghi đồng thời thì 409 thay vì ôm số cũ ghi đè.
+- Máy trạng thái (`editing/pending/saved/unconfirmed/conflict`): pending và hai kiểu không chắc chắn khóa toàn bộ; chỉ lỗi mạng cho phép Gửi lại.
+- `cache.setQueriesData`: thành công thì không refetch toàn trang, chỉ các query cache khớp `variantId` đổi số; invalidate là thao tác tường minh tại nút "Đóng và tải lại tồn".
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| UI trước khi thành phần | 17 ca dialog thất bại toàn bộ vì chưa có `AdjustmentDialog` (RED đúng lý do); sau khi triển khai 40/40 (17 mới + 23 trang, 4 ca mới trên tổng 19 cũ) |
+| `node tools/typecheck` qua wrapper | 0 lỗi (chạy lại sau lần chỉnh config cuối cùng); backend/frontend đạt |
+| `npm run build` | Đạt; Vite còn cảnh báo chunk >500 kB như trước (webServer E2E còn tự chạy lại build thành công 3 lần sau chỉnh config) |
+| Vitest frontend toàn bộ (sau chỉnh config cuối) | 145/145 đạt 10.5s, gồm 40 ca M3.7.2 |
+| Vitest toàn workspace trước chỉnh config | 162 đạt: 8 công cụ + 9 backend + 145 frontend |
+| Integration (PostgreSQL `_test`) | 29/29 đạt, backend không đổi |
+| E2E riêng `inventory-adjust.spec.ts` | 5/5 đạt (11.4s), chạy lại sau sửa bộ chờ giữa các ca không nhầm biến thể |
+| E2E triển khai toàn bộ (7 spec) | 7 lượt: lượt 1, 2 (dev), 3, 5 (preview) crash giữa run do tiến trình Vite webServer chết với exit `3221226505` (0xC0000409, fail-fast native trên Windows, không có stack/WER); lượt 4, 6, 7 (preview) đạt 23/23 trong ~32s — 3 lượt sạch liên tiếp sau mitigation |
+| Mobile | E2E xác nhận dialog hoạt động; không tràn ngang |
+
+### Vấn đề môi trường và giải pháp đã thực hiện
+
+- Triệu chứng: trong lượt E2E đủ 7 spec, tiến trình Vite (webServer 5174) tự chết âm thầm sau khoảng 25–40 giây; mọi ca sau đó `ERR_CONNECTION_REFUSED`. Tái hiện ở cả `vite dev` và `vite preview`, cả Node 24.22.1 (local) và 24.15.0 (hệ thống); chạy server thủ công bên ngoài Playwright (70s HTTP tĩnh và 60 lượt hai-tab có proxy) không crash. Flutter không chốt nguyên nhân gốc (nghĩrolldown-native, WebSocket HMR và chuỗi npm→cmd đều chưa loại trừ được); hạ tầng CI chạy Linux nên không gặp.
+- Giải pháp chọn: webServer frontend E2E dùng bản build tĩnh qua `vite preview` + `preview.proxy` trong `vite.config.ts` (payload nhỏ hơn, không có pipeline transform/HMR của dev). Lưu ý: crash có thể vẫn là ngẫu nhiên của máy; 3 lượt đạt liên tiếp hiện tại là bằng chứng dần dần, không khẳng định nguyên nhân. Đây là khác biệt với kế hoạch, nêu rõ để người dùng duyệt/nhìn nhận phần bàn giao.
+- Điểm khác với kế hoạch: spec E2E điều chỉnh tách file mới `inventory-adjust.spec.ts` (thay vì ghi vào `inventory.spec.ts`) nên đã phải sửa cả root `package.json` và tên bước `ci.yml`; đã nêu cả hai trong bảng file.
+
+### Chạy thử / điểm dừng
+
+Giữ Docker DB, hai terminal `dev:backend` và `dev:frontend` như M3.7.1. Đăng nhập ADMIN → Kho → tìm SKU → bấm **Điều chỉnh**. Số dương/âm, 409, mạng chập chờn, hai tab và role CUSTOMER theo [hướng dẫn M3.7.2](docs/local-trial-m3.md). Chi tiết trung gian như key/chi tiết không hiện ra cho người dùng; mọi thứ mắt thường trong bảng.
+
+**Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử/xác nhận. Dừng ở M3.7.2.** Lịch sử kho M3.7.3 và catalog khách M3.9 cần duyệt riêng; chưa commit/push; chưa kiểm chứng GitHub CI.
+
+### Bản sửa sau review (29/10/2026)
+
+- Người dùng duyệt **giữ** thay đổi E2E sang `vite preview` (`playwright.config.ts`, `vite.config.ts`). Review chạy lại E2E đầy đủ hai lượt liên tiếp trên máy này: 23/23 và 23/23 đạt, không gặp crash.
+- Sửa lỗ hổng: ở trạng thái chưa rõ đã ghi (lỗi mạng/không xác định) hoặc 409, đóng dialog bằng Esc/bấm ra ngoài trước đây chỉ đóng mà không tải lại tồn, trái quy tắc "chỉ Gửi lại hoặc Đóng và tải lại tồn". Nay `close()` gọi `onReload()` ở hai trạng thái đó (`components/AdjustmentDialog.tsx`).
+- Test: thêm 2 ca Esc (lỗi mạng, 409) vào `AdjustmentDialog.test.tsx`. Đã xác nhận ca này fail khi gỡ bản sửa (Esc đóng im lặng) và đạt khi có bản sửa; lượt RED đầu không hợp lệ vì jsdom mất focus khi các ô bị khóa nên Esc không tới dialog, test được sửa để focus một nút trong dialog như trình duyệt thật.
+- Sửa chữ lỗi do agent sinh trong mục này ("thành cônguese", "Hình cảnh", "Glänze").
+
 
 ## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.1: xem và tìm tồn kho
 

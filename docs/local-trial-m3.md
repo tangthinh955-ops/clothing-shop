@@ -2,7 +2,7 @@
 
 ## M3.1 — admin xem và thêm danh mục
 
-Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới. Chưa có xóa danh mục, điều chỉnh tồn/lịch sử kho (M3.7.2/M3.7.3) hoặc trang khách (M3.9). Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
+Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU. Chưa có xóa danh mục hoặc trang khách (M3.9). Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
 
 ### Chuẩn bị
 
@@ -138,7 +138,7 @@ Tên 2–120 ký tự; slug tối đa 120 ký tự theo dạng `ao-cotton`; mô 
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductCreatePage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Test các phần đã làm: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products). Ca catalog toàn M3 giữ nguyên, chưa coi là đạt khi UI ảnh/kho/public chưa có.
 
-**Điểm dừng hiện tại: M3.8 (Người A) và M3.7.1 (Người B), chờ người dùng chạy thử.** Điều chỉnh/lịch sử kho (M3.7.2/M3.7.3) và trang khách (M3.9) cần kế hoạch riêng được duyệt.
+**Điểm dừng hiện tại: M3.8 (Người A) và M3.7.3 (Người B), chờ người dùng chạy thử.** Catalog khách (M3.9) cần kế hoạch riêng được duyệt.
 
 ## M3.4.1 — admin sửa thông tin sản phẩm nháp
 
@@ -178,6 +178,69 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 - 409: API dùng chung cho version cũ và slug trùng; thông báo nêu cả hai khả năng.
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
+
+## M3.7.3 — Người B: lịch sử tồn kho của từng SKU
+
+Giữ hai terminal backend/frontend như Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**. Backend đã có sẵn `GET /api/v1/admin/inventory/movements`; phần này chỉ thêm UI đọc.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Bấm **Lịch sử** trên một hàng SKU | Dialog "Lịch sử <SKU>" mở; tiêu đề phụ là tên sản phẩm · size · màu; báo "Tìm thấy N giao dịch." |
+| SKU vừa điều chỉnh +5 ở M3.7.2 | Một hàng: thời gian giao dịch, `+5`, `12 → 17`, lý do đã nhập, người thực hiện là tên admin |
+| SKU mới chưa từng giao dịch | "Chưa có giao dịch cho SKU này." |
+| SKU có hơn 10 giao dịch | Phân trang trong dialog (10/trang, mới nhất trước); sang trang không đóng dialog; "Tìm thấy N giao dịch." giữ nguyên |
+| Giao dịch xuất kho (delta âm) | Số âm màu đỏ, ví dụ `-3`; `từ → thành` giảm tương ứng |
+| Bấm **Đóng**, điều chỉnh SKU đó rồi mở lại **Lịch sử** | Dialog tắt, URL không đổi; mở lại thấy "Đang tải lịch sử…" rồi có ngay giao dịch mới, không hiện thoáng số cũ |
+| Sang trang 2 | Trang hiện tại vẫn hiển thị (thanh phân trang tạm khóa) cho đến khi trang 2 tải xong |
+| Chặn mạng, mở lại lịch sử | Thông báo lỗi + nút "Tải lại lịch sử" — bấm lại tải được; nếu server trả lỗi riêng thì hiển thị đúng thông báo server |
+| Mở lịch sử cho SKU khác | Nội dung đúng theo biến thể; không lẫn giao dịch SKU khác |
+
+Dialog chỉ đọc: không có thao tác ghi, không cần X-CSRF/Idempotency-Key. Thời gian hiển thị theo giờ Việt Nam (`Asia/Ho_Chi_Minh`) dù máy admin lệch múi giờ.
+
+**Data flow:** nút Lịch sử → dialog → TanStack Query `inventoryApi.movements` → `GET /api/v1/admin/inventory/movements?variantId=&page=&pageSize=10` → guard ADMIN backend, sort `createdAt` desc → dialog đổi page gọi lại; "Đóng" không đổi URL.
+
+- Query key `['admin-inventory-movements', variantId, page]`: tách theo biến thể + trang; sang trang không refetch danh sách tồn.
+- `gcTime: 0`: đóng dialog là bỏ cache lịch sử, nên mở lại luôn tải mới thay vì hiện thoáng số cũ.
+- `placeholderData: keepPreviousData`: giữ trang hiện tại trên màn hình trong lúc tải trang kế tiếp.
+- `<time datetime>`: ISO nguyên vẹn trong DOM, phần nhìn là giờ Việt Nam cố định.
+- Dấu `+`/`-` và `before → after`: lấy nguyên từ số server, không tự tính lại.
+- Read-only: dialog không gọi API ghi nào; quyền vẫn do backend kiểm.
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/inventory/components/MovementHistory.test.tsx`. E2E lịch sử nằm ở `apps/frontend/e2e/inventory-history.spec.ts`, đã thêm vào `./tools/npm.ps1 run test:e2e:implemented`.
+
+**Dừng M3.7.3 để người dùng thử.** Catalog khách M3.9 chưa được triển khai; cần kế hoạch riêng được duyệt.
+
+## M3.7.2 — Người B: điều chỉnh tồn kho với idempotency key
+
+Giữ hai terminal backend/frontend như Chuẩn bị. Đăng nhập ADMIN tại **http://127.0.0.1:5173/login** → **Kho**, hoặc mở **http://127.0.0.1:5173/admin/inventory**. Backend không đổi so với trước: điều chỉnh dùng `POST /api/v1/admin/inventory/adjustments` đã có.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Bấm **Điều chỉnh** trên một hàng SKU | URL thành `?variantId=<id>`, trang chỉ còn hàng đó; dialog mở với Tồn thực có / Đang giữ, còn bán, snapshot chốt tại thời điểm mở |
+| Nhập +5 → Gửi | Thông báo "Khả dụng: 15" (nếu tồn thực có 12, giữ 2); thẻ tồn trong danh sách đổi ngay thành còn bán 15 mà không cần tải lại trang |
+| Refresh URL `variantId` | Vẫn đúng hàng đó; tồn thực trong DB tăng theo delta (kiểm tra qua DB hoặc nút **Lịch sử** của M3.7.3) |
+| Xuất quá mức, ví dụ -11 khi tồn thực có 12 và đang giữ 2 | Thông báo 409 từ server (tồn sau điều chỉnh nhỏ hơn lượng đang giữ); tồn không đổi; dialog KHÔNG có nút Gửi lại, chỉ "Đóng và tải lại tồn" |
+| Để dialog mở, tab khác mua/ghi vào cùng SKU (version đổi) rồi gửi trong tab đầu | 409 "phiên bản không khớp" hoặc tương tự; tồn không đổi; chỉ "Đóng và tải lại tồn" |
+| Chặn mạng trong khi gửi (DevTools → offline) → bật mạng → bấm Gửi lại | Gửi lại dùng CÙNG key: tồn chỉ tăng đúng một lần; form bị khóa trong lúc chờ |
+| Sau lỗi mạng hoặc 409, bấm **Esc** hay bấm ra ngoài dialog | Giống "Đóng và tải lại tồn": dialog đóng và danh sách tải lại số mới |
+| Không bấm Gửi lại mà đóng rồi mở dialog lần khác | Key mới (không trả kết quả cũ); nếu trước đó thành công danh sách hiển thị số mới |
+| Đóng và tải lại tồn sau 409 | Đánh dấu cache tồn kho cũ: số tồn mới được tải lại từ server |
+| Mở URL `?variantId=<chuỗi sai>` | Về trang tồn thường (bỏ tham số sai) |
+| Đăng nhập CUSTOMER mở `/admin/inventory` | Về `/account`; POST API điều chỉnh trực tiếp bằng fetch (devtools) bị 403 |
+
+Kho thay đổi chỉ qua API thật; UI không tự cộng/trừ. Key idempotency nằm trong header `Idempotency-Key` do FE sinh mỗi lần mở dialog; server mới là nơi quyết định cộng một lần.
+
+**Data flow:** nút Điều chỉnh → URL `variantId` → GET list một biến thể → dialog snapshot version → POST `/api/v1/admin/inventory/adjustments` (Idempotency-Key + CSRF) → transaction backend đối chiếu key, version và mức giữ → tạo `InventoryMovement`, cập nhật tồn → thành công sửa số trong cache, 409/chưa rõ kết quả thì khóa dialog.
+
+- `Idempotency-Key`: một phiên mở dialog một key; "Gửi lại" gửi lại chính key đó nên server không cộng kép.
+- Snapshot + `expectedVersion`: chốt khi mở dialog; version đổi sau khi mở là 409.
+- 409: chỉ "Đóng và tải lại tồn", không "Gửi lại" (yêu cầu server đã chắc chắn từ chối).
+- Lỗi mạng/5xx: máy trạng thái cho "Gửi lại" cùng key vì chưa chắc chắn đã ghi.
+- `cache.setQueriesData`: tồn mới áp cho mọi query cache khớp `variantId` không cần đổi mạng; invalidate ở "Đóng và tải lại tồn".
+
+Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/inventory/components/AdjustmentDialog.test.tsx`. E2E điều chỉnh nằm ở file mới `apps/frontend/e2e/inventory-adjust.spec.ts`, đã thêm vào `./tools/npm.ps1 run test:e2e:implemented`.
+
+**Dừng M3.7.2 để người dùng thử.** Lịch sử kho (M3.7.3) chưa được triển khai; cần kế hoạch riêng được duyệt.
 
 ## M3.7.1 — Người B: xem và tìm tồn kho
 
