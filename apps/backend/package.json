@@ -17,7 +17,8 @@
     "db:migrate": "node --env-file-if-exists=.env ../../node_modules/prisma/build/index.js migrate deploy",
     "db:migrate:test": "node --env-file-if-exists=.env.test ../../node_modules/prisma/build/index.js migrate deploy",
     "admin:create": "npm run build && node --env-file-if-exists=.env dist/cli/create-admin.js",
-    "seed:demo": "npm run build && node --env-file-if-exists=.env dist/cli/seed-demo.js"
+    "seed:demo": "npm run build && node --env-file-if-exists=.env dist/cli/seed-demo.js",
+    "import:products": "npm run build && node --env-file-if-exists=.env dist/cli/import-products.js"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",

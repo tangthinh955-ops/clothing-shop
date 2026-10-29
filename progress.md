@@ -2,6 +2,15 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 29/10/2026 — Chuẩn bị commit và PR M3.13a vào main
+
+- Theo yêu cầu commit và MR của người dùng, fetch `origin` và xác nhận M3.9–M3.12 đã vào `main` qua PR #12 (`29fdd89`). Tạo nhánh `codex/m3.13a-product-import` từ `origin/main`; PR mới chỉ chứa CLI import CSV M3.13a, test, npm scripts, ignore dữ liệu local và tài liệu đang có. Không nhận các thay đổi có sẵn này là phần triển khai trong lượt Git.
+- Kiểm tra mới trên working tree: `./tools/npm.ps1 run typecheck` và `run build` exit 0; `./tools/npm.ps1 test` đạt 8 công cụ + 9 backend + 182 frontend; `./tools/npm.ps1 run test:integration` đạt 32/32; `./tools/npm.ps1 run test:e2e:implemented` đạt 34/34 (44.1s). Xác nhận `NODE_ENV=test` và PostgreSQL có hậu tố `_test` trước test ghi dữ liệu. Integration lần đầu trong sandbox bị `EACCES`; chạy lại ngoài sandbox đạt. E2E dùng Chromium do Playwright quản lý. Build còn cảnh báo chunk >500 kB có sẵn.
+- Kiểm tra `git diff --check`, danh sách tệp sẽ đưa lên Git, ignore và mẫu secret: không phát hiện private key/token theo mẫu đã quét; `git ls-files -ci --exclude-standard` rỗng. `data/`, `.env` thật, `.local/`, dependency và build artifact giữ ngoài commit. Giữ tác giả Git đang cấu hình, không thêm dòng ghi công AI.
+- Review phát hiện lỗi cần sửa trước merge: script `import:products` ở root chưa chuyển tiếp đúng `--dir`/`--draft` qua npm workspace (thiếu dấu `--`). Có thể dùng thư mục mặc định và PUBLISHED dù người dùng yêu cầu thư mục khác/nhập nháp; test hiện spawn CLI trực tiếp nên chưa bắt được đường gọi root. Chuẩn bị PR dạng draft để review, chưa kết luận sẵn sàng merge. Không sửa code trong lượt này vì `AGENTS.md` yêu cầu gửi và duyệt kế hoạch cụ thể trước khi code.
+- Review còn phát hiện importer tái sử dụng danh mục đang tắt rồi ghi sản phẩm PUBLISHED: CLI báo thành công nhưng khách không thấy sản phẩm; cần kiểm tra điều kiện danh mục trước xuất bản. Hai điểm nhỏ hơn: lỗi tạo danh mục có thể dừng cả lượt vì nằm ngoài `try` từng dòng, và test cleanup dùng prefix cố định có thể xung đột khi chạy đồng thời. Các điểm này chưa được sửa và sẽ ghi trong draft PR.
+- Điểm dừng: commit/push và mở draft PR theo yêu cầu; chưa merge vào `main`, chưa chạy lại import trên DB local, chưa có xác nhận nghiệm thu mới từ người dùng. Kết quả test hiện tại không phủ lỗi chuyển tiếp tham số nêu trên.
+
 ## Ngày 23/10/2026
 
 - Người dùng cho phép tiến hành kế hoạch. Ngân sách ưu tiên miễn phí, thời gian 10 giờ/tuần.
@@ -16,7 +25,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; kết quả ở các mục riêng bên dưới, chờ người dùng chạy thử và nghiệm thu toàn mốc |
+| M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; M3.13a hạ tầng CSV `import:products` xong (17 ảnh RMG đã vào `data/import`, chờ người dùng điền giá/size rồi chạy). Nghiệm thu toàn mốc thuộc người dùng |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
@@ -49,6 +58,65 @@ Tài liệu: `docs/local-trial-m3.md` mục M3.9 (2 dòng thử mới) và M3.11
 | `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (39.6s) |
 
 Chưa chạy `seed:demo` trên DB local (chờ người dùng). Chưa commit/push.
+
+## Ngày 29/10/2026 — M3.13a (Người B): nhập dữ liệu thật từ ảnh Instagram vào web
+
+**Phạm vi:** người dùng muốn gắn ảnh sản phẩm thật từ [instagram.com/rmglabels](https://www.instagram.com/rmglabels/). Scraping trực tiếp bị từ chối (bảng khảo sát bên dưới) nên theo hướng dẫn: người dùng lưu 17 ảnh bài đăng vào `Downloads\RMG`; agent copy vào `data/import/`, sinh sẵn `products.csv` từ tên file/caption, người dùng điền **giá** và **size** rồi chạy 1 lệnh. Trạng thái **PUBLISHED** theo lựa chọn. **Đã viết, agent đã kiểm trên `_test`; chờ người dùng điền CSV + chạy trên DB local. Chưa commit.**
+
+### Khảo sát Instagram (sự thật, chặn đã xác nhận)
+
+| Thử | Kết quả |
+|---|---|
+| Profile GraphQL `/api/v1/users/web_profile_info` (2 lượt, UA khác nhau) | 429 — chặn mọi truy cập không phiên |
+| HTML profile + trang `/p/<code>/` + `/embed/captioned/` | Chỉ khung app, không ảnh/caption |
+| `?__a=1&__d=dis` | Đã ngừng phục vụ |
+| Websearch | Chỉ thấy vài link bài, không đủ làm pipeline |
+
+### Đã viết / file thực tế
+
+| File | Thay đổi |
+|---|---|
+| `data/import/` (gitignore mới chọn `data/`) | 17 ảnh 1440×1800/1920 (copy từ `Downloads\RMG`, bản gốc giữ nguyên) + `products.csv` sinh tự: 5 dòng sản phẩm RMG (Black Wash VTG Horse Tee, White Horse Tee, Goldline Metal Baggy Pants, Different Level Polo, Different Metal Zip Hood), tên/danh mục ('Áo thun'/'Quần'/'Áo polo'/'Áo hoodie')/màu (đen/trắng — soi ảnh thật)/mô tả đã điền; `price`/`sizes`/`stock` để trống cho người dùng |
+| `apps/backend/src/cli/import-products.ts` (mới) | CLI: đọc CSV parser tự viết (quote/comma, giữ số dòng thật); validate từng dòng (tên/ảnh ≤ 8/giá 1–100.000.000/size trong bộ XS,S,M,L,XL,XXL,3XL,FREESIZE/stock ≤ 1.000.000), dòng lỗi bị bỏ qua với lý do, phần còn lại vẫn nhập; slug từ tên (NFD, đ→d, thường); SKU `RMG<8 ký tự hex từ slug/size>-<SIZE>`; danh mục tạo theo tên nếu thiếu (mặc định 'Chưa phân loại'); ảnh sharp **cover-crop 750×1000** webp (cắt viền, không méo) → UploadAsset + ProductImage theo pipeline uploads.service, asset dọn khi tạo sản phẩm lỗi; idempotent theo slug — chạy lại bỏ qua, không ghi đè; status PUBLISHED (cờ `--draft` → DRAFT); kho: `stock` trống = 0 không ledger, có số → 1 bản ghi ledger 'Nhập kho lúc import' như chỉnh kho thật; log tổng kết phân nhánh có/không sản phẩm mới |
+| `apps/backend/test/import-products.integration.spec.ts` (mới) | Guard `_test`; fixture tmp tự tạo (2 ảnh sharp nhỏ + CSV, admin riêng theo `ADMIN_EMAIL`); spawn CLI 2 lượt — snapshot deep-equal giữa lượt (slug, status, priceFrom, mô tả, ảnh, biến thể, tồn, ledger), lượt 2 no-op 'Toàn bộ sản phẩm trong CSV đã có sẵn'; thực hiện assert dòng lệnh Bỏ qua + thiếu giá trên stderr; cleanup prefix `import-fix-`/`rmg-import-fix-` theo bảng + file |
+| `apps/backend/package.json`, root `package.json` | Script `import:products` (backend: build + `node --env-file-if-exists=.env dist/cli/import-products.js`; root: `npm run import:products -w @clothing/backend`) |
+| `.gitignore` | Bỏ qua `data/` (ảnh shop + CSV không vào Git) |
+| `README.md`, `docs/local-trial-m3.md`, `progress.md` | Mục 'Nhập dữ liệu shop thật (M3.13a)' + runbook + mục này. Ngoài ra sửa dòng kiểm tra M3.12 sai bộ đếm (frontend 180→182 vì +2 test CatalogPage của bản sửa sau review M3.11 đọc thiếu; integration 30→32 do cơ chế đếm lượt cũ, tổng ổn định đã đối chiếu từng file) |
+
+### Data flow / key quan trọng
+
+CSV (1 dòng = 1 sản phẩm, `sizes` ngăn `|` = mỗi size một biến thể cùng giá) → validate → mỗi sản phẩm: ảnh webp + UploadAsset → Category → Product + Variant + Inventory (0) → khách thấy qua API M3.8–M3.10 có sẵn. Giá đúng ra từ CSV; tồn ngoài CSV để 0 để bạn nhập kho thật qua UI Kho (có lịch sử giao dịch, khớp luồng M3.7.2/3.7.3).
+
+- `slugify` + idempotency theo slug: sửa tên trong CSV tạo sản phẩm MỚI — không tự sửa sản phẩm cũ (chỉnh qua admin).
+- `it.each` không dùng: frontend không đổi code — số test frontend 182 gồm baseline cũ + 2 test bản-review M3.11 này đọc thiếu lúc M3.12 (tree ổn định, chạy lại đều 182).
+- Nếu thiếu ADMIN trên DB sẽ exit 1 với hướng dẫn `admin:create` (như `seed:demo`).
+
+### Kiểm tra thực tế (Node 24.22.1; integration qua `vitest.integration.config.ts`)
+
+| Lệnh | Kết quả |
+|---|---|
+| Test mới trước khi có CLI | FAIL đúng lý do: `MODULE_NOT_FOUND dist/cli/import-products.js` (RED) |
+| Lượt sau CLI (1) | FAIL vì tôi để `files.split` trên destructuring undefined (noUncheckedIndexedAccess)-fix; thêm 2 assert chuẩn hóa (stderr 'Bỏ qua dòng', Set so sánh tên danh mục) |
+| `test/import-products.integration.spec.ts` | GREEN — 2 lượt spawn deep-equal, dòng lỗi skip đúng, ledger chỉ khi stock > 0 |
+| `test:integration` toàn bộ | 32/32 (auth 17 + catalog 12 + seed-demo 2 + import 1), exit 0 |
+| `run typecheck` / `run build` | Exit 0 / Exit 0 |
+| `npm test` workspace | tools 8 + backend 9 + frontend 182 đạt, exit 0 (tree ổn định — +2 là test CatalogPage có sẵn; giải trình ở dòng sửa M3.12) |
+| Dry-run lệnh theo đúng chuỗi user (`npm.ps1 run import:products`, cwd workspace = apps/backend; CSV thật 5 dòng chưa điền giá) | 5 × 'Bỏ qua dòng … thiếu giá hợp lệ', tổng kết no-op, exit 0, **không ghi DB** — chứng nhận (1) mặc định `--dir` trúng `clothing-shop\data\import` sau khi sửa lấy repo root từ `import.meta.url` (cwd-based đã trượt vào `apps\backend\data\import`), (2) parser đọc đúng BOM/dòng `#`/tên file chứa `“`, dòng báo 3–7 trúng vị trí thật |
+| `test:e2e:implemented` (11 spec, DB `_test`) | 34/34 passed (42.5s, exit 0) — code runtime FE/BE không đổi trong phần này, chạy lại để có hóa đơn đủ |
+
+### Vấn đề gặp trong phần này
+
+- Instagram chặn scraping anonymous (không tự lấy) — được người dùng đồng ý chuyển sang tự lưu ảnh.
+- PowerShell 5.1 không có `??` trong script phụ sinh CSV; file CSV/ảnh sinh bằng tool cục bộ, hợp lệ UTF-8 BOM để Excel mở tên tiếng Việt đúng.
+- Mặc định `--dir` ban đầu resolve theo cwd — khi chạy `npm run -w @clothing/backend` cwd là apps/backend nên sẽ trượt sang `apps\backend\data\import`. Sửa: repo root suy từ `import.meta.url` (4 cấp như uploadsRoot), chứng bằng dry-run ở bảng kiểm.
+- PowerShell tô đỏ `NativeCommandError` cho dòng stderr đầu tiên khi npm host node, dù đó chỉ là cảnh báo dữ liệu: chuyển 4 thông báo theo dòng (thiếu giá/file/thêm path/tạo lỗi riêng) sang stdout, giữ stderr chỉ cho lỗi dừng lượt (không đọc được CSV, thiếu ADMIN — exit 1); test cập nhật kênh tương ứng.
+
+### Chạy thử / điểm dừng
+
+- Mở `data/import/products.csv` điền `price` (VND, số nguyên) và `sizes` (vd. `S|M`; trống = FREESIZE). Bảng chi tiết ở [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.13a.
+- Chạy `.\tools\npm.ps1 run import:products` (mặc định đọc `data\import`), mở `http://127.0.0.1:5173/shop` kiểm 5 sản phẩm RMG; dùng Kho M3.7.2 nhập tồn thật có lịch sử.
+- **Dừng chờ người dùng điền CSV, chạy import và phản hồi.** M3.12 runbook (§ M3.12) vẫn chờ chạy thử nếu chưa làm. Commit/push/PR chỉ khi được yêu cầu (không gộp `data/` — gitignore).
+
 
 ## Ngày 29/10/2026 — M3.12 (Người B): ca chấp nhận toàn luồng ghép vào E2E implemented — chốt M3 về mặt kỹ thuật
 
@@ -84,8 +152,8 @@ Ca tự dựng dữ liệu bằng UI thật trên `_test` (đăng nhập → dan
 | `test:e2e:implemented` 11 spec | **34/34 passed (40.4s, exit 0, không flake** — webServer Vite còn sống cả lượt) |
 | `npm run typecheck` | Exit 0 |
 | `npm run build` | Exit 0 (cảnh báo chunk có sẵn) |
-| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 |
-| `test:integration` | 30/30, exit 0 |
+| `npm test` workspace | tools 8 + backend 9 + frontend 180 đạt, exit 0 — **sửa nhận định 29/10: phiên bản CatalogPage sau review của M3.11 (+2 test) lúc chạy này đọc thiếu; tree ổn định, chạy lại = 182** |
+| `test:integration` | 30/30, exit 0 — **sửa nhận định 29/10: các file integration đủ gồm auth 17 + catalog 12 + seed-demo 2 = 31, run này báo 30; tổng kiểm sau M3.13a (bảng dưới) cho số ổn định 32 với import 1** |
 
 ### Vấn đề gặp trong phần này
 

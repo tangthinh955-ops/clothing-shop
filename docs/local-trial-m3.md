@@ -519,3 +519,27 @@ Ca này chạy đúng luồng E2E tổng `apps/frontend/e2e/catalog.spec.ts` (đ
 Kiểm tra ảnh còn sau restart: dừng backend (Ctrl+C ở terminal 1) và chạy lại `npm run dev:backend`; mở lại trang admin sản phẩm và trang chi tiết khách — ảnh đã gắn vẫn hiển thị (tệp nằm tại `.local/uploads`, bản ghi upload giữ nguyên; ảnh không biến thành 'Chưa có ảnh').
 
 Kiểm tra tự động: ca này chính là spec E2E tổng đã ghép vào `test:e2e:implemented` — toàn bộ hiện 34 ca trên 11 spec, đạt local 40s (chi tiết [progress.md](../progress.md) § M3.12). Câu lệnh: `./tools/npm.ps1 run test:e2e:implemented`.
+
+## M3.13a — Người B: nhập dữ liệu thật từ ảnh Instagram (CSV + lệnh `import:products`)
+
+Mục tiêu: đưa 5 sản phẩm RMG (17 ảnh đã copy sẵn từ `Downloads\RMG` vào `data\import`) lên web bằng một lệnh. `products.csv` sinh sẵn với tên/danh mục/màu/mô tả theo caption và ảnh thật; **price/sizes/stock đã điền và lệnh import đã chạy thành công ngày 29/10** (5 sản phẩm PUBLISHED, 17 ảnh xem được; chi tiết [progress.md](../progress.md) § M3.13a). Trạng thái PUBLISHED theo lựa chọn của bạn.
+
+Chuẩn bị: một tài khoản ADMIN (như M3.1); frontend/backend bật như thường khi muốn xem kết quả (chính lệnh import thì không cần server nào — nó nói thẳng với DB qua `.env`).
+
+| Bước | Thao tác | Kết quả mong đợi |
+|---|---|---|
+| 1 | *(đã xong 29/10)* `products.csv` đã điền đủ price/sizes/stock | CSV giữ đúng 8 cột mẫu, không thêm/bớt cột |
+| 2 | *(đã xong 29/10)* Chạy `.\tools\npm.ps1 run import:products` | Log 'Đã tạo sản phẩm … — 1 biến thể, n ảnh, trạng thái PUBLISHED.' ×5 rồi 'Import xong: 5 sản phẩm mới, 0 đã có sẵn, 0 dòng CSV bị bỏ qua.' |
+| 3 | Mở **http://127.0.0.1:5173/shop** | 'Tìm thấy 5 sản phẩm.'; 5 sản phẩm RMG hiện kèm ảnh thật, 'Giá từ 500.000 ₫' tới '1.000.000 ₫' |
+| 4 | Bấm vào sản phẩm quần (slug `rmg-goldline-metal-baggy-pants`) rồi liệt kê 4 slug còn lại | Chi tiết M3.10: gallery ảnh thật, biến thể 'XL · đen' (áo thun đen là 'L · đen'), 'Còn 10 sản phẩm' (áo polo/áo thun: 'Còn 5') |
+| 5 | `/admin` → **Kho** → tìm SKU `RMG…-XL` → **Điều chỉnh** `+10`, lý do tuỳ | Dialog 'Khả dụng: 15' (polo, 5+10); lịch sử M3.7.3 đã có sẵn dòng 'Nhập kho lúc import' từ lúc import + dòng điều chỉnh mới |
+| 6 | Dừng cả hai server, bật lại, mở `/shop` | 5 sản phẩm và ảnh vẫn còn (dữ liệu trong DB, ảnh trong `.local/uploads`) |
+
+Slug dự kiến: `rmg-black-wash-vtg-horse-tee`, `rmg-white-horse-tee`, `rmg-goldline-metal-baggy-pants`, `rmg-different-level-polo`, `rmg-different-metal-zip-hood`.
+
+Lưu ý:
+
+- Chạy lệnh khi CSV chưa điền giá là an toàn: toàn bộ dòng bị bỏ qua 'thiếu giá…', không tạo gì (đã chạy thử thật, nhận thấy exit 0, không dòng nào tạo).
+- `--draft` nếu muốn nhập nháp soát trước; sản phẩm DRAFT không hiện ở `/shop` cho tới khi **Xuất bản** qua admin (M3.8).
+- Ảnh được crop vừa khung 750×1000 (cắt viền, không méo). Phần cắt không vừa ý thì thay/gắn lại ảnh qua admin (M3.5/3.6).
+- Chạy lại là an toàn theo slug: dòng trùng tên bị bỏ qua; đổi tên sản phẩm trong CSV sẽ tạo sản phẩm MỚI (không tự sửa cái cũ) — sau khi import, mọi chỉnh sửa về giá/tồn/khác làm qua admin, không qua CSV.
