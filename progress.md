@@ -16,7 +16,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho, M3.7.2 (Người B) đã có dialog điều chỉnh tồn lọc theo biến thể; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có catalog khách (M3.9 trở đi) |
+| M3 Catalog/ảnh/kho | M3.8 (Người A) đã có xuất bản/ẩn sản phẩm, sau M3.4.2 biến thể, M3.5 gắn ảnh, M3.6 sắp xếp ảnh; M3.7.1 (Người B) đã có xem/tìm tồn kho, M3.7.2 (Người B) đã có dialog điều chỉnh tồn lọc theo biến thể, M3.7.3 (Người B) đã có lịch sử giao dịch của từng SKU; kết quả ở các mục riêng bên dưới, chờ người dùng thử. Chưa có catalog khách (M3.9 trở đi) |
 | M4 Bán hàng | Chưa thực hiện |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
@@ -240,6 +240,76 @@ Các lệnh chạy bằng npm trực tiếp với Node 24.15.0 vì `tools/npm.ps
 - Hướng dẫn: [local-trial-m3.md](docs/local-trial-m3.md#m342--admin-sửa-thêm-và-tắt-biến-thể-của-sản-phẩm-nháp).
 
 **Dừng ở M3.4.2 chờ người dùng thử.** M3.5 (ảnh) cần kế hoạch riêng được duyệt.
+
+## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.3: lịch sử tồn kho của từng SKU
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.7.3 bằng "duyệt". Nút "Lịch sử" mở dialog đọc-only về giao dịch của một SKU; chưa triển khai M3.9 catalog khách. Backend API `GET /api/v1/admin/inventory/movements` vốn có (guard ADMIN, sort `createdAt` desc, phân trang), nên backend/schema không đổi. Cùng nhánh `feat/m3.7.2-inventory-adjust` ngay sau M3.7.2, thay đổi chưa stage/commit.
+
+### Đã viết / file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/admin/inventory/api/inventory.api.ts` | Thêm `movements(variantId, page)` với `pageSize=10`, kiểu `MovementRow/MovementList` khớp response backend (delta, before/after, reason, actor, createdAt) |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.tsx` | Mới: dialog "Lịch sử <SKU>" đọc-only, dùng query riêng theo variantId + page; loading/empty/error + "Tải lại lịch sử"; hàng thể hiện thời gian (`<time datetime>`), dấu `+/-`, `từ → thành`, lý do, người thực hiện; phân trang khi hơn 10 giao dịch |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.test.tsx` | Mới: 9 test — đúng tham số gọi API, nội dung hàng, delta âm, empty, loading, lỗi + retry cùng trang, phân trang giữ dialog mở, đóng, không refetch khi row cha refresh cùng variant |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.tsx` | Thêm state `history` + nút "Lịch sử <SKU>" trên mỗi hàng, mở dialog lịch sử (không đụng luồng điều chỉnh) |
+| `apps/frontend/src/features/admin/inventory/pages/InventoryPage.test.tsx` | +3 test: mở/đóng lịch sử với URL API đủ `?variantId&page=1&pageSize=10`, phân trang trong dialog không đổi URL, empty state cho biến thể chưa giao dịch |
+| `apps/frontend/e2e/inventory-history.spec.ts` | Mới: 3 E2E — điều chỉnh +5 rồi lịch sử hiện ngay 1 hàng `12 → 17` và meta khớp; 12 giao dịch seed qua Prisma chia 2 trang (10 + 2); biến thể không giao dịch hiển thị empty |
+| `package.json` (root) | Thêm `inventory-history.spec.ts` vào `test:e2e:implemented` |
+| `.github/workflows/ci.yml` | Tên bước E2E nêu rõ "+ history M3.7.3" |
+| `docs/local-trial-m3.md` | Hướng dẫn chạy thử M3.7.3 |
+| `progress.md` | Mục này |
+
+File chạy thử `e2e/inventory-history.spec.ts` phải scope `listitem` trong `<ul aria-label="Lịch sử <SKU>">` vì DOM của dialog còn chứa `<li>` phân trang lẫn vào — đã sửa sau khi E2E bắt Expected 10 / Received 14. Backend, migration, `features/admin/products/`, lockfile: không đổi. Chưa stage/commit.
+
+### Data flow / key quan trọng
+
+Luồng: nút "Lịch sử" trên hàng tồn → dialog mở → TanStack Query gọi `inventoryApi.movements` → `GET /api/v1/admin/inventory/movements?variantId=<id>&page=<n>&pageSize=10` (guard backend kiểm ADMIN; server sắp `createdAt` desc) → hàng hiển thị thời gian, `+5`/`-3`, `before → after`, lý do, người thực hiện; sang trang gọi lại trong cùng dialog; "Đóng" không đổi URL, không invalidate gì (chỉ đọc).
+
+- Query key `['admin-inventory-movements', variantId, page]`: cache tách theo biến thể + trang; dialog đổi trang không refetch danh sách tồn.
+- `<time datetime>`: giữ ISO nguyên vẹn cho máy, hiển thị giờ Việt Nam (`Intl.DateTimeFormat` + `Asia/Ho_Chi_Minh`) — cố định múi giờ nên số hiển thị không chạy theo máy admin.
+- Dấu `+`/`-`: nhập thêm hay xuất kho, tô xanh/đỏ để dễ nhìn; số lấy nguyên từ server.
+- Empty state: "Chưa có giao dịch cho SKU này." cho biến thể 0 giao dịch — phân biệt nội dung hàng tồn.
+- Read-only: không có PUT/POST trong dialog, không idempotency, thứ tự và tổng phụ thuộc API hoàn toàn.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| UI RED | MovementHistory chưa có (suite lỗi import) + 3 ca trang chưa có nút "Lịch sử" — 3 ca trang fail đúng lý do |
+| UI GREEN | 54/54 trong thư mục inventory (19 dialog điều chỉnh + 26 trang + 9 lịch sử); frontend tổng 159/159 sau lần chỉnh cuối |
+| `tools/npm.ps1 run typecheck` | 2 app 0 lỗi (lưu ý: hai lượt đầu gọi qua `cmd /c "tools\npm.ps1 ..."` không thật sự chạy file ps1, log trống; chạy lại bằng `powershell -File` hợp lệ) |
+| `tools/npm.ps1 test` | 176 đạt: 8 công cụ + 9 backend + 159 frontend |
+| `npm run test:integration` | 29/29 |
+| E2E implemented (8 spec) | 4 lượt: L1 25/26 (test phân trang của tôi bắt 14 thay vì 10 — lỗi scope `listitem` gộp `<li>` phân trang, đã sửa); L2 8 pass rồi webServer Vite crash 0xC0000409 (flake máy đã ghi ở M3.7.2); L3 25/26 (test ảnh của Người A chập chờn); L4 26/26 sạch (34.7s) |
+
+### Chạy thử / điểm dừng
+
+Giữ dev backend/frontend như trước, đăng nhập ADMIN → Kho → hàng nào đó → bấm **Lịch sử**. Xem thời gian, số cộng/trừ, `từ → thành`, lý do, người thực hiện; số SKU có hơn 10 giao dịch có phân trang; SKU vừa điều chỉnh ở M3.7.2 sẽ có dòng giao dịch tương ứng. Chi tiết theo [hướng dẫn M3.7.3](docs/local-trial-m3.md).
+
+**Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử/xác nhận. Dừng ở M3.7.3.** Catalog khách M3.9 cần duyệt riêng; chưa commit/push; chưa kiểm chứng CI GitHub.
+
+### Bản sửa sau review (29/10/2026)
+
+Người dùng duyệt "sửa lại hết" cho 4 điểm review:
+
+| Điểm | Sửa |
+|---|---|
+| Mở lại lịch sử thoáng hiện số cũ từ cache (mở → đóng → điều chỉnh → mở lại vẫn thấy "Tìm thấy 1" trước khi về 2) | `MovementHistory.tsx`: query lịch sử dùng `gcTime: 0`, đóng dialog là bỏ cache nên mở lại luôn "Đang tải lịch sử…" rồi số mới |
+| Sang trang làm danh sách và thanh phân trang biến mất, hiện "Đang tải…" rồi mới hiện lại | `placeholderData: keepPreviousData`: giữ trang hiện tại, thanh phân trang khóa trong lúc tải trang kế tiếp |
+| Nhánh `actor.name ?? 'Tài khoản đã xóa'` không thể xảy ra (DB bắt buộc tên, không cho xóa user có giao dịch) | Bỏ nhánh; `MovementRow.actor` thành `{ name: string }` trong `inventory.api.ts` |
+| Chữ lỗi | Mục M3.7.3 ở đây; mục M3.7.2 và M3.7.3 trong `docs/local-trial-m3.md` (kèm sửa giải thích ví dụ 409 -11, thêm dòng chạy thử Esc, mở lại lịch sử và sang trang; tên key/dấu trừ cho khớp code); comment seed trong `inventory-history.spec.ts` |
+
+`MovementHistory.test.tsx` +2 test: giữ trang và thanh phân trang khi đang tải trang 2; mở lại sau khi đóng thì tải mới, không hiện số cũ. Cả hai fail trước khi sửa đúng lý do ("Đang tải lịch sử…" thay danh sách; "Đang tải" không xuất hiện vì dùng cache cũ), đạt sau khi sửa.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 161 frontend đạt |
+| `npm run test:integration` | 29/29 |
+| `npm run test:e2e:implemented` (8 spec, DB `_test`) | 26/26 (34.4s) |
+
+Lệnh chạy bằng Node local `.local/node-v24.22.1-win-x64` trong Bash, vì `tools/npm.ps1` dừng khi webServer E2E ghi ra stderr (`ErrorActionPreference = 'Stop'`); không đổi Node toàn máy. Chưa commit/push.
 
 ## Ngày 29/10/2026 — M3.7 (Người B) — M3.7.2: điều chỉnh tồn kho, một lần ghi mỗi idempotency key
 

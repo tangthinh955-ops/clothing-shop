@@ -231,3 +231,53 @@ describe('inventory variant filter and adjustment flow', () => {
     expect(screen.queryByLabelText('Số lượng thay đổi')).not.toBeInTheDocument();
   });
 });
+
+describe('inventory movement history', () => {
+  const historyRow = { id: 'h1', variantId: variantIdFixture, delta: 5, reason: 'Nhập kho e2e', before: 12, after: 17,
+    reserved: 2, version: 4, createdAt: '2026-10-29T02:00:00.000Z', actor: { name: 'Admin thử' }, variant: { sku: 'AO-M-DEN' } };
+  const historyPage = { items: [historyRow], total: 1, page: 1, pageSize: 10 };
+
+  it('opens the SKU history from a row and closes it after reading', async () => {
+    const request = vi.spyOn(client, 'request').mockImplementation((path) =>
+      String(path).startsWith('/admin/inventory/movements') ? Promise.resolve(historyPage) : Promise.resolve(result));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: `Lịch sử ${stock.sku}` }));
+    const dialog = await screen.findByRole('dialog', { name: `Lịch sử ${stock.sku}` });
+    expect(within(dialog).getByText('+5')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Đóng' }));
+    expect(screen.queryByRole('dialog', { name: `Lịch sử ${stock.sku}` })).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith(`/admin/inventory/movements?variantId=${variantIdFixture}&page=1&pageSize=10`);
+  });
+
+  it('pages the history dialog with its own page query', async () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({
+      ...historyRow, id: `h1-${index}`, reason: `Đợt trang 1 #${index}`,
+    }));
+    const request = vi.spyOn(client, 'request').mockImplementation((path) => {
+      const url = String(path);
+      if (url.startsWith('/admin/inventory/movements')) {
+        return Promise.resolve(url.includes('page=2')
+          ? { items: [{ ...historyRow, id: 'h2', reason: 'Đợt trang 2' }], total: 12, page: 2, pageSize: 10 }
+          : { items: rows, total: 12, page: 1, pageSize: 10 });
+      }
+      return Promise.resolve(result);
+    });
+    renderPage(`/admin/inventory?variantId=${variantIdFixture}`);
+    await userEvent.click(await screen.findByRole('button', { name: `Lịch sử ${stock.sku}` }));
+    await screen.findByText('Lý do: Đợt trang 1 #0');
+    await userEvent.click(screen.getByRole('button', { name: 'Trang 2' }));
+    expect(await screen.findByText('Lý do: Đợt trang 2')).toBeVisible();
+    expect(request).toHaveBeenLastCalledWith(`/admin/inventory/movements?variantId=${variantIdFixture}&page=2&pageSize=10`);
+    expect(screen.getByTestId('url')).not.toHaveTextContent('movements');
+  });
+
+  it('shows the history empty state for a variant without movements', async () => {
+    vi.spyOn(client, 'request').mockImplementation((path) =>
+      String(path).startsWith('/admin/inventory/movements')
+        ? Promise.resolve({ items: [], total: 0, page: 1, pageSize: 10 })
+        : Promise.resolve(result));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: `Lịch sử ${stock.sku}` }));
+    expect(await screen.findByText('Chưa có giao dịch cho SKU này.')).toBeVisible();
+  });
+});

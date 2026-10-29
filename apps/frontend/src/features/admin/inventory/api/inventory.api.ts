@@ -34,7 +34,29 @@ export interface AdjustmentResult {
   version: number;
 }
 
+export interface MovementRow {
+  id: string;
+  variantId: string;
+  delta: number;
+  reason: string;
+  before: number;
+  after: number;
+  reserved: number;
+  version: number;
+  createdAt: string;
+  actor: { name: string };
+  variant: { sku: string };
+}
+
+export interface MovementList {
+  items: MovementRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export const inventoryKey = ['admin-inventory'] as const;
+export const MOVEMENT_PAGE_SIZE = 10;
 
 export const inventoryApi = {
   list: (q: string, page: number, variantId?: string) => {
@@ -47,4 +69,11 @@ export const inventoryApi = {
   },
   adjust: (input: AdjustmentInput, idempotencyKey: string) =>
     request<AdjustmentResult>('/admin/inventory/adjustments', { method: 'POST', body: input, idempotencyKey }),
+  movements: (variantId: string, page: number) => {
+    const search = new URLSearchParams();
+    search.set('variantId', variantId);
+    search.set('page', String(page));
+    search.set('pageSize', String(MOVEMENT_PAGE_SIZE));
+    return request<MovementList>(`/admin/inventory/movements?${search.toString()}`);
+  },
 };

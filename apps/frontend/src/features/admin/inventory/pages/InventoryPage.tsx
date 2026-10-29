@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { ApiError } from '../../../../shared/api/client';
 import { inventoryApi, inventoryKey, type AdjustmentInput, type AdjustmentResult, type InventoryItem, type InventoryList } from '../api/inventory.api';
 import { AdjustmentDialog } from '../components/AdjustmentDialog';
+import { MovementHistory } from '../components/MovementHistory';
 
 const VARIANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,6 +23,7 @@ export function InventoryPage() {
   const cache = useQueryClient();
   const [search, setSearch] = useSearchParams();
   const [adjusting, setAdjusting] = useState<InventoryItem | null>(null);
+  const [history, setHistory] = useState<InventoryItem | null>(null);
   const variantId = search.get('variantId') ?? '';
   const q = (search.get('q') ?? '').trim();
   const rawPage = search.get('page') ?? '1';
@@ -117,6 +119,7 @@ export function InventoryPage() {
             </Box>
             <Stack direction="row" useFlexGap sx={{ gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
               <Button variant="outlined" aria-label={`Điều chỉnh ${item.sku}`} onClick={() => setAdjusting(item)}>Điều chỉnh</Button>
+              <Button variant="outlined" aria-label={`Lịch sử ${item.sku}`} onClick={() => setHistory(item)}>Lịch sử</Button>
             </Stack>
           </Paper>)}
         </Stack>}
@@ -128,5 +131,6 @@ export function InventoryPage() {
     </Stack>}
     {adjusting && <AdjustmentDialog stock={adjusting} onSave={saveAdjustment} onReload={reloadInventory}
       onClose={() => setAdjusting(null)} />}
+    {history && <MovementHistory item={history} onClose={() => setHistory(null)} />}
   </Box>;
 }
