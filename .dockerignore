@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+**/*.log
+.git
+.local
+.superpowers
+.worktrees
+.agents
+.codex
+data
+**/playwright-report
+**/test-results
+apps/backend/src/generated

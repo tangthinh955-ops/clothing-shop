@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnsupportedMediaTypeException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,8 +12,9 @@ const invalid = () => new UnsupportedMediaTypeException({ code: 'UNSUPPORTED_IMA
 export class UploadsService {
   private readonly root: string;
   private readonly logger = new Logger(UploadsService.name);
-  constructor(@Inject(PrismaService) private readonly db: PrismaService, @Inject(APP_CONFIG) private readonly config: AppConfig) {
-    this.root = path.resolve(config.nodeEnv === 'test' ? '../../.local/test-uploads' : '../../.local/uploads');
+  constructor(@Inject(PrismaService) private readonly db: PrismaService, @Inject(APP_CONFIG) config: AppConfig) {
+    // Absolute folder from config: the repo .local folder locally, UPLOADS_DIR (persistent disk, backed up) on the VPS.
+    this.root = config.uploadsDir;
   }
   private file(key: string) {
     if (!/^[0-9a-f-]{36}\.webp$/.test(key)) throw new NotFoundException();
@@ -30,7 +31,6 @@ export class UploadsService {
     }
   }
   async upload(ownerId: string, file: ImageFile | undefined) {
-    if (this.config.nodeEnv === 'production') throw new ServiceUnavailableException({ code: 'UPLOAD_NOT_CONFIGURED', message: 'Chưa cấu hình lưu ảnh cho môi trường deploy.' });
     if (!file || !['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) throw invalid();
     // Decode and rewrite, rather than trusting the extension or client MIME. No SVG and no metadata passthrough.
     let data: Buffer; let width: number; let height: number;

@@ -15,7 +15,7 @@ import { HttpExceptionFilter } from './common/http-exception.filter.js';
 export async function createApplication(config: AppConfig): Promise<NestExpressApplication> {
   // Keep errors/warnings (500 causes, mail delivery failures); skip Nest's startup/route noise.
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register(config), { logger: ['error', 'warn'] });
-  if (config.trustProxy) app.set('trust proxy', 1);
+  if (config.trustProxyHops > 0) app.set('trust proxy', config.trustProxyHops);
   app.use(helmet());
   app.use((req: Request, res: Response, next: NextFunction) => {
     const id = randomUUID(); res.locals['requestId'] = id;
