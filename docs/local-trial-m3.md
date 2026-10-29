@@ -179,6 +179,21 @@ Nút Sửa → `ProductEditPage` GET chi tiết + danh mục → `ProductEditFor
 
 Test riêng: `./tools/npm.ps1 run test --workspace=@clothing/frontend -- src/features/admin/products/pages/ProductEditPage.test.tsx src/features/admin/products/pages/ProductsPage.test.tsx`. Bộ đã triển khai: `./tools/npm.ps1 run test:e2e:implemented` (auth + categories + products + inventory list/search, 14 ca trên `_test`).
 
+## M3.14 — Người A: sửa sản phẩm đang bán hoặc đã ẩn
+
+Trước đây chỉ sản phẩm nháp mới sửa được. Từ M3.14, trang sửa mở form thông tin, biến thể và ảnh cho mọi trạng thái. Backend vẫn kiểm tra như cũ: sản phẩm đang bán phải còn danh mục bật, ít nhất một biến thể bật và ít nhất một ảnh.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Admin → Sản phẩm → bấm một sản phẩm **đang bán** | Tiêu đề "Sửa sản phẩm đang bán"; cảnh báo thay đổi hiển thị ngay khi lưu và đổi đường dẫn làm hỏng link đã chia sẻ; có form và phần ảnh |
+| Đổi tên hoặc giá → **Lưu thay đổi** | Về danh sách với "Đã cập nhật sản phẩm “…”."; mở `/products/<slug>` thấy ngay tên/giá mới |
+| Tắt biến thể bật duy nhất rồi lưu | Báo đúng lý do "Sản phẩm đang xuất bản cần danh mục và biến thể đang bật."; dữ liệu nhập giữ nguyên |
+| Gỡ hết ảnh rồi lưu ảnh | Báo "Cần giữ ít nhất một ảnh cho sản phẩm đang xuất bản." |
+| Bấm **Ẩn sản phẩm** rồi sửa tiếp | Tiêu đề đổi thành "Sửa sản phẩm đã ẩn", ghi chú khách chưa thấy thay đổi cho tới khi xuất bản lại; lưu vẫn được |
+| Sản phẩm nháp | Như trước: "Sửa sản phẩm nháp", nút Xuất bản khóa khi còn thay đổi chưa lưu |
+
+Kiểm tra tự động: test UI trang sửa (đang bán, đã ẩn, lý do 409), integration `catalog.integration.spec.ts` (sửa khi đang bán + mã lỗi `PUBLISH_RULE`), E2E `products.spec.ts` (sửa hàng đang bán, khách thấy ngay).
+
 ## M3.9 — Người B: catalog khách tìm và lọc hàng công khai
 
 Phần này KHÔNG cần đăng nhập. Mở **http://127.0.0.1:5173/shop** với hai terminal dev như mục M3.1. Muốn thấy hàng, bấm hoặc chạy trước phần M3.8 để có sản phẩm Đã xuất bản.
