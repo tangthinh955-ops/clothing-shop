@@ -2,9 +2,31 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 29/10/2026 — M3.13b (lộ trình giao Người B, agent của Người A làm theo yêu cầu): sửa lệnh nhập CSV
+
+**Phạm vi:** người dùng yêu cầu làm luôn M3.13b: sửa 2 lỗi còn mở của M3.13a đã ghi ở PR #13. Nhánh `fix/m3.13b-import-args` từ `main`, PR #16; sau khi PR #15 (M3.14) merge, đã merge `main` vào nhánh để giải xung đột `progress.md` (giữ cả hai mục). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `package.json` (root) | `import:products` thêm `--` để npm chuyển `--dir`/`--draft` cho CLI. Trước đây npm hiểu chúng là cấu hình của chính npm (`Unknown cli config "--dir"`), lệnh âm thầm đọc `data\import` và nhập PUBLISHED |
+| `apps/backend/src/cli/import-products.ts` | `--dir` tương đối tính từ `INIT_CWD` (nơi gõ lệnh) thay vì `apps/backend`; danh mục đã có mà đang tắt thì bỏ qua dòng khi nhập PUBLISHED, kèm hướng dẫn bật danh mục hoặc dùng `--draft`; tra/tạo danh mục chuyển vào `try` của từng dòng nên lỗi một dòng không dừng cả lượt |
+| `apps/backend/test/import-products.integration.spec.ts` | +2 ca: gọi đúng lệnh ở root (`npm run import:products -- --dir <tương đối> --draft`) với DB bảo vệ không tồn tại nên không thể ghi dữ liệu dù lỗi còn hay đã sửa; danh mục đang tắt không xuất bản nhưng `--draft` vẫn nhập nháp |
+| `README.md`, `docs/local-trial-m3.md` | Cách tính `--dir` tương đối và hành vi với danh mục đang tắt |
+
+**TDD:** cả 2 ca RED đúng lý do trước khi sửa (log npm `Unknown cli config "--dir"`/`"--draft"`, CLI đọc thư mục mặc định rồi dừng ở DB bảo vệ, không ghi gì; sản phẩm vẫn PUBLISHED vào danh mục tắt) → GREEN 3/3. Vì `data/import` local chứa CSV thật đã có giá, test root cố ý trỏ DB không tồn tại để không bao giờ nhập dữ liệu thật vào `_test`.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck` | Đạt |
+| `npm test` (sau khi merge `main` có M3.14) | 8 công cụ + 9 backend + 184 frontend |
+| `npm run test:integration` | 35/35 (33 của `main` + 2 ca M3.13b) |
+| `npm run test:e2e:implemented` | 34/34 (42.6s) |
+
+Chưa sửa điểm nhỏ "test cleanup prefix cố định" của review PR #13: integration chạy tuần tự (`fileParallelism: false`) nên chưa gây lỗi. **Chạy thử:** `.\tools\npm.ps1 run import:products -- --dir <thư mục khác> --draft` → sản phẩm nhập nháp từ đúng thư mục. **Dừng chờ người dùng thử.**
+
 ## Ngày 29/10/2026 — M3.14 (Người A): sửa sản phẩm đang bán hoặc đã ẩn
 
-**Phạm vi:** người dùng yêu cầu "làm luôn" M3.14 theo lộ trình P0. Backend vốn cho sửa sản phẩm mọi trạng thái (giữ ràng buộc khi đang bán); UI chặn khác nháp. Nhánh `feat/m3.14-edit-live-products` từ `main`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử. Đã commit trên nhánh local, chưa push.**
+**Phạm vi:** người dùng yêu cầu "làm luôn" M3.14 theo lộ trình P0. Backend vốn cho sửa sản phẩm mọi trạng thái (giữ ràng buộc khi đang bán); UI chặn khác nháp. Nhánh `feat/m3.14-edit-live-products` từ `main`, đã merge vào `main` qua PR #15. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
 
 | File | Thay đổi |
 |---|---|
@@ -102,7 +124,7 @@ Tài liệu: `docs/local-trial-m3.md` mục M3.9 (2 dòng thử mới) và M3.11
 | Kiểm tra | Kết quả |
 |---|---|
 | `npm run typecheck`, `npm run build` | Đạt |
-| `npm test` | 8 công cụ + 9 backend + 182 frontend |
+| `npm test` (sau khi merge `main` có M3.14) | 8 công cụ + 9 backend + 184 frontend |
 | `npm run test:integration` | 31/31 |
 | `npm run test:e2e:implemented` (11 spec, DB `_test`) | 34/34 (39.6s) |
 

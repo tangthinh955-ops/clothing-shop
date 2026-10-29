@@ -180,4 +180,37 @@ describe('import products CLI', () => {
     expect(secondRun.stdout).not.toContain('Đã tạo');
     expect(await snapshot()).toEqual(afterFirst);
   }, 60000);
+
+  it('forwards --dir/--draft through the root npm script and resolves a relative --dir from where npm runs', async () => {
+    const npmCli = process.env['npm_execpath'];
+    if (!npmCli) throw new Error('Run this suite through npm so npm_execpath points at the npm CLI');
+    const repoRoot = path.resolve('../..');
+    const missing = path.join('.local', `import-root-${randomUUID()}`);
+    // A database that does not exist: whichever folder the CLI ends up reading, it can never write anything.
+    const guardUrl = new URL(process.env['DATABASE_URL'] ?? '');
+    guardUrl.pathname = '/clothing_import_guard_test';
+    const rootEnv: NodeJS.ProcessEnv = { ...env, DATABASE_URL: guardUrl.toString() };
+    delete rootEnv['INIT_CWD'];
+    const result = await run(process.execPath, [npmCli, 'run', 'import:products', '--', '--dir', missing, '--draft'], { cwd: repoRoot, env: rootEnv })
+      .then(() => ({ stdout: '', stderr: '' }), (error: { stdout?: string; stderr?: string }) => ({ stdout: error.stdout ?? '', stderr: error.stderr ?? '' }));
+    expect(`${result.stdout}\n${result.stderr}`).toContain(`Không đọc được ${path.join(repoRoot, missing, 'products.csv')}`);
+  }, 180000);
+
+  it('never publishes into a category that is turned off, but still imports it as a draft', async () => {
+    const offDir = await mkdtemp(path.join(tmpdir(), 'import-products-off-'));
+    try {
+      await db.category.create({ data: { name: 'Import fix Danh mục tắt', slug: `${slugPrefix}danh-muc-tat`, active: false } });
+      await writeFile(path.join(offDir, 'off-1.jpg'), await sharp({ create: { width: 50, height: 70, channels: 3, background: '#556677' } }).jpeg().toBuffer());
+      await writeFile(path.join(offDir, 'products.csv'), Buffer.from([
+        'name,category,color,sizes,price,stock,description,files',
+        [csvEscape('Import fix Áo danh mục tắt'), csvEscape('Import fix Danh mục tắt'), csvEscape('đen'), '', csvEscape('200000'), '', '', csvEscape('off-1.jpg')].join(','),
+      ].join('\n'), 'utf8'));
+      const published = await run(process.execPath, ['dist/cli/import-products.js', '--dir', offDir], { env });
+      expect(published.stdout).toContain('danh mục Import fix Danh mục tắt đang tắt');
+      expect(await db.product.findUnique({ where: { slug: `${slugPrefix}ao-danh-muc-tat` } })).toBeNull();
+      const draft = await run(process.execPath, ['dist/cli/import-products.js', '--dir', offDir, '--draft'], { env });
+      expect(draft.stdout).toContain('Đã tạo sản phẩm Import fix Áo danh mục tắt');
+      expect(await db.product.findUnique({ where: { slug: `${slugPrefix}ao-danh-muc-tat` } })).toMatchObject({ status: 'DRAFT' });
+    } finally { await rm(offDir, { recursive: true, force: true }); }
+  }, 60000);
 });

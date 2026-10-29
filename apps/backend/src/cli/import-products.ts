@@ -152,7 +152,9 @@ const dirFlag = args.indexOf('--dir');
 // The default import folder lives in the repo root so `npm run import:products -w @clothing/backend`
 // (which executes with the workspace as cwd) still finds `data/import` regardless of where it is launched.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-const directory = dirFlag >= 0 && args[dirFlag + 1] ? path.resolve(args[dirFlag + 1] as string) : path.join(repoRoot, 'data', 'import');
+// npm runs workspace scripts inside apps/backend; INIT_CWD is where the user typed the command, so a relative --dir means what they expect.
+const launchDir = process.env['INIT_CWD'] ?? process.cwd();
+const directory = dirFlag >= 0 && args[dirFlag + 1] ? path.resolve(launchDir, args[dirFlag + 1] as string) : path.join(repoRoot, 'data', 'import');
 const asDraft = args.includes('--draft');
 const csvPath = path.join(directory, 'products.csv');
 
@@ -170,7 +172,7 @@ try {
     console.error('Cần một tài khoản ADMIN để làm chủ ảnh import. Chạy `npm run admin:create` trước khi import.');
     process.exitCode = 1;
   } else {
-    const categoryIds = new Map<string, string>();
+    const categories = new Map<string, { id: string; active: boolean }>();
     let createdProducts = 0;
     let skippedProducts = 0;
     let failedRows = 0;
@@ -198,14 +200,22 @@ try {
       }
       const existing = await db.product.findUnique({ where: { slug } });
       if (existing) { skippedProducts += 1; console.log(`Sản phẩm ${row.name} (${slug}) đã có sẵn.`); continue; }
-      const categorySlug = slugify(row.category);
-      let categoryId = categoryIds.get(categorySlug);
-      if (!categoryId) {
-        const category = await db.category.findUnique({ where: { slug: categorySlug } });
-        categoryId = category?.id ?? (await db.category.create({ data: { name: row.category, slug: categorySlug, active: true } })).id;
-        categoryIds.set(categorySlug, categoryId);
-      }
       try {
+        const categorySlug = slugify(row.category);
+        let category = categories.get(categorySlug);
+        if (!category) {
+          const found = await db.category.findUnique({ where: { slug: categorySlug } });
+          category = found ? { id: found.id, active: found.active }
+            : { id: (await db.category.create({ data: { name: row.category, slug: categorySlug, active: true } })).id, active: true };
+          categories.set(categorySlug, category);
+        }
+        // Publishing into a turned-off category would report success while shoppers never see the product.
+        if (!category.active && !asDraft) {
+          console.log(`Bỏ qua dòng ${line} (${row.name}): danh mục ${row.category} đang tắt. Bật danh mục trong admin rồi chạy lại, hoặc nhập nháp bằng --draft.`);
+          failedRows += 1;
+          continue;
+        }
+        const categoryId = category.id;
         const { assetIds, created } = await prepareImages(db, ownerUser.id, directory, row.files);
         try {
           const status = asDraft ? 'DRAFT' : 'PUBLISHED';
