@@ -14,6 +14,40 @@ enum Role {
   ADMIN
 }
 
+enum ActorType {
+  ADMIN
+  GUEST
+  SYSTEM
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  DELIVERY_FAILED
+  RETURNED_TO_SHOP
+}
+
+enum OrderMethod {
+  COD
+  BANK_TRANSFER
+}
+
+enum OrderSource {
+  WEB
+  INSTAGRAM
+}
+
+enum InventoryEffectSource {
+  ADMIN_ADJUSTMENT
+  ORDER_RESERVE
+  ORDER_RELEASE
+  ORDER_SHIP
+}
+
 enum TokenKind {
   VERIFY_EMAIL
   RESET_PASSWORD
@@ -33,6 +67,8 @@ model User {
   tokens AuthToken[]
   uploads UploadAsset[]
   movements InventoryMovement[]
+  orders Order[]
+  orderHistory OrderStatusHistory[]
   @@map("users")
 }
 
@@ -104,6 +140,7 @@ model Variant {
   active Boolean @default(true)
   inventory Inventory?
   movements InventoryMovement[]
+  orderItems OrderItem[]
   @@unique([productId, size, color])
   @@map("variants")
 }
@@ -121,8 +158,13 @@ model InventoryMovement {
   id String @id @default(uuid()) @db.Uuid
   variantId String @db.Uuid
   variant Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  actorId String @db.Uuid
-  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  // Nullable for GUEST/SYSTEM order effects; history responses always carry a display name.
+  actorId String? @db.Uuid
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  actorType ActorType @default(ADMIN)
+  source InventoryEffectSource @default(ADMIN_ADJUSTMENT)
+  // Deterministic per-effect reference for order operations; admin adjustments keep NULL and rely on (actorId, key).
+  effectKey String? @unique @db.VarChar(160)
   key String @db.VarChar(120)
   requestHash String @db.VarChar(64)
   delta Int
@@ -159,4 +201,124 @@ model ProductImage {
   position Int
   @@unique([productId, position])
   @@map("product_images")
+}
+
+// Single row ("default"); missing row means safe built-in defaults. No default bank account.
+model ShopSettings {
+  id String @id @default("default") @db.VarChar(16)
+  shippingFeeVnd Int @default(30000)
+  bankDeadlineMinutes Int @default(120)
+  bankName String? @db.VarChar(120)
+  bankBin String? @db.VarChar(20)
+  bankAccountNumber String? @db.VarChar(32)
+  bankAccountName String? @db.VarChar(120)
+  version Int @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  @@map("shop_settings")
+}
+
+// Server-priced draft of a cart; never holds stock. Order creation re-verifies against current data.
+model CheckoutQuote {
+  id String @id @default(uuid()) @db.Uuid
+  items Json
+  method OrderMethod
+  currency String @default("VND") @db.VarChar(3)
+  subtotalVnd Decimal @db.Decimal(14, 0)
+  shippingFeeVnd Decimal @db.Decimal(14, 0)
+  totalVnd Decimal @db.Decimal(14, 0)
+  settingsVersion Int
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  orders Order[]
+  @@index([expiresAt])
+  @@map("checkout_quotes")
+}
+
+model Order {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique @db.VarChar(24)
+  status OrderStatus @default(PENDING)
+  source OrderSource @default(WEB)
+  userId String? @db.Uuid
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+  quoteId String? @db.Uuid
+  quote CheckoutQuote? @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  recipientName String @db.VarChar(120)
+  phone String @db.VarChar(20)
+  email String? @db.VarChar(254)
+  province String @db.VarChar(100)
+  district String @db.VarChar(100)
+  ward String @db.VarChar(100)
+  addressLine String @db.VarChar(255)
+  note String? @db.VarChar(500)
+  method OrderMethod
+  currency String @default("VND") @db.VarChar(3)
+  subtotalVnd Decimal @db.Decimal(14, 0)
+  shippingFeeVnd Decimal @db.Decimal(14, 0)
+  totalVnd Decimal @db.Decimal(14, 0)
+  settingsVersion Int
+  bankDeadlineAt DateTime? @db.Timestamptz(6)
+  // SHA-256 of the guest lookup token; the plaintext token is never stored.
+  lookupTokenHash String? @unique @db.VarChar(64)
+  trackingNumber String? @db.VarChar(100)
+  deliveredAt DateTime? @db.Timestamptz(6)
+  cancelledAt DateTime? @db.Timestamptz(6)
+  cancelReason String? @db.VarChar(500)
+  version Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  items OrderItem[]
+  history OrderStatusHistory[]
+  @@index([status, createdAt])
+  @@index([phone])
+  @@map("orders")
+}
+
+model OrderItem {
+  id String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId String @db.Uuid
+  variant Variant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  productName String @db.VarChar(120)
+  sku String @db.VarChar(64)
+  size String @db.VarChar(16)
+  color String @db.VarChar(40)
+  unitPriceVnd Decimal @db.Decimal(14, 0)
+  quantity Int
+  lineTotalVnd Decimal @db.Decimal(14, 0)
+  @@unique([orderId, variantId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus OrderStatus?
+  toStatus OrderStatus
+  actorType ActorType
+  actorId String? @db.Uuid
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  reason String? @db.VarChar(500)
+  version Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+// Server-scoped mutation replay bookkeeping (m4-contract §7); response is stored for safe replays.
+model IdempotencyRecord {
+  id String @id @default(uuid()) @db.Uuid
+  scope String @db.VarChar(60)
+  identity String @db.VarChar(120)
+  key String @db.VarChar(120)
+  requestHash String @db.VarChar(64)
+  resourceId String? @db.VarChar(64)
+  response Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt DateTime @db.Timestamptz(6)
+  @@unique([scope, identity, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

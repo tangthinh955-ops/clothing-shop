@@ -9,6 +9,7 @@ import { InventoryPage } from '../features/admin/inventory/pages/InventoryPage';
 import { ProductsPage } from '../features/admin/products/pages/ProductsPage';
 import { ProductCreatePage } from '../features/admin/products/pages/ProductCreatePage';
 import { ProductEditPage } from '../features/admin/products/pages/ProductEditPage';
+import { SettingsPage } from '../features/admin/settings/pages/SettingsPage';
 import { CatalogPage } from '../features/catalog/pages/CatalogPage';
 import { ProductDetailPage } from '../features/catalog/pages/ProductDetailPage';
 import { policyPages } from '../features/information/content/policies';
@@ -34,6 +35,7 @@ export function App() {
       <Route path="admin/products" element={<PrivateRoute admin>{() => <ProductsPage />}</PrivateRoute>} />
       <Route path="admin/products/new" element={<PrivateRoute admin>{() => <ProductCreatePage />}</PrivateRoute>} />
       <Route path="admin/products/:productId" element={<PrivateRoute admin>{() => <ProductEditPage />}</PrivateRoute>} />
+      <Route path="admin/settings" element={<PrivateRoute admin>{() => <SettingsPage />}</PrivateRoute>} />
       {policyPages.map((policy) => <Route key={policy.path} path={policy.path} element={<PolicyPage policy={policy} />} />)}
       <Route path="*" element={<NotFoundPage />} />
     </Route>

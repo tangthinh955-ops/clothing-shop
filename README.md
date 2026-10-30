@@ -14,6 +14,8 @@ Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (qu
 
 - [Quy tắc làm việc cho agent](AGENTS.md)
 - [Kế hoạch và các bước triển khai](docs/plan.md)
+- [Kế hoạch triển khai M4 — Người B phụ trách toàn bộ](docs/m4-implementation-plan.md)
+- [Chạy thử local M4 theo từng phần — dự kiến, chưa triển khai](docs/local-trial-m4.md)
 - [Quy tắc nghiệp vụ](docs/business-rules.md)
 - [Kiến trúc, dữ liệu, UI và API](docs/architecture.md)
 - [Danh sách kiểm tra nghiệm thu](docs/acceptance-checklist.md)

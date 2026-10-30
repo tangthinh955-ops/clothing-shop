@@ -34,6 +34,9 @@ export interface AdjustmentResult {
   version: number;
 }
 
+export type MovementSource = 'ADMIN_ADJUSTMENT' | 'ORDER_RESERVE' | 'ORDER_RELEASE' | 'ORDER_SHIP';
+export type MovementActorType = 'ADMIN' | 'GUEST' | 'SYSTEM';
+
 export interface MovementRow {
   id: string;
   variantId: string;
@@ -44,6 +47,9 @@ export interface MovementRow {
   reserved: number;
   version: number;
   createdAt: string;
+  actorType: MovementActorType;
+  source: MovementSource;
+  effectKey: string | null;
   actor: { name: string };
   variant: { sku: string };
 }

@@ -2,6 +2,186 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 30/10/2026 — M4.1.1: admin xem Cài đặt (chỉ đọc)
+
+**Phạm vi được duyệt:** kế hoạch M4.1.1 gửi trong chat (ADMIN xem `/admin/settings` chỉ đọc; public allowlist hai trường; không PATCH/expectedVersion — thuộc M4.1.2). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### Thay đổi và file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/settings/settings.service.ts` (mới) | Đọc ShopSettings id="default" — thiếu bản ghi trả mặc định an toàn (30000/120/null/version 0) **không ghi DB**; lỗi DB truyền qua cơ chế chung, không bị che bằng fallback; admin view đủ 7 trường, public view allowlist tường minh 2 trường |
+| `apps/backend/src/modules/settings/admin-settings.controller.ts` (mới) | GET `/admin/settings` theo mẫu admin-categories: SessionGuard + RolesGuard + ADMIN; thừa hưởng no-store toàn cục của `application.ts` |
+| `apps/backend/src/modules/settings/settings.controller.ts` (mới) | GET `/shop-settings/public` không yêu cầu đăng nhập, chỉ trả view public |
+| `apps/backend/src/modules/settings/settings.module.ts` (mới) + `app.module.ts` | Đăng ký SettingsModule |
+| `apps/backend/src/modules/settings/settings.service.spec.ts` (mới) | 4 unit: thiếu bản ghi → mặc định và không ghi DB (mock chỉ có findUnique — mọi write khiến test đỏ); trả đúng bản ghi đã lưu; public allowlist; lỗi DB truyền qua |
+| `apps/backend/test/settings.integration.spec.ts` (mới) | 4 ca HTTP thật: ADMIN 200 đúng dữ liệu; 401 khách/403 CUSTOMER; public không đăng nhập chỉ có 2 trường; đọc lặp không đổi version/updatedAt. Không sửa/xóa row "default" có sẵn — chỉ tạo khi thiếu và đánh dấu dọn; cleanup thu lỗi + đếm sót |
+| `apps/frontend/src/features/admin/settings/api/settings.api.ts` (mới) | Kiểu `AdminSettings` + `settingsApi.adminView` qua `request()` chung; không dùng public endpoint thay kiểm tra quyền |
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.tsx` (mới) | Trang chỉ đọc: phí VND, hạn "X phút", ngân hàng/"Chưa cấu hình", loading/error/retry, về quản trị, ghi chú chưa có chỉnh sửa |
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.test.tsx` (mới) | 6 UI test: dữ liệu + định dạng, 4×"Chưa cấu hình", loading/error/retry hồi phục, không có control lưu, chặn guest/CUSTOMER |
+| `apps/frontend/src/app/App.tsx`, `features/admin/AdminPage.tsx` | Route `/admin/settings` qua PrivateRoute ADMIN; nút "Cài đặt" trên trang quản trị |
+| `apps/frontend/e2e/settings.spec.ts` (mới) | 2 E2E: ADMIN từ nút Cài đặt đọc dữ liệu thật, refresh deep link, mobile 390 không tràn; ACL backend độc lập (401/403, public đúng 2 trường) |
+| `package.json`, `.github/workflows/ci.yml` | Thêm settings.spec.ts vào bộ implemented; tên bước CI ghi đến M4.1.1 |
+| `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Cập nhật trạng thái và hướng dẫn chạy thử M4.1.1 |
+
+### Data flow / key
+
+ADMIN mở Cài đặt → PrivateRoute ADMIN → `SettingsPage` gọi `settingsApi.adminView` qua `request()`/cookie → SessionGuard/RolesGuard → `SettingsService.adminView` đọc `shop_settings` id="default" → trả view đủ trường (không trả Prisma model) → TanStack Query cache hiển thị. Khách đọc `/shop-settings/public` → service trả allowlist 2 trường. GET không ghi DB; thiếu bản ghi trả mặc định trong response, không tạo row.
+
+- `shop_settings` "default": bản ghi cấu hình duy nhất; chưa có thì response dùng DEFAULTS, không seed ngầm.
+- Public allowlist: chỉ `shippingFeeVnd` + `bankDeadlineMinutes`; ngân hàng/version không rời backend.
+- no-store toàn cục: cấu hình không bị trình duyệt/proxy giữ bản cũ.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Unit service RED → GREEN | 4 test thất bại vì thiếu module; sau triển khai 4/4 |
+| Integration RED → GREEN | Lượt đầu beforeAll fail: login thiếu CSRF token (403) — sửa helper lấy `/auth/csrf` trước login; sau đó 4/4 |
+| UI RED → GREEN | 6 test thất bại vì route/chưa có (404); hai điểm chỉnh test trong lượt: tiền khớp bằng regex `/45\.000/` do formatter chèn U+00A0 trước ₫ (convention M3.3), và chờ PrivateRoute mount trước khi assert trạng thái loading; sau sửa 6/6 |
+| E2E settings | Lượt đầu fail ở matcher fee `exact: true` (element chứa cả ký hiệu ₫) — bỏ exact, khớp phần số; sau sửa 2/2; ảnh mobile 390px agent đã xem: label rõ, xếp dọc, không tràn ngang |
+| `./tools/npm.ps1 run test:integration` | 53 pass, chỉ `production-config` vẫn fail do secret `.env.test` máy (lỗi môi trường có sẵn từ M4.0.2, cần chủ shop tạo lại nếu muốn xanh hoàn toàn) |
+| `./tools/npm.ps1 run typecheck`, `run build`, `test` | Ghi nhận ở mục kiểm chứng cuối phiên (mục dưới) |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+**Dừng sau M4.1.1 cho người dùng chạy thử; M4.1.2 (lưu cài đặt) chưa triển khai.**
+
+## Ngày 30/10/2026 — M4.0.1–M4.0.3: sửa lỗi review
+
+**Phạm vi được duyệt:** người dùng duyệt sửa 4 nhóm lỗi review (idempotency effectKey, hiển thị lịch sử kho, đồng bộ tài liệu, độ tin cậy cleanup) và yêu cầu triển khai ngay trong phạm vi đó. **Đã viết, agent đã kiểm tra local; chờ người dùng kiểm tra, chưa nghiệm thu.** Không bắt đầu M4.1.
+
+### Thay đổi và file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/test/inventory-orders.integration.spec.ts` | Thêm 2 test RED trước khi sửa: cùng base effectKey với tập SKU rời rạc (tuần tự và đồng thời) phải 409 và kho không đổi; fixture thêm 3 biến thể riêng (H/I/J) để các ca độc lập trạng thái |
+| `apps/backend/src/modules/inventory/inventory-operations.service.ts` | Gắn một base effectKey với hash của toàn bộ operation: dòng ledger đầu (variantId nhỏ nhất) giữ base key làm anchor (unique sẵn có), dòng sau giữ `base:variantId`; precheck/recheck/replay tra theo anchor; replay fetch `base` hoặc prefix `base:` (dấu hai chấm chặn base dài hơn trùng tiền tố). Cùng key+nội dung replay an toàn, khác nội dung 409 kể cả SKU không giao nhau hay gọi đồng thời (P2002 hủy transaction bên thua). Không đổi schema, không phá thứ tự khóa/rollback/adjust M3 |
+| `apps/frontend/src/features/admin/inventory/api/inventory.api.ts` | `MovementRow` thêm `actorType`, `source`, `effectKey` khớp response backend |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.tsx` | Reserve/release hiển thị nhãn "Giữ hàng cho đơn"/"Nhả giữ đơn" + "Đang giữ: X · Còn bán: Y" thay `+0` và `trước → sau` bằng nhau; điều chỉnh/xuất hàng giữ nguyên hiển thị tồn thực; giữ mobile/a11y |
+| `apps/frontend/src/features/admin/inventory/components/MovementHistory.test.tsx`, `pages/InventoryPage.test.tsx` | Fixture thêm trường mới; thêm 2 test hiển thị theo source và 1 test giữ hiển thị adjust/ship |
+| `apps/backend/test/orders-foundation.integration.spec.ts`, `test/inventory-orders.integration.spec.ts` | Cleanup không nuốt lỗi: thu lỗi từng bước + đếm sót fixture sau khi dọn, còn sót thì ném lỗi làm suite đỏ; bỏ khối dọn user vô dụng ở orders-foundation |
+| `docs/plan.md`, `docs/local-trial-m4.md` | Ghi đúng trạng thái: M4.0.1–0.3 đã triển khai/kiểm tra local, chưa API/UI đặt hàng, chưa nghiệm thu; các phần sau vẫn chưa triển khai |
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| RED trước sửa | 2 test mới thất bại đúng lỗi: lần gọi thứ hai với SKU rời rạc không bị chặn (tuần tự) và cả hai transaction cùng thắng (đồng thời) |
+| GREEN sau sửa | `inventory-orders.integration.spec.ts` 10/10, `orders-foundation.integration.spec.ts` 4/4; test UI inventory 58/58 |
+| Dư phẩm DB test sau cleanup | Truy vấn trực tiếp `clothing_test`: 0 fixture còn sót (slug `inv-orders%`/`m4-foundation%`) |
+| `./tools/npm.ps1 run typecheck`, `run build` | Đạt |
+| `./tools/npm.ps1 test` | tools + backend unit đạt; frontend workspace riêng 184/184; một lượt full-run còn 1 test UI timeout do tải (pass khi chạy riêng, pattern đã ghi từ trước) |
+| `./tools/npm.ps1 run test:integration` | 49/51: chỉ `production-config.integration.spec.ts` vẫn thất bại do secret `.env.test` máy chứa "test-only" (lỗi môi trường local có sẵn từ trước, đã ghi ở mục M4.0.2; cần chủ shop tạo lại `.env.test` nếu muốn xanh hoàn toàn) |
+| `./tools/npm.ps1 run test:e2e:implemented` | 34/34 đạt |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+**Dừng sau bản sửa cho người dùng kiểm tra; M4.1 chưa bắt đầu.**
+
+## Ngày 29/10/2026 — M4.0.3: nghiệp vụ kho phục vụ đơn hàng
+
+**Phạm vi được duyệt:** kế hoạch M4.0.3 trong bảng đã gửi (người dùng duyệt cả ba phần M4.0.1–0.3 bằng "oke code đi"). Chỉ thêm service nội bộ cho Orders gọi; không có endpoint/UI mới; không đổi API điều chỉnh admin M3. **Đã viết, agent đã kiểm tra local; chờ người dùng kiểm tra nền tảng, chưa nghiệm thu.**
+
+### Thay đổi và file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/inventory/inventory-operations.service.ts` (mới) | `reserve/release/ship` nhận `Prisma.TransactionClient` từ service điều phối — không tự mở transaction, không gọi module khác. Khóa dòng kho theo `variantId` tăng dần (`FOR UPDATE`), recheck effectKey sau khi có khóa, UPDATE có điều kiện + RETURNING bảo đảm `0 ≤ reserved ≤ onHand`, ghi `InventoryMovement` (actorType/source/effectKey + requestHash SHA-256 nội dung canonical) cùng transaction; replay cùng key+nội dung trả kết quả đã ghi, khác nội dung 409 |
+| `apps/backend/src/modules/inventory/inventory.module.ts` | Đăng ký + export `InventoryOperationsService` để Orders (M4.3+) dùng |
+| `apps/backend/src/modules/inventory/inventory.service.ts` | `movements()` chuẩn hóa `actor.name` luôn có: user → tên thật, GUEST → "Khách đặt hàng", SYSTEM → "Hệ thống"; thêm `actorType`/`source`/`effectKey` vào response (additive) — frontend hiện tại đọc `actor.name` không lỗi |
+| `apps/backend/test/inventory-orders.integration.spec.ts` (mới) | 8 ca hành vi thật trên PostgreSQL `_test` |
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| RED trước implementation | spec mới thất bại "Cannot find module .../inventory-operations.service.js" — đúng nguyên nhân service chưa có |
+| `inventory-orders.integration.spec.ts` sau triển khai | 8/8: reserve+replay không nhân đôi; cùng effectKey khác payload bị chặn; hai transaction tranh chiếc cuối chỉ một thắng; thiếu một SKU rollback cả giỏ; release (SYSTEM)/ship replay an toàn; hai giỏ ngược thứ tự không deadlock; transaction ngoài rollback cuốn cả kho + ledger; hồi quy adjust M3 + nhãn actor |
+| Lỗi test đã sửa trong lượt | Hai test đầu dùng chung biến thể giữa các ca làm sai trạng thái — tách biến thể riêng cho từng ca (fixture 7 biến thể); một lượt cleanup văng giữa chừng ở lượt RED làm sót fixture — đã xóa đúng fixture sót khỏi `_test` và gia cố afterAll dọn từng bước độc lập |
+| `./tools/npm.ps1 run test:e2e:implemented` cuối | 34/34 đạt (2,0 phút) sau khi dọn fixture sót; hai ca catalog-list trước đó fail do sản phẩm fixture của lượt RED còn PUBLISHED trong DB test, đã xử lý gốc |
+| `./tools/npm.ps1 run typecheck`, `run build` | Đạt |
+
+**Dừng sau M4.0.3 cho người dùng kiểm tra; không bắt đầu M4.1.**
+
+## Ngày 29/10/2026 — M4.0.2: schema nền tảng đơn hàng
+
+**Phạm vi được duyệt:** kế hoạch M4.0.2 trong bảng đã gửi, gồm hai điểm người dùng đã thấy khi duyệt: token một lần (replay không phát lại) và nới CHECK `inventory_effect_valid`. **Đã viết, agent đã kiểm tra local; migration đã áp dụng `clothing_local` và `clothing_test`; chưa đụng DB production.**
+
+### Thay đổi và file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/prisma/schema.prisma` | Thêm enums `ActorType`/`OrderStatus`/`OrderMethod`/`OrderSource`/`InventoryEffectSource` và models `ShopSettings` (1 dòng, phí 30000/hạn 120 phút mặc định, ngân hàng nullable không default), `CheckoutQuote` (items snapshot + totals + expiresAt), `Order` (code unique, status, source, userId nullable, snapshot người nhận, tiền, bankDeadlineAt, `lookupTokenHash` unique chỉ hash, tracking/deliveredAt/cancelledAt, version), `OrderItem` (snapshot dòng, unique orderId+variantId), `OrderStatusHistory` (from/to, actorType, actorId nullable, reason, version), `IdempotencyRecord` (unique scope+identity+key, requestHash, resourceId, response Json, expiresAt) |
+| `apps/backend/prisma/migrations/202610290001_m4_order_core/migration.sql` (mới) | Viết tay review được theo convention M3; `inventory_movements`: `actorId` nullable, thêm `actorType`/`source` (backfill ADMIN/ADMIN_ADJUSTMENT qua DEFAULT) và `effectKey` unique nullable; nới CHECK `inventory_effect_valid` bỏ `delta <> 0` (reserve/release không đổi onHand; hành vi admin không đổi); không xóa/sửa dữ liệu M3 |
+| `apps/backend/test/orders-foundation.integration.spec.ts` (mới) | 4 ca schema: unique mã đơn/lookupTokenHash/idempotency; CHECK chặn tiền lệch/quantity sai/settings sai; snapshot Order+Item+History nguyên tử và rollback giữa chừng; movement guest/system không user + giữ bất biến |
+
+### Data flow / key
+
+Orders (M4.3) sẽ mở transaction: khóa hàng đơn → `InventoryOperationsService` giữ/nhả/xuất kho theo `effectKey` (`order:<orderId>:<effect>:<variantId>`) → ghi `OrderStatusHistory` + `IdempotencyRecord` cùng commit. `identity` idempotency do server cấp (`guest:<sessionId>` / `admin:<userId>` / `system:<job>`), không dùng IP. Token tra cứu chỉ lưu SHA-256 ở `orders.lookupTokenHash`.
+
+- `effectKey`: tham chiếu hiệu ứng nghiệp vụ duy nhất của reserve/release/ship — chống lặp bằng unique + so hash.
+- `lookupTokenHash`: chỉ bản băm token khách; token rõ không nằm trong DB/log/query.
+- `orders_money_valid`/`order_item_fields_valid`/`checkout_quote_totals_valid`: CHECK bảo đảm tổng = subtotal + phí, lineTotal = đơn giá × số lượng 1..99.
+
+### Kiểm tra thực tế và xử lý trong lượt
+
+| Kiểm tra | Kết quả |
+|---|---|
+| RED trước migration | 4/4 test mới thất bại "table public.orders does not exist" / "column actorType does not exist" — đúng nguyên nhân |
+| `prisma validate` + `migrate diff --from-config-datasource --to-schema` | Schema hợp lệ; hai DB khớp schema tuyệt đối sau khi áp (exit 0) |
+| `migrate deploy` | Đã áp `clothing_local` và `clothing_test` (`202610290001_m4_order_core`); lượt đầu thiếu DEFAULT `CURRENT_TIMESTAMP` cho `updatedAt` so với Prisma 7 → đã gỡ đúng đối tượng mới của migration này trên hai DB local/test (không reset, không đụng dữ liệu M3) và deploy lại bản sửa, diff exit 0 |
+| `orders-foundation.integration.spec.ts` | 4/4 đạt |
+| `./tools/npm.ps1 run test:integration` chuẩn (secret máy) | 47/49: chỉ `production-config.integration.spec.ts` thất bại — **lỗi môi trường local có sẵn, không do M4**: `.env.test` của máy chứa chuỗi "test-only" mà guard production từ chối (spec/environment.ts không đổi; chạy lại cùng spec với secret tạm hợp lệ qua env đạt 2/2). Tôi không được phép đổi secret nên để nguyên, người dùng có thể tạo lại `.env.test` bằng `setup:local` nếu muốn xanh hoàn toàn |
+| Full integration qua npm với secret tạm hợp lệ | 49/49 đạt (7 file) |
+
+**Dừng sau M4.0.2; chuyển M4.0.3 theo kế hoạch đã duyệt.**
+
+## Ngày 29/10/2026 — M4.0.1: chốt contract M4
+
+**Phạm vi được duyệt:** kế hoạch M4.0.1 gửi trong chat (người dùng duyệt cả ba phần M4.0.1–M4.0.3 với hai điểm mặc định đã nêu: token phát một lần — replay không phát lại; nới CHECK `inventory_effect_valid` ở M4.0.2). Chỉ soạn contract và đồng bộ tài liệu; chưa viết code/schema/migration trong phần này.
+
+### Thay đổi và file thực tế
+
+- `docs/m4-contract.md` (mới): state machine 10 đường chuyển kèm hiệu ứng kho và đường đồng thời (một transition thắng bằng version dưới khóa hàng); tách ba chiều đơn/tiền/nghĩa vụ; snapshot bắt buộc; DTO/response/error dự kiến cho quote, tạo đơn, tra cứu, hủy, admin chuyển trạng thái (`QUOTE_CHANGED`/`OUT_OF_STOCK` 409, tra cứu 404 đồng nhất, 429); actor ADMIN/GUEST/SYSTEM với định danh server cấp, không dùng IP; idempotency scope server đặt, canonical hash SHA-256, cùng key+nội dung trả cùng resource, khác nội dung 409, record lưu response cùng commit; token ≥128 bit chỉ lưu SHA-256, replay không phát lại, tra cứu lại cấp token mới thay hash cũ; thứ tự khóa hàng đơn → variantId tăng dần → nguồn tiền; phân mục [ĐÃ DUYỆT]/[ĐỀ XUẤT]/[CƠ CHẾ] và mục "chưa chốt" (hoàn khi giao thất bại chờ duyệt trước M4.9.2).
+- `docs/architecture.md`: thêm mục "Contract M4 (chốt ở M4.0.1)" tóm tắt và dẫn contract; ghi trước schema/operation M4.0.2/0.3 sẽ thêm gì.
+- `docs/m4-implementation-plan.md`: đánh dấu M4.0.1 đã chốt, giữ phạm vi gốc làm tham chiếu; cập nhật điểm dừng.
+- `docs/business-rules.md` **không sửa**: bản hiện hành 29/10/2026 đã ghi đúng chính sách đã duyệt (không tài khoản, 30.000đ, 2 giờ, VietQR in-app, đổi trả thủ công).
+
+### Kiểm tra và điểm dừng
+
+Là thay đổi tài liệu: rà chéo state machine với bảng "Đơn và hủy" của business-rules và bảng API của architecture — khớp; liên kết file hợp lệ; `git diff --check` đạt. Không chạy migration/test app chỉ vì có tài liệu. Token recovery: người dùng không chọn → mặc định phương án B đã công bố trong kế hoạch (token một lần, replay không phát lại); phương án HMAC ghi là phương án thay thế chờ duyệt trước M4.3.1.
+
+**Dừng sau M4.0.1; chuyển M4.0.2 theo kế hoạch đã duyệt.**
+
+## Ngày 29/10/2026 — Lập kế hoạch M4: Người B phụ trách toàn bộ
+
+**Phạm vi đã duyệt:** người dùng chốt B thực hiện toàn bộ M4 và duyệt tạo tài liệu implementation/local cùng các liên kết chung bằng "oke làm đi"; sau đó yêu cầu tạo nhánh mới. Đã tạo `docs/m4-plan` từ `main` `9386f0a`. Chỉ lập tài liệu, chưa duyệt hoặc bắt đầu code bất kỳ phần chức năng M4 nào; không chạy test app/DB, migration, seed hay truy cập production trong lượt này.
+
+### File thực tế
+
+| File | Thay đổi |
+|---|---|
+| `docs/m4-implementation-plan.md` | Mới: roadmap M4.0–M4.11 chia nhỏ, toàn bộ thuộc B; phụ thuộc, file dự kiến, API/data flow, ràng buộc, test/race và điểm dừng |
+| `docs/local-trial-m4.md` | Mới: chuẩn bị local, lệnh hiện có, URL tương lai, fixture/số kho-tiền mẫu và thao tác/kết quả mong đợi cùng mã phần; tất cả ca M4 đánh dấu chưa triển khai/chưa chạy |
+| `docs/plan.md` | Thay phân công A/B của riêng M4 thành B toàn bộ, liên kết hai tài liệu; giữ phân công M3/M6/M7 |
+| `README.md` | Thêm liên kết implementation và local M4 |
+| `progress.md` | Ghi phạm vi tài liệu, trạng thái và điểm dừng |
+
+Danh sách đúng kế hoạch được duyệt. Không sửa source/backend/frontend, schema, package/lockfile hoặc cấu hình deploy; không commit/push.
+
+### Nội dung / data flow
+
+Đối chiếu quy tắc shop thật và code hiện tại → lập bảng phụ thuộc/mã phần trong implementation → tạo ca local có cùng mã → liên kết từ plan/README. Chính sách đã chốt: checkout không tài khoản, phí30.000đ, hạn bank2giờ, VietQR trong ứng dụng shop, đổi trả thủ công. Không dùng phương án demo cũ yêu cầu CUSTOMER/email verified/hạn30phút.
+
+- `M4.x.y`: mỗi lát cắt có phụ thuộc, tiêu chí kiểm chứng và điểm dừng riêng; phải gửi kế hoạch trong chat/chờ duyệt trước code.
+- `implementation`: nguồn thứ tự kỹ thuật, file dự kiến và data flow; file mới vẫn phải chốt lại ở phần cụ thể, không tạo scaffold từ roadmap.
+- `local-trial`: nguồn thao tác, URL và mong đợi, phân biệt DB local/`_test`/production; không phải bằng chứng đã chạy.
+
+### Kiểm tra và điểm dừng
+
+Đã rà nội dung/phụ thuộc, mã phần và liên kết: implementation có33 phần nhỏ, local có đúng33 phần tương ứng, không thiếu/trùng mã; các liên kết file trong5 tài liệu hợp lệ. Thứ tự thực hiện bao phủ đủ33 phần và đi sau các phụ thuộc cụ thể; `git diff --check` exit0, UTF-8 hợp lệ và không có conflict marker. Git xác nhận chỉ5 file Markdown, index rỗng. Không chạy typecheck/build/unit/integration/E2E vì chỉ sửa Markdown, không nhận kết quả các lượt M3 trước là kết quả của lượt này.
+
+**M4 mới hoàn tất bước lập kế hoạch; chưa có chức năng M4 để thử.** Người dùng đọc hai tài liệu, phản hồi; bước tiếp theo đề xuất là gửi kế hoạch chi tiết M4.0.1 để duyệt, không tự triển khai. Trạng thái production/M3 giữ theo các mục riêng bên dưới.
+
 ## Ngày 29/10/2026 — Chốt Git M3.16 và M3.16.1
 
 - Người dùng yêu cầu commit/push rồi bổ sung tạo PR vào `main`. Phạm vi là 21 file cấu hình backend production, test, Docker/nginx, template env và tài liệu M3.16/M3.16.1 trên nhánh `feat/m3.16-vps-config`; không gộp M3.15, không tự merge PR hoặc triển khai lại VPS trong bước Git.
@@ -200,7 +380,7 @@ Chưa sửa điểm nhỏ "test cleanup prefix cố định" của review PR #13
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
 | M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; M3.13a hạ tầng CSV `import:products` xong (17 ảnh RMG đã vào `data/import`, chờ người dùng điền giá/size rồi chạy). Nghiệm thu toàn mốc thuộc người dùng |
-| M4 Bán hàng | Chưa thực hiện |
+| M4 Bán hàng | Đã lập implementation/local gồm33 phần nhỏ, toàn bộ do Người B phụ trách; chưa code chức năng, chưa duyệt triển khai M4.0.1 |
 | M5 Sau bán hàng | Chưa thực hiện |
 | M6 Deploy/restore | Chưa thực hiện |
 | M7 Nghiệm thu | Chưa thực hiện |

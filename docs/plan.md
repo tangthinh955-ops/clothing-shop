@@ -42,7 +42,7 @@ Lộ trình đến khi mở bán (mỗi phần vẫn gửi kế hoạch riêng v
 | M3.16 | Cấu hình chạy trên VPS: host lắng nghe cấu hình được, bắt buộc `TRUST_PROXY` ở production, bật upload với thư mục ảnh tuyệt đối, cache ảnh công khai | A |
 | M3.16.1 | Theo kế hoạch được người dùng duyệt: deploy sớm catalog/API lên VPS qua HTTPS, nginx hiện có + Docker project riêng + DB/ảnh persistent; bàn giao URL để thử, chưa nhập dữ liệu shop | A |
 | M3.17 | Bảo vệ admin: giới hạn đăng nhập theo tài khoản (không chỉ IP) và xác thực 2 bước TOTP | B |
-| M4.1–M4.11 | Bán hàng: cài đặt shop, giỏ + tạm tính, đặt hàng COD không cần tài khoản, tra cứu/hủy đơn, admin xử lý đơn, VietQR + ghi nhận tiền, hết hạn + tiền muộn, đơn Instagram, giao thất bại, email, E2E chốt (chi tiết ở mục M4) | A/B |
+| M4.0–M4.11 | Bán hàng: chốt contract/nền tảng, cài đặt shop, giỏ + tạm tính, đặt COD không cần tài khoản, tra cứu/hủy, admin đơn, VietQR/tiền, hết hạn, Instagram, giao thất bại, email và E2E; chia nhỏ ở [kế hoạch M4](m4-implementation-plan.md) | B toàn bộ |
 | M6.1–M6.3 | Deploy VPS + HTTPS + deploy sau CI; backup ngoài VPS + diễn tập khôi phục; bảo vệ VPS + báo động khi web sập | A/B |
 | Mở bán | Khi xong các phần trên, chính sách thật đã đăng, thủ tục website bán hàng với Bộ Công Thương do chủ shop hoàn tất | Chủ shop |
 | Sau mở bán | Link sản phẩm hiện ảnh/tên khi chia sẻ Instagram/Zalo, nhật ký hoạt động admin, kiểm thử bảo mật định kỳ (M7 rút gọn) | A/B |
@@ -78,17 +78,17 @@ Sau quyết định 29/10/2026 (bỏ M5 tự động, M7 rút gọn), phần cò
 
 ## Phân công hai người
 
-Từ 29/10/2026 phần còn lại chia cho hai người. Chi tiết M3 ở [m3-implementation-plan.md](m3-implementation-plan.md#phân-công-hai-người-29102026). Phân công dưới đây theo lộ trình shop thật; từng phần vẫn chia nhỏ và duyệt trước khi bắt đầu.
+Từ 29/10/2026 phần còn lại chia cho hai người. Chi tiết M3 ở [m3-implementation-plan.md](m3-implementation-plan.md#phân-công-hai-người-29102026). **Cập nhật theo yêu cầu mới nhất: toàn bộ M4 do Người B thực hiện**, thay phân công A/B cũ của riêng M4; giữ phân công các mốc khác. Xem [implementation M4](m4-implementation-plan.md) và [chạy thử local M4](local-trial-m4.md). Từng phần vẫn phải duyệt trước khi bắt đầu.
 
 | Giai đoạn | Người A | Người B |
 |---|---|---|
 | Chuẩn bị bán thật | P0, M3.14 sửa hàng đang bán, M3.16 cấu hình VPS | M3.13b sửa import, M3.15 bỏ demo + chính sách, M3.17 bảo vệ admin |
-| M4 | M4.1 cài đặt, M4.3 đặt hàng COD, M4.5 admin xử lý đơn, M4.8 đơn Instagram, M4.9 giao thất bại | M4.2 giỏ + tạm tính, M4.4 tra cứu/hủy đơn, M4.6 VietQR + ghi nhận tiền, M4.7 hết hạn + tiền muộn, M4.10 email |
-| M4.11 | E2E toàn luồng + chốt (chung) | E2E toàn luồng + chốt (chung) |
+| M4.0–M4.10 | — | Toàn bộ: contract/schema, Settings, giỏ/checkout/đơn khách, admin đơn, kho/tiền/VietQR, expiry, Instagram, giao thất bại, email |
+| M4.11 | — | E2E toàn luồng, bàn giao người dùng chạy thử và chốt theo bằng chứng |
 | M6 | M6.1 deploy VPS + HTTPS + deploy sau CI | M6.2 backup/khôi phục, M6.3 bảo vệ VPS + báo động |
 | M7 rút gọn | E2E mobile/Instagram, link preview | Kiểm thử bảo mật, hướng dẫn admin |
 
-M4.1 → M4.2 → M4.3 làm tuần tự (xương sống); sau M4.3 hai người song song. Nhiều phần thêm migration (M4.1, M4.3, M4.6, M4.7): merge theo thứ tự và rebase trên `main` trước khi tạo migration mới.
+M4 do B làm tuần tự theo phụ thuộc: M4.0 contract/nền tảng → M4.1 → M4.2 → M4.3, sau đó các phần tra cứu/admin/tiền và ngoại lệ trong bảng M4 chi tiết. Mỗi lần chỉ một migration đang triển khai; tích hợp phần trước và cập nhật `main` trước khi tạo migration tiếp theo, không sửa lịch sử đã áp dụng. Lộ trình không tự cho phép code liên tiếp.
 
 Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có migration tại một thời điểm.
 
@@ -132,6 +132,8 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 - [ ] M3.13b sửa import CSV; M3.14 sửa sản phẩm đang bán; M3.15 bỏ demo + chính sách thật; M3.16 cấu hình VPS; M3.17 bảo vệ admin.
 
 ### M4 — Bán hàng
+
+**Người B phụ trách toàn bộ; M4.0.1–M4.0.3 và M4.1.1 (admin xem Cài đặt, chỉ đọc) đã triển khai và agent đã kiểm tra local — chưa có luồng đặt hàng và chưa được người dùng nghiệm thu.** Danh sách phần nhỏ, file dự kiến, API/data flow và tiêu chí kiểm tra: [m4-implementation-plan.md](m4-implementation-plan.md). Lệnh local, URL và thao tác/kết quả mong đợi theo đúng mã phần: [local-trial-m4.md](local-trial-m4.md). Các phần M4.1.2 trở đi và hướng dẫn tương lai vẫn được đánh dấu chưa triển khai/chưa chạy, không coi các endpoint M4 chưa làm là đã có. M4.0.1–M4.0.3 đã làm theo kế hoạch được duyệt trong chat ngày 29/10/2026; M4.1.1 theo kế hoạch duyệt ngày 30/10/2026; tiếp theo là kế hoạch chi tiết M4.1.2 chờ duyệt.
 
 - [ ] [CREATE] orders/payments/settings và features cart/checkout/order lookup/admin orders/payments; [MODIFY] Mail bổ sung notification của đơn.
 - [ ] [MODIFY] schema/migration; thêm idempotency và lịch sử.

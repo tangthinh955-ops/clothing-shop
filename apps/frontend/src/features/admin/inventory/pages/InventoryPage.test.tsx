@@ -234,7 +234,8 @@ describe('inventory variant filter and adjustment flow', () => {
 
 describe('inventory movement history', () => {
   const historyRow = { id: 'h1', variantId: variantIdFixture, delta: 5, reason: 'Nhập kho e2e', before: 12, after: 17,
-    reserved: 2, version: 4, createdAt: '2026-10-29T02:00:00.000Z', actor: { name: 'Admin thử' }, variant: { sku: 'AO-M-DEN' } };
+    reserved: 2, version: 4, createdAt: '2026-10-29T02:00:00.000Z', actorType: 'ADMIN', source: 'ADMIN_ADJUSTMENT',
+    effectKey: null, actor: { name: 'Admin thử' }, variant: { sku: 'AO-M-DEN' } };
   const historyPage = { items: [historyRow], total: 1, page: 1, pageSize: 10 };
 
   it('opens the SKU history from a row and closes it after reading', async () => {
