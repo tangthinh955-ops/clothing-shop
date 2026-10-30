@@ -21,7 +21,11 @@ let production: AppConfig;
 beforeAll(async () => {
   if (process.env['NODE_ENV'] !== 'test' || !new URL(process.env['DATABASE_URL'] ?? '').pathname.endsWith('_test')) throw new Error('Test DB required');
   uploadsDir = await mkdtemp(path.join(tmpdir(), 'prod-uploads-'));
+  // The `{...process.env}` spread loads `.env.test`, whose development-grade session secret contains
+  // the marker strings the production validator rejects; a valid production-shaped secret is supplied
+  // here explicitly (≥32 chars, no forbidden markers) and the validator itself stays untouched.
   production = readEnvironment({ ...process.env, NODE_ENV: 'production', APP_ORIGIN: 'https://shop.example', MAIL_MODE: 'resend',
+    SESSION_SECRET: 'prod-config-spec-secret-000102030405060708090a0b0c0d0e0f',
     RESEND_API_KEY: 're_test_not_used', MAIL_FROM: 'shop@shop.example', SWAGGER_ENABLED: 'false', TRUST_PROXY: '1', UPLOADS_DIR: uploadsDir });
   db = new PrismaService(readEnvironment(process.env));
   await db.user.create({ data: { email: ownerEmail, name: 'Admin cấu hình VPS', role: 'ADMIN', passwordHash: 'not-used', emailVerifiedAt: new Date() } });

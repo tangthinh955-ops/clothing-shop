@@ -1,6 +1,6 @@
 # Chạy thử M4 theo từng phần — Người B
 
-> Cập nhật 30/10/2026. **M4.0.1–M4.0.3 đã triển khai và agent đã kiểm tra local** (contract tại [m4-contract.md](m4-contract.md), migration `202610290001_m4_order_core` áp dụng local/test, service kho cho đơn) — **chưa có API/UI đặt hàng và chưa được người dùng nghiệm thu.** Các phần M4.1 trở xuống vẫn là runbook dự kiến, chưa triển khai; URL/API tương lai có thể chưa tồn tại; không coi 404 hiện tại là bug của tính năng đã làm.
+> Cập nhật 30/10/2026. **M4.0.1–M4.0.3, M4.1.1 và M4.1.2 đã triển khai và agent đã kiểm tra local** (contract tại [m4-contract.md](m4-contract.md), migration `202610290001_m4_order_core` áp dụng local/test, service kho cho đơn, Settings xem + lưu) — **chưa có API/UI đặt hàng và chưa được người dùng nghiệm thu.** Các phần M4.2 trở đi vẫn là runbook dự kiến, chưa triển khai; URL/API tương lai có thể chưa tồn tại; không coi 404 hiện tại là bug của tính năng đã làm.
 
 Kế hoạch kỹ thuật cùng mã: [m4-implementation-plan.md](m4-implementation-plan.md). Kết quả thật: [progress.md](../progress.md). Người B phụ trách toàn bộ M4; duyệt runbook/lộ trình không cho phép agent tự code hoặc chạy hết các phần.
 
@@ -9,7 +9,7 @@ Kế hoạch kỹ thuật cùng mã: [m4-implementation-plan.md](m4-implementati
 - Chỉ dùng máy local và PostgreSQL local/test, dữ liệu thử do người dùng/test tạo. Không lấy DB, ảnh, backup hoặc thông tin khách thật từ VPS; không deploy và không gửi/chuyển tiền thật trong runbook này.
 - Node24.22.1+ trên dòng24, npm11, Docker Desktop. Trên Windows dùng `tools/npm.ps1`; không đổi Node toàn máy. Chuẩn bị chung theo [README](../README.md#chạy-local).
 - Thử tay: `clothing_local`, API `http://127.0.0.1:3000/api/v1`, frontend **http://127.0.0.1:5173**. API chỉ được gọi qua proxy frontend khi kiểm tra cookie/CSRF.
-- Tự động integration/E2E: `NODE_ENV=test` và PostgreSQL database có hậu tố `_test`, hiện dùng `clothing_test`; E2E API3001/frontend5174. Kiểm tra cấu hình trước ghi/cleanup, không in DATABASE_URL hoặc secret. Không dùng tên DB local thay cho test.
+- Tự động integration/E2E: `NODE_ENV=test` và PostgreSQL database nguồn hậu tố `_test` (`clothing_test`). Integration Cài đặt/schema đơn và runner E2E tạo DB riêng cho mỗi lượt, migrate rồi chỉ dọn DB do lượt đó tạo; role test cần `CREATEDB`. Không sửa/xóa singleton Cài đặt có sẵn trong DB nguồn. E2E API3001/frontend5174; chạy qua script npm/`tools/test-e2e.mjs`, không gọi trực tiếp Playwright cho spec Cài đặt. Không in DATABASE_URL hoặc secret.
 - Khách mở cửa sổ riêng tư để thử đặt/tra cứu **không login**. ADMIN dùng cửa sổ khác, tài khoản tạo đúng CLI đã có; không tạo mật khẩu mặc định và không nâng quyền CUSTOMER bằng sửa DB.
 - Local email dùng preview mailbox theo README. Không gửi token/link riêng tư hoặc dữ liệu nhận hàng vào chat, log, screenshot chia sẻ hoặc Git.
 
@@ -81,7 +81,7 @@ Hiện trạng của mọi ca trong mục3 là **CHƯA TRIỂN KHAI / CHƯA CH�
 
 ### M4.1.1 — Xem Cài đặt
 
-**Đã triển khai và agent đã kiểm tra local (30/10/2026); trang chỉ đọc — chưa có lưu (M4.1.2).** ADMIN đăng nhập → `/admin` → nút **Cài đặt** → `/admin/settings`: thấy Phí giao hàng (VND), Hạn chuyển khoản (phút), Ngân hàng/Mã BIN/Số tài khoản/Tên chủ tài khoản — trường chưa có hiển thị "Chưa cấu hình". Refresh trực tiếp `/admin/settings` vẫn mở được. Cấu hình ngân hàng chưa đủ thì chỉ hiển thị, chưa ảnh hưởng checkout (chưa có luồng bank).
+**Đã triển khai và agent đã kiểm tra local (30/10/2026); trang chỉ đọc — phần chỉnh/lưu nằm ở M4.1.2, đã triển khai (xem dưới).** ADMIN đăng nhập → `/admin` → nút **Cài đặt** → `/admin/settings`: thấy Phí giao hàng (VND), Hạn chuyển khoản (phút), Ngân hàng/Mã BIN/Số tài khoản/Tên chủ tài khoản — trường chưa có hiển thị "Chưa cấu hình". Refresh trực tiếp `/admin/settings` vẫn mở được. Cấu hình ngân hàng chưa đủ thì chỉ hiển thị, chưa ảnh hưởng checkout (chưa có luồng bank).
 
 | Thao tác | Kết quả mong đợi |
 |---|---|
@@ -94,7 +94,23 @@ Test riêng: integration `test/settings.integration.spec.ts` (trong `./tools/npm
 
 ### M4.1.2 — Lưu Cài đặt
 
-Mở hai tab admin. Tab1 sửa rồi lưu → refresh giữ giá trị; tab2 lưu snapshot cũ →409 và có tải lại, không ghi đè im lặng. Thử giá/hạn không hợp lệ, lỗi mạng, bấm lặp và mobile. Sau khi có quote/đơn, đổi cấu hình rồi kiểm tra bản cũ giữ snapshot; phép kiểm này chỉ chạy lại khi 2.2/3.1 đã triển khai.
+**Đã triển khai và agent đã kiểm tra local (30/10/2026): PATCH `/api/v1/admin/settings` với phiên bản lạc quan + Idempotency-Key; chưa được người dùng nghiệm thu.** Tài khoản ngân hàng dùng đủ hoặc trống toàn bộ 4 trường; cấu hình áp cho đơn mới, báo giá và đơn đã tạo giữ nguyên snapshot (giao diện hiện "phiên bản N" của cấu hình đang sửa). Kiểm thử tự động: integration 14 ca (`test/settings.integration.spec.ts` trong `./tools/npm.ps1 run test:integration`) và E2E 3 ca (`settings.spec.ts` trong `./tools/npm.ps1 run test:e2e:implemented`).
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| ADMIN sửa trường rồi bấm **Lưu cài đặt** | Thấy "Đã lưu cài đặt. Cấu hình mới áp dụng cho các đơn mới."; ghi chú chuyển sang phiên bản kế tiếp; refresh giữ giá trị vừa lưu |
+| Tab hai giữ snapshot cũ lưu sau khi tab một đã lưu | Alert "Cài đặt đã thay đổi…" (409): form khóa nội dung, giữ bản nháp, có **Tải cấu hình mới** — không ghi đè im lặng |
+| Mở **Tải cấu hình mới** | Dialog "Tải cấu hình mới?" cảnh báo bản nháp chưa lưu: xác nhận "Xoá và tải cấu hình mới" nạp cấu hình mới; "Tiếp tục chỉnh sửa" hủy, không mất gì |
+| Lưu khi mất mạng/5xx | Alert lỗi và form khóa nội dung với **Gửi lại** (cùng key + body, không tự đổi key) hoặc **Tải cấu hình mới** |
+| Lưu bị chặn định dạng/4xx | Alert lỗi, form mở lại chỉnh sửa được; lần lưu kế tiếp dùng key mới giữ nội dung mới |
+| Bấm Lưu lặp khi request chưa xong | Nút Lưu và các trường khóa cho đến khi biết kết quả |
+| Xác nhận tải cấu hình mới nhưng request tải lại lỗi | Giữ bản nháp, version, trạng thái khóa và command cũ; vẫn gửi lại được đúng thao tác chưa xác định |
+| Tải cấu hình mới đang chờ | Khóa trường, Lưu, Gửi lại và tải lại; không có PATCH chạy chồng với reload |
+| PATCH nhận HTTP 200 nhưng JSON sai cấu trúc | Không báo đã lưu; giữ nguyên bản nháp và chỉ cho gửi lại cùng key/body hoặc tải cấu hình mới |
+| Sửa fee/hạn vượt biên (UI validation) | Không gửi request; báo lỗi dưới trường |
+| Xem trên mobile 390px | Không tràn ngang; nút và trường thao tác được |
+
+Giới hạn: mất kết nối/mất gói chỉ thử tay (E2E không chủ ý fail mạng); kiểm tra snapshot quote/đơn đã tạo chỉ chốt khi M4.2.2/M4.3.1 triển khai.
 
 ### M4.2.1 — Giỏ hàng
 

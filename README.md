@@ -152,12 +152,14 @@ Trước khi commit, kiểm tra `git status --short`, `git diff --cached --stat`
 .\tools\npm.ps1 run test:e2e:implemented
 ```
 
+Integration Cài đặt/schema đơn và toàn bộ runner E2E tạo DB riêng tên `clothing_<nhóm>_<mã-lượt>_test`, áp dụng migration rồi chỉ xóa DB do chính lượt đó tạo. Tài khoản PostgreSQL test cần quyền `CREATEDB` (role Docker/CI hiện có quyền này). `DATABASE_URL` nguồn vẫn phải trỏ tới DB `_test`; singleton Cài đặt có sẵn trong DB nguồn không bị sửa/xóa. Chạy E2E qua `tools/test-e2e.mjs` hoặc các script npm bên dưới để dùng đúng DB riêng; không gọi Playwright trực tiếp cho spec Cài đặt.
+
 Hai phạm vi E2E được giữ tường minh:
 
 | Lệnh từ root | Phạm vi |
 |---|---|
-| `./tools/npm.ps1 run test:e2e:implemented` | Toàn bộ E2E hiện hành gồm cả ca tổng `catalog.spec.ts` (M3.12): auth, danh mục, sản phẩm nháp/biến thể, ảnh, xuất bản/ẩn, kho (M3.7.1–M3.7.3), catalog khách (M3.9/M3.10), hiện 34 ca trên 11 spec; CI dùng lệnh này và ghi rõ tên bước |
-| `./tools/npm.ps1 run test:e2e` | Chạy cả thư mục `e2e/`; hiện trùng với bộ implemented vì toàn M3 đã ghép |
+| `./tools/npm.ps1 run test:e2e:implemented` | Auth, toàn bộ catalog/admin/kho M3 và xem/lưu Cài đặt M4.1.2; hiện 37 ca trên 12 spec, gồm ca tổng `catalog.spec.ts`; CI chạy lệnh này |
+| `./tools/npm.ps1 run test:e2e` | Chạy cả thư mục `e2e/`; hiện trùng với bộ implemented, không có nghĩa toàn bộ M4 đã triển khai |
 
 Không xóa hoặc skip test catalog. Khi triển khai thêm phần mới, phải cập nhật phạm vi E2E đã triển khai; kết quả xanh của bộ E2E không phải nghiệm thu toàn mốc.
 

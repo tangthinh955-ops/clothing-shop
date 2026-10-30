@@ -2,6 +2,103 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 30/10/2026 — Git M4.1.2: đồng bộ main và push nhánh
+
+- Người dùng yêu cầu push nhánh hiện tại `feat/m4.0-foundation`. Đã tạo commit chức năng `f7c09c4` (`feat(settings): save shop configuration safely`), gồm M4.1.2 và bốn bản sửa review; kiểm tra đủ 26 file, không có env thật, dependency, mailbox hoặc artifact build trong commit.
+- Đồng bộ `origin/main` tại `5aa1747` để giữ giao diện storefront mới và bản sửa CI `1bce128`. Conflict duy nhất là `progress.md`: giữ đầy đủ các mục của hai bên; bỏ dòng `=======` thừa vốn đã có trên main. Không sửa nghiệp vụ mới trong bước Git.
+- Cài đúng lockfile bằng `npm ci --no-fund`: 512 package, audit 0 vulnerability; generate lại Prisma client. Không đổi Node toàn máy.
+- Kiểm tra lại **trên bản sau merge**: typecheck/build đạt; unit với `VITEST_MAX_WORKERS=2` đạt **10 tools + 32 backend + 255 frontend**; integration PostgreSQL thật **66/66**; E2E implemented **37/37** qua giao diện mới, gồm ba ca lưu Cài đặt/refresh/mobile, hai tab và ACL.
+- Các test Cài đặt vẫn dùng DB riêng, không sửa cấu hình nguồn; kiểm tra hash và cleanup trước khi hoàn tất Git. Merge/push chỉ nhắm nhánh feature theo yêu cầu, không deploy hoặc bắt đầu M4.2.1. CI của merge mới chưa có kết quả tại thời điểm ghi mục này.
+
+## Ngày 30/10/2026 — M4.1.2: sửa 4 lỗi review
+
+**Phạm vi:** người dùng duyệt sửa 4 điểm review bằng "sửa đi": reload lỗi giữ bản nháp/command, khóa lưu với tải lại, kiểm tra response và cô lập DB test. Sửa trên phần M4.1.2 local có sẵn, không nhận phần triển khai ban đầu là thay đổi của lượt này. Chưa commit/push; chưa bắt đầu M4.2.1.
+
+| File thực tế | Bản sửa trong lượt này |
+|---|---|
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.tsx` | Ref đồng bộ + state khóa save/reload; chỉ remount khi refetch thành công; giữ draft/command khi lỗi; hủy refetch nền trước save để cache cũ không ghi đè response |
+| `apps/frontend/src/features/admin/settings/components/SettingsForm.tsx` | Nhận disabled ngoài; khóa toàn bộ thao tác cả Dialog; cho tải cấu hình mới qua xác nhận rõ ràng, giữ version/key khi reload lỗi |
+| `apps/frontend/src/features/admin/settings/api/settings.api.ts` | Đọc response kiểu unknown, kiểm tra cấu trúc/biên số/nhóm ngân hàng; JSON 200 không hợp lệ thành INVALID_RESPONSE, không vào nhánh lưu thành công |
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.test.tsx` | Thêm 4 ca hồi quy: reload lỗi giữ draft, reload pending khóa save, mất response + reload lỗi vẫn retry đúng command, malformed response vẫn resend đúng key/body; giữ mock danh mục đã sửa CI |
+| `apps/frontend/src/features/admin/settings/api/settings.api.test.ts` (mới) | Kiểm tra JSON sai shape/nhóm ngân hàng và giữ số 0 đầu tài khoản |
+| `tools/test-database.mjs`, `tools/test-database.d.mts`, `tools/test-database.test.mjs` (mới) | Tạo DB UUID riêng đuôi _test, migrate rồi chỉ drop DB vừa tạo; guard test/PostgreSQL/suffix; tên DB an toàn và có khai báo kiểu |
+| `tools/test-e2e.mjs` | Chạy toàn bộ Playwright trên DB riêng của lượt, truyền marker sở hữu, đóng runner rồi dọn DB trong finally |
+| `apps/backend/test/settings.integration.spec.ts`, `apps/backend/test/orders-foundation.integration.spec.ts` | Mỗi suite dùng DB riêng; bỏ hoàn toàn nhánh sửa/xóa/restore singleton foreign |
+| `apps/frontend/e2e/settings.spec.ts` | Từ chối DB không thuộc runner; chỉ tạo/xóa fixture mình sở hữu, không restore hàng có sẵn |
+| `README.md`, `docs/local-trial-m4.md` | Ghi quyền CREATEDB của role test, lệnh runner và thao tác thử lại khi reload/malformed response |
+| `progress.md` | Ghi phạm vi bản sửa và bằng chứng thực tế |
+
+**Data flow:** save/reload chiếm cùng khóa ở page; form chỉ thay baseline sau response hợp lệ hoặc reload thành công. Test nối từ DB nguồn _test để tạo DB mới trống, migrate và chạy API/browser trên DB mới; cấu hình nguồn không bị sửa/xóa.
+
+**Key:** `operationRef` chống chồng thao tác cùng tick; `formEpoch` chỉ đổi sau đọc thành công; `INVALID_RESPONSE` giữ kết quả chưa xác định và key cũ; `CLOTHING_TEST_DATABASE` chứng minh DB E2E thuộc runner; DB riêng chỉ được dọn khi invocation đã tạo thành công.
+
+**Đã viết và agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+| Kiểm tra thực tế | Kết quả |
+|---|---|
+| RED trong review trước sửa | 3 ca UI bắt được mất draft sau reload lỗi, save còn bật khi reload pending và JSON sai vẫn báo đã lưu |
+| `./tools/npm.ps1 run typecheck` (lượt cuối) | Backend + frontend đạt |
+| `./tools/npm.ps1 run build` | Đạt; E2E cũng build lại backend/frontend phiên bản cuối. Cảnh báo bundle >500 kB có sẵn, không phải lỗi build |
+| `$env:VITEST_MAX_WORKERS='2'` rồi `./tools/npm.ps1 test` | **10/10 tools + 32/32 backend + 228/228 frontend**, gồm 42 ca Settings UI/API |
+| Lượt unit không giới hạn worker | Lượt chạy song song build bị timeout tiến trình Prisma 15s; chạy riêng sau đó đạt. Lượt cuối mặc định 227/228 frontend, một ca `App.test.tsx` chờ chuyển trang CUSTOMER quá 1s; cùng code chạy 2 worker đạt 228/228. Không sửa App/test đó hoặc tăng timeout trong bản sửa này |
+| `./tools/npm.ps1 run test:integration` | **8 file, 65/65** PostgreSQL thật; Settings/schema chạy trên DB riêng, cleanup thành công |
+| `./tools/npm.ps1 run test:e2e:implemented` | **37/37**, gồm 3 ca Settings lưu/refresh/mobile, hai tab và ACL; DB riêng được dọn sau runner |
+| An toàn DB nguồn | Hash toàn bộ hàng Cài đặt nguồn (gồm version/updatedAt) trước/sau giống nhau; **0 DB tạm** của nhóm settings/order_schema/e2e còn lại |
+| Rà cấu trúc + diff | Có review độc lập; bổ sung kiểm tra nhóm ngân hàng trong response theo finding cuối. `git diff --check` đạt; không còn khối DELETE/INSERT restore foreign trong các spec sửa |
+| CI/Git | Chưa commit/push bản M4.1.2; chưa có CI cho các sửa local này |
+
+**Chạy thử:** backend/frontend theo README → `/admin/settings`. Kiểm tra lưu/refresh, hai tab, reload lỗi vẫn giữ draft và command, reload đang chờ khóa thao tác; hướng dẫn ở [local-trial-m4.md](docs/local-trial-m4.md). Test DB cần role test có CREATEDB. **Dừng sau bản sửa, không bắt đầu M4.2.1.**
+
+## Ngày 30/10/2026 — M4.1.2: admin lưu Cài đặt
+
+**Phạm vi được duyệt:** kế hoạch M4.1.2 gửi trong chat (backend PATCH `/api/v1/admin/settings` — phiên bản lạc quan + Idempotency-Key transaction; frontend form lưu thật + xử lý 409/mạng; E2E + docs; TDD RED→GREEN; fixture sạch, restore bit-exact). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.** Có 3 sửa ngoài lô để đạt lệnh test bắt buộc, khai báo ở phần thay đổi.
+
+### Thay đổi và file thực tế
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/settings/dto/update-settings.dto.ts` (mới) | DTO PATCH: 6 trường nghiệp vụ + `expectedVersion`, kiểu VND nguyên dương/hạn phút theo biên schema; ràng buộc input runtime trước khi vào service |
+| `apps/backend/src/modules/settings/settings.service.ts` (sửa) | Thêm `update()`: transaction `SELECT … FOR UPDATE`, so `expectedVersion`, tăng version, ghi `IdempotencyRecord` (scope `settings.update`, identity `admin:<userId>`, hash canonical kèm expectedVersion) commit cùng transaction; cùng key+nội dung → replay, cùng key khác nội dung/sai version → 409; bản ghi mới chỉ cho phép tạo khi chưa tồn tại và expectedVersion 0 |
+| `apps/backend/src/modules/settings/admin-settings.controller.ts` (sửa) | Thêm `@Patch()` nhận `Idempotency-Key` từ header + DTO qua `@Body`, gọi service — controller không chứa nghiệp vụ |
+| `apps/backend/src/modules/settings/settings.service.spec.ts` (sửa) | Unit tăng từ 4 → 16: thành công, replay cùng key, version cũ 409, key dùng nội dung khác 409, mất response không ghi DB, tranh chấp đồng thời, biên tạo/đổi cấu hình |
+| `apps/backend/test/settings.integration.spec.ts` (sửa) | Mở rộng 14 ca HTTP thật qua proxy cookie+CSRF (lưu, replay, 409 hai tab, ACL, DTO lỗi); fixture row `default` có sẵn (foreign) được chụp một lần rồi restore bit-exact gồm `updatedAt`, idempotency records dọn theo identity |
+| `apps/frontend/src/features/admin/settings/api/settings.api.ts` (sửa) | `settingsApi.update` + `SettingsUpdateInput`, gửi `Idempotency-Key` qua `request()` chung — không rải fetch trong component |
+| `apps/frontend/src/features/admin/settings/components/SettingsForm.tsx` (mới) | Form 6 trường + máy trạng thái outcome (`saved`/`conflict`/`unconfirmed`/`rejected`); khóa nội dung khi chưa biết kết quả; "Gửi lại" tái dùng đúng key+body; Dialog xác nhận trước khi nạp cấu hình mới |
+| `apps/frontend/src/features/admin/settings/components/SettingsForm.test.tsx` (mới) | 24 test: validation, lưu thành công làm baseline mới, 409 giữ nháp, mạng/rejected, double-click, key mới mỗi lượt lưu, Dialog chỉ hủy/xác nhận đúng một lần |
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.tsx` (sửa) | Wire form + `formEpoch`: remount form chỉ sau xác nhận và refetch có dữ liệu mới; sau save response server là baseline (`setQueryData`) |
+| `apps/frontend/src/features/admin/settings/pages/SettingsPage.test.tsx` (sửa) | 7 test khi wire: gọi PATCH, nêu nền server response, nạp lại qua xác nhận, loading/error |
+| `apps/frontend/e2e/settings.spec.ts` (sửa) | 3 E2E thật: lưu + refresh + mobile 390; hai tab one-win/one-409 kết thúc "Tải cấu hình mới"; ACL backend độc lập; cleanup restore bit-exact + xóa idempotency theo identity |
+| `.github/workflows/ci.yml` (sửa) | Nhãn bước E2E ghi "settings saving M4.1.2" |
+| `apps/backend/test/orders-foundation.integration.spec.ts` (sửa ngoài lô) | Spec này `create` row `default` trong test CHECK-bounds — vấp row fixture có sẵn từ M4.1.2 (P2002): chụp `original` một lần khi row có sẵn, test bounds chạy trên row đó, cleanup restore bit-exact khi foreign / xóa khi do run tạo |
+| `apps/backend/test/production-config.integration.spec.ts` (sửa ngoài lô) | beforeAll ném `Invalid configuration: SESSION_SECRET` vì spread kéo secret `.env.test` (54 ký tự nhưng chứa chuỗi thử `test-only`) vào cấu hình production-shape: cung cấp `SESSION_SECRET` production-shape hợp lệ tường minh cho đúng spread này, validator giữ nguyên |
+| `apps/frontend/vite.config.ts` (sửa ngoài lô) | `testTimeout: 15000` — hai lượt chạy đầy đủ frontend fail timeout khác nhau ở suite nặng (products/categories…), chạy riêng từng file thì đủ 55/55; 5s mặc định flaky dưới tải CPU local |
+| `docs/m4-contract.md`, `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Ghi scope `settings.update` + chốt nhập tay ngân hàng; trạng thái M4.1.2; bảng thao tác chạy thử lưu/409/mạng/mobile; điểm dừng |
+
+### Data flow / key
+
+ADMIN sửa 6 trường → PATCH `/api/v1/admin/settings` kèm `Idempotency-Key` (`crypto.randomUUID()` mỗi lượt lưu) → SessionGuard/RolesGuard → ValidationPipe → `SettingsService.update` mở transaction `FOR UPDATE`, so `expectedVersion`, tăng `version`, ghi `IdempotencyRecord` cùng transaction → response là baseline mới, TanStack `setQueryData` → UI hiển thị "Đã lưu". Version cũ → 409: form khóa, giữ nháp, "Tải cấu hình mới" qua Dialog xác nhận; page chỉ remount (`formEpoch`) sau khi refetch trả dữ liệu mới. 409 cùng key khác hash → không tự đổi key, "Gửi lại" đúng command cũ.
+
+- `expectedVersion`: phiên bản row mà client chụp khi mở form — server chỉ nhận đúng giá trị này (hoặc tạo mới khi chưa có row), lệch là 409.
+- `Idempotency-Key` + hash canonical: cùng key cùng nội dung → replay; cùng key khác nội dung → 409; trường hợp "Gửi lại" không tạo key mới.
+- `formEpoch` (SettingsPage): reload một chiều — form chỉ remount sau khi xác nhận và refetch đã trả dữ liệu mới.
+- Máy trạng thái outcome của `SettingsForm`: quyết định khóa nội dung và hành động (Gửi lại / Tải cấu hình mới / mở lại sửa).
+- `testTimeout: 15000` (`vite.config.ts`): mặc định 5s flaky với các suite nặng dưới tải CPU local.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Backend unit RED → GREEN | 16/16 unit `SettingsService` (viết test trước khi có update; cả backend 32/32 trong Root `test`) |
+| Integration settings RED → GREEN | RED đầu: spec tự create/restore row `default` lệch giữa hai trạng thái DB (row do run khác tạo sẵn → P2002); sửa bằng chụp `original` một lần (gồm `updatedAt`) + restore DELETE+INSERT bit-exact: 14/14 cả khi DB có row foreign lẫn trống; psql xác minh sau run: 77777/333/version 12/`updatedAt` giữ nguyên, 0 idempotency records |
+| UI RED → GREEN | 24 form + 7 page = 31/31 sau hai vòng sửa test: thứ tự stub trong queue (reject-Once ưu tiên trước base), tránh `type('')` trên chuỗi rỗng, tách ca phụ thuộc exit-animation MUI Dialog trong jsdom thành 2 test theo hành vi |
+| E2E settings | 3/3 sau sửa hai lỗi: Playwright không có `toHaveTextContent` (đổi sang `toContainText`) và `login()` bỏ assert URL không đúng cho CUSTOMER; psql xác minh restore bit-exact sau cả lượt E2E tái chạy |
+| `./tools/npm.ps1 run test:integration` | 8 files, 65/65 (qua lệnh chuẩn npm) |
+| `node tools/test-e2e.mjs` (12 file `implemented`) | 37/37 passed (2.2 phút) |
+| Root `typecheck`, `build`, `test` | exit 0; build chỉ warn chunk > 500 kB (đã có, không mới); `test`: tools 8/8, backend 32/32, frontend 217/217 |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+**Dừng sau M4.1.2 cho người dùng chạy thử theo [local-trial-m4.md M4.1.2](docs/local-trial-m4.md); M4.2.1 (giỏ hàng) chưa triển khai, cần kế hoạch riêng được duyệt.**
+
 ## Ngày 30/10/2026 — Sửa CI M4.1.1 sau merge main
 
 - **Phạm vi:** người dùng yêu cầu sửa và push riêng lỗi test Cài đặt sau merge `ea002b4`; không đưa phần M4.1.2 đang làm dở vào commit. Bản sửa được làm trong checkout cách ly từ nhánh remote `feat/m4.0-foundation`.
@@ -193,7 +290,7 @@ Danh sách đúng kế hoạch được duyệt. Không sửa source/backend/fro
 Đã rà nội dung/phụ thuộc, mã phần và liên kết: implementation có33 phần nhỏ, local có đúng33 phần tương ứng, không thiếu/trùng mã; các liên kết file trong5 tài liệu hợp lệ. Thứ tự thực hiện bao phủ đủ33 phần và đi sau các phụ thuộc cụ thể; `git diff --check` exit0, UTF-8 hợp lệ và không có conflict marker. Git xác nhận chỉ5 file Markdown, index rỗng. Không chạy typecheck/build/unit/integration/E2E vì chỉ sửa Markdown, không nhận kết quả các lượt M3 trước là kết quả của lượt này.
 
 **M4 mới hoàn tất bước lập kế hoạch; chưa có chức năng M4 để thử.** Người dùng đọc hai tài liệu, phản hồi; bước tiếp theo đề xuất là gửi kế hoạch chi tiết M4.0.1 để duyệt, không tự triển khai. Trạng thái production/M3 giữ theo các mục riêng bên dưới.
-=======
+
 ## Ngày 30/10/2026 — UI.4: trang chi tiết sản phẩm
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch UI.4 ("oke"). Làm tiếp trên nhánh `feat/ui.1-storefront-shell` (UI.1–UI.4 chưa commit). Xong UI.4 là xong lộ trình UI.0–UI.4. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**

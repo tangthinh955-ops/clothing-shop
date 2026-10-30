@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadEnvFile } from 'node:process';
+import { createIsolatedTestDatabase } from './test-database.mjs';
 
 const root = new URL('../', import.meta.url);
 const install = process.argv[2] === 'install';
+let isolated;
 if (!install) {
   try { loadEnvFile(fileURLToPath(new URL('apps/backend/.env.test', root))); }
   catch (error) {
@@ -19,12 +21,17 @@ if (!install) {
     console.error('E2E requires NODE_ENV=test and a PostgreSQL *_test database. No servers or tests were started.');
     process.exit(1);
   }
+  isolated = await createIsolatedTestDatabase(process.env.DATABASE_URL, 'e2e');
+  process.env.DATABASE_URL = isolated.databaseUrl;
+  process.env.CLOTHING_TEST_DATABASE = isolated.name;
 }
 const args = install ? ['install', 'chromium', ...(process.argv.includes('--with-deps') ? ['--with-deps'] : [])] : ['test', ...process.argv.slice(2)];
-const result = spawnSync(process.execPath,
-  ['--env-file-if-exists=../backend/.env.test', fileURLToPath(new URL('node_modules/@playwright/test/cli.js', root)), ...args], {
-    cwd: fileURLToPath(new URL('apps/frontend', root)), stdio: 'inherit',
-    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: fileURLToPath(new URL('.local/ms-playwright', root)) },
-  });
-if (result.error) { console.error('Could not start Playwright. Check dependencies and Node version.'); }
-process.exitCode = result.status ?? 1;
+try {
+  const result = spawnSync(process.execPath,
+    ['--env-file-if-exists=../backend/.env.test', fileURLToPath(new URL('node_modules/@playwright/test/cli.js', root)), ...args], {
+      cwd: fileURLToPath(new URL('apps/frontend', root)), stdio: 'inherit',
+      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: fileURLToPath(new URL('.local/ms-playwright', root)) },
+    });
+  if (result.error) { console.error('Could not start Playwright. Check dependencies and Node version.'); }
+  process.exitCode = result.status ?? 1;
+} finally { await isolated?.cleanup(); }

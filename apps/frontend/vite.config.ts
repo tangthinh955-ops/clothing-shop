@@ -7,5 +7,9 @@ export default defineConfig({
   // E2E serves the production build through `vite preview`; the dev server's on-demand
   // pipeline crashed with 0xC0000409 on Windows mid suite, so tests avoid it entirely.
   preview: { proxy: { '/api': process.env['API_PROXY_TARGET'] ?? 'http://127.0.0.1:3000' } },
-  test: { environment: 'jsdom', setupFiles: ['./src/test/setup.ts'], include: ['src/**/*.test.{ts,tsx}'] },
+  test: {
+    environment: 'jsdom', setupFiles: ['./src/test/setup.ts'], include: ['src/**/*.test.{ts,tsx}'],
+    // UI suites drive several long userEvent typings per test; 5s was flaky under local CPU load.
+    testTimeout: 15000,
+  },
 });

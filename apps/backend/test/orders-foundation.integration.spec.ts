@@ -1,3 +1,4 @@
+import { createIsolatedTestDatabase } from '../../../tools/test-database.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../dist/application.js';
@@ -11,14 +12,13 @@ import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
 const origin = 'http://localhost:5173';
 let app: Awaited<ReturnType<typeof createApplication>>;
 let db: PrismaService;
+let isolated: Awaited<ReturnType<typeof createIsolatedTestDatabase>> | undefined;
 const orderCodes: string[] = [];
 const quoteIds: string[] = [];
 const idempotencyIds: string[] = [];
 let categoryId = '';
 let productId = '';
 let variantId = '';
-let settingsWritten = false;
-
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 function orderData(overrides: Partial<Prisma.OrderUncheckedCreateInput> = {}): Prisma.OrderUncheckedCreateInput {
@@ -40,7 +40,8 @@ const itemData = (orderId: string, overrides: Partial<Prisma.OrderItemUncheckedC
 
 beforeAll(async () => {
   if (process.env['NODE_ENV'] !== 'test' || !new URL(process.env['DATABASE_URL'] ?? '').pathname.endsWith('_test')) throw new Error('Test DB required');
-  app = await createApplication(readEnvironment({ ...process.env, APP_ORIGIN: origin }));
+  isolated = await createIsolatedTestDatabase(process.env['DATABASE_URL'], 'order_schema');
+  app = await createApplication(readEnvironment({ ...process.env, DATABASE_URL: isolated.databaseUrl, APP_ORIGIN: origin }));
   db = app.get(PrismaService);
   const category = await db.category.create({ data: { name: 'Danh mục đơn thử', slug: `m4-foundation-${randomUUID()}`, active: true } });
   categoryId = category.id;
@@ -49,47 +50,11 @@ beforeAll(async () => {
       price: 350000, active: true, inventory: { create: { onHand: 5, reserved: 0 } } } } } });
   productId = product.id;
   variantId = (await db.variant.findFirstOrThrow({ where: { productId } })).id;
+
 });
 
 afterAll(async () => {
-  if (!db) return;
-  // Each step cleans independently so one failure cannot strand fixtures in the shared test database;
-  // leftover counts and step errors must fail the suite instead of leaving a green run with residue.
-  const problems: string[] = [];
-  const attempt = (label: string, step: () => Promise<unknown>) =>
-    step().catch((error: unknown) => { problems.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); });
-  try {
-    // Orders cascade their items/history; movement rows go before the variant (FK Restrict).
-    if (orderCodes.length) await attempt('orders', () => db.order.deleteMany({ where: { code: { in: orderCodes } } }));
-    if (quoteIds.length) await attempt('quotes', () => db.checkoutQuote.deleteMany({ where: { id: { in: quoteIds } } }));
-    if (idempotencyIds.length) await attempt('idempotency', () => db.idempotencyRecord.deleteMany({ where: { id: { in: idempotencyIds } } }));
-    if (productId) {
-      await attempt('movements', () => db.inventoryMovement.deleteMany({ where: { variant: { productId } } }));
-      await attempt('inventory', () => db.inventory.deleteMany({ where: { variant: { productId } } }));
-      await attempt('variants', () => db.variant.deleteMany({ where: { productId } }));
-      await attempt('product', () => db.product.deleteMany({ where: { id: productId } }));
-    }
-    if (categoryId) await attempt('category', () => db.category.deleteMany({ where: { id: categoryId } }));
-    if (settingsWritten) await attempt('settings', () => db.shopSettings.deleteMany({ where: { id: 'default' } }));
-    const leftovers: string[] = [];
-    const expectGone = async (label: string, remaining: Promise<number>) => {
-      if (await remaining > 0) leftovers.push(label);
-    };
-    if (orderCodes.length) await expectGone('orders', db.order.count({ where: { code: { in: orderCodes } } }));
-    if (quoteIds.length) await expectGone('quotes', db.checkoutQuote.count({ where: { id: { in: quoteIds } } }));
-    if (idempotencyIds.length) await expectGone('idempotency records', db.idempotencyRecord.count({ where: { id: { in: idempotencyIds } } }));
-    if (productId) {
-      await expectGone('movements', db.inventoryMovement.count({ where: { variant: { productId } } }));
-      await expectGone('inventory rows', db.inventory.count({ where: { variant: { productId } } }));
-      await expectGone('variants', db.variant.count({ where: { productId } }));
-      await expectGone('product', db.product.count({ where: { id: productId } }));
-    }
-    if (categoryId) await expectGone('category', db.category.count({ where: { id: categoryId } }));
-    if (settingsWritten) await expectGone('shop settings row', db.shopSettings.count({ where: { id: 'default' } }));
-    if (problems.length || leftovers.length) {
-      throw new Error(`Cleanup incomplete (failed steps: ${problems.join('; ') || 'none'}; leftovers: ${leftovers.join(', ') || 'none'})`);
-    }
-  } finally { await app.close(); }
+  try { if (app) await app.close(); } finally { await isolated?.cleanup(); }
 });
 
 describe('M4 order foundation schema', () => {
@@ -120,7 +85,6 @@ describe('M4 order foundation schema', () => {
     await expect(db.checkoutQuote.create({ data: { items: [], method: 'COD', subtotalVnd: 100000, shippingFeeVnd: 30000,
       totalVnd: 500000, settingsVersion: 0, expiresAt: new Date(Date.now() + 1800000) } })).rejects.toThrow(/checkout_quote_totals_valid/);
     const settings = await db.shopSettings.create({ data: { id: 'default' } });
-    settingsWritten = true;
     expect(settings).toMatchObject({ shippingFeeVnd: 30000, bankDeadlineMinutes: 120, version: 0, bankName: null });
     await expect(db.shopSettings.update({ where: { id: 'default' }, data: { shippingFeeVnd: -100 } })).rejects.toThrow(/shop_settings_bounds_valid/);
     await expect(db.shopSettings.update({ where: { id: 'default' }, data: { bankDeadlineMinutes: 10 } })).rejects.toThrow(/shop_settings_bounds_valid/);
