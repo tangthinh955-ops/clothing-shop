@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { InventoryItem, MovementList } from '../api/inventory.api';
+import type { InventoryItem, MovementList, MovementRow } from '../api/inventory.api';
 import { inventoryApi } from '../api/inventory.api';
 import { MovementHistory } from './MovementHistory';
 
@@ -10,9 +10,10 @@ const variantIdFixture = '1a02c70e-28ec-4f92-b3ec-1241a80a2f01';
 const stock: InventoryItem = { variantId: variantIdFixture, sku: 'AO-M-DEN', size: 'M', color: 'đen',
   productName: 'Áo cotton', onHand: 12, reserved: 2, available: 10, version: 3 };
 
-const movement = (id: string, overrides: Partial<MovementList['items'][number]> = {}) => ({
+const movement = (id: string, overrides: Partial<MovementRow> = {}): MovementRow => ({
   id, variantId: variantIdFixture, delta: 5, reason: 'Nhập kho e2e', before: 12, after: 17, reserved: 2, version: 4,
-  createdAt: '2026-10-29T02:00:00.000Z', actor: { name: 'Admin thử' }, variant: { sku: 'AO-M-DEN' },
+  createdAt: '2026-10-29T02:00:00.000Z', actorType: 'ADMIN', source: 'ADMIN_ADJUSTMENT', effectKey: null,
+  actor: { name: 'Admin thử' }, variant: { sku: 'AO-M-DEN' },
   ...overrides,
 });
 const firstPage: MovementList = { items: [movement('m1')], total: 1, page: 1, pageSize: 10 };
@@ -75,6 +76,35 @@ describe('inventory movement history dialog', () => {
     const list = await screen.findByRole('list', { name: 'Lịch sử AO-M-DEN' });
     expect(within(list).getByText('-3')).toBeVisible();
     expect(within(list).getByText('17 → 14', { exact: true })).toBeVisible();
+  });
+
+  it('labels order holds and releases with the reserved and available stock after the operation', async () => {
+    openHistory([() => Promise.resolve({ ...firstPage, items: [
+      movement('m1', { delta: 0, before: 12, after: 12, reserved: 4, source: 'ORDER_RESERVE', actorType: 'GUEST',
+        effectKey: 'order:abc:reserve:1a', actor: { name: 'Khách đặt hàng' }, reason: 'Giữ hàng cho đơn' }),
+      movement('m2', { delta: 0, before: 12, after: 12, reserved: 2, source: 'ORDER_RELEASE', actorType: 'SYSTEM',
+        effectKey: 'order:def:release:2b', actor: { name: 'Hệ thống' }, reason: 'Hết hạn nhả giữ' }),
+    ], total: 2 })]);
+    const list = await screen.findByRole('list', { name: 'Lịch sử AO-M-DEN' });
+    expect(within(list).getByText('Giữ hàng cho đơn')).toBeVisible();
+    expect(within(list).getByText('Đang giữ: 4 · Còn bán: 8', { exact: true })).toBeVisible();
+    expect(within(list).getByText('Nhả giữ đơn')).toBeVisible();
+    expect(within(list).getByText('Đang giữ: 2 · Còn bán: 10', { exact: true })).toBeVisible();
+    expect(within(list).queryByText('+0')).not.toBeInTheDocument();
+  });
+
+  it('keeps the on-hand display for adjustments and shipments', async () => {
+    openHistory([() => Promise.resolve({ ...firstPage, items: [
+      movement('m1', { delta: 5, before: 12, after: 17 }),
+      movement('m2', { delta: -2, before: 17, after: 15, reserved: 0, source: 'ORDER_SHIP', actorType: 'GUEST',
+        effectKey: 'order:abc:ship:3c', actor: { name: 'Khách đặt hàng' }, reason: 'Bàn giao vận chuyển' }),
+    ], total: 2 })]);
+    const list = await screen.findByRole('list', { name: 'Lịch sử AO-M-DEN' });
+    expect(within(list).getByText('+5')).toBeVisible();
+    expect(within(list).getByText('12 → 17', { exact: true })).toBeVisible();
+    expect(within(list).getByText('-2')).toBeVisible();
+    expect(within(list).getByText('17 → 15', { exact: true })).toBeVisible();
+    expect(within(list).queryByText('Đang giữ:')).not.toBeInTheDocument();
   });
 
   it('explains a variant without any movement yet', async () => {

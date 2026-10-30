@@ -51,7 +51,10 @@ export class InventoryService {
   async movements(query: InventoryQuery) {
     const where = { ...(query.variantId ? { variantId: query.variantId } : {}), ...(query.q ? { variant: { sku: { contains: query.q, mode: 'insensitive' as const } } } : {}) };
     const [items, total] = await Promise.all([this.db.inventoryMovement.findMany({ where, select: { id: true, variantId: true, delta: true, reason: true, before: true, after: true, reserved: true, version: true, createdAt: true,
-      actor: { select: { name: true } }, variant: { select: { sku: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), this.db.inventoryMovement.count({ where })]);
-    return { items, total, page: query.page, pageSize: query.pageSize };
+      actorType: true, source: true, effectKey: true, actor: { select: { name: true } }, variant: { select: { sku: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), this.db.inventoryMovement.count({ where })]);
+    // Guest/system effects have no user; every row still exposes an actor.name for the current admin UI.
+    return { items: items.map((row) => ({ ...row,
+      actor: { name: row.actor?.name ?? (row.actorType === 'SYSTEM' ? 'Hệ thống' : 'Khách đặt hàng') } })), total, page: query.page, pageSize: query.pageSize };
   }
 }

@@ -2,7 +2,7 @@ import { Alert, Box, Button, Dialog, DialogContent, DialogContentText, DialogTit
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../../../../shared/api/client';
-import { MOVEMENT_PAGE_SIZE, inventoryApi, type InventoryItem } from '../api/inventory.api';
+import { MOVEMENT_PAGE_SIZE, inventoryApi, type InventoryItem, type MovementRow } from '../api/inventory.api';
 
 // Fixed VN timezone so the same transaction shows the same wall clock on every admin machine.
 const timeFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' });
@@ -17,6 +17,12 @@ function formatTime(value: string) {
 function deltaText(delta: number) {
   return delta >= 0 ? `+${delta}` : String(delta);
 }
+
+// Reserve/release leave onHand untouched, so a ±0 marker and an equal before → after would hide what
+// actually changed; those rows are labeled by source and show reserved/available after the operation.
+const effectLabels = { ADMIN_ADJUSTMENT: 'Điều chỉnh kho', ORDER_RESERVE: 'Giữ hàng cho đơn',
+  ORDER_RELEASE: 'Nhả giữ đơn', ORDER_SHIP: 'Xuất hàng giao' } as const;
+const orderEffects = new Set<MovementRow['source']>(['ORDER_RESERVE', 'ORDER_RELEASE']);
 
 export function MovementHistory({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
   const [page, setPage] = useState(1);
@@ -58,9 +64,13 @@ export function MovementHistory({ item, onClose }: { item: InventoryItem; onClos
                   <Typography component="time" dateTime={row.createdAt} sx={{ color: 'text.secondary' }}>
                     {formatTime(row.createdAt)}
                   </Typography>
-                  <Typography variant="h6" color={row.delta >= 0 ? 'success.main' : 'error.main'}>{deltaText(row.delta)}</Typography>
+                  {orderEffects.has(row.source)
+                    ? <Typography variant="h6">{effectLabels[row.source]}</Typography>
+                    : <Typography variant="h6" color={row.delta >= 0 ? 'success.main' : 'error.main'}>{deltaText(row.delta)}</Typography>}
                 </Stack>
-                <Typography sx={{ fontWeight: 600 }}>{row.before} → {row.after}</Typography>
+                {orderEffects.has(row.source)
+                  ? <Typography sx={{ fontWeight: 600 }}>Đang giữ: {row.reserved} · Còn bán: {row.after - row.reserved}</Typography>
+                  : <Typography sx={{ fontWeight: 600 }}>{row.before} → {row.after}</Typography>}
                 <Typography variant="body2" color="text.secondary">Lý do: {row.reason}</Typography>
                 <Typography variant="body2">Người thực hiện: {row.actor.name}</Typography>
               </Paper>)}

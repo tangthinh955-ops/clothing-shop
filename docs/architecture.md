@@ -107,6 +107,12 @@ Order của khách vãng lai: `userId` nullable; snapshot tên, SĐT đã chuẩ
 
 Tiền numeric(14,0), integer VND và API safe number trong giới hạn nghiệp vụ; thời gian UTC timestamptz, API ISO UTC, UI Asia/Ho_Chi_Minh. Snapshot tên/SKU/size/màu/giá/địa chỉ/phí/policy. Không hard-delete lịch sử. FK/check/unique cần migration SQL khi Prisma không mô tả đủ. Index theo query, không tự thêm hàng loạt.
 
+## Contract M4 (chốt ở M4.0.1)
+
+Chi tiết đầy đủ: [m4-contract.md](m4-contract.md). Điểm cốt lõi: Orders là service điều phối duy nhất mở transaction; Inventory/Payments nhận `TransactionClient`, không tự mở transaction hay gọi ngược; thứ tự khóa hàng đơn → kho theo `variantId` tăng dần → nguồn tiền. Actor ADMIN/GUEST/SYSTEM lưu `actorType` + `actorId` nullable; response lịch sử luôn có tên hiển thị ("Khách đặt hàng"/"Hệ thống" khi không có user). Idempotency: scope do server đặt, identity server cấp (không dùng IP), canonical hash SHA-256, cùng key+nội dung trả cùng resource, khác nội dung 409, record lưu response cùng commit. Token tra cứu ≥128 bit chỉ lưu SHA-256; mất response thì replay cùng key/body trả cùng resource nhưng không phát lại token, khách lấy lại qua tra cứu mã+SĐT. Các con số chống spam, quote TTL, retention là đề xuất chờ duyệt trong contract, không phải nghiệp vụ chính thức.
+
+M4.0.2 (đã áp dụng migration `202610290001_m4_order_core` vào local/test 29/10) thêm schema `shop_settings`, `checkout_quotes`, `orders`/`order_items`/`order_status_history`, `idempotency_records` và metadata actor/source/effectKey cho `inventory_movements` (actorId chuyển nullable, backfill ADMIN cho lịch sử M3). M4.0.3 (đã triển khai) thêm `InventoryOperationsService` (reserve/release/ship nội bộ nhận TransactionClient, khóa theo variantId tăng dần, replay/conflict theo effectKey+hash), giữ nguyên API điều chỉnh admin M3; chưa có endpoint/UI M4.
+
 ## Contract HTTP chung
 
 Prefix `/api/v1`; ID string, enum trạng thái rõ; không return Prisma model tràn trường.

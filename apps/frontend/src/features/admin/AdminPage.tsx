@@ -19,6 +19,7 @@ export function AdminPage() {
             <Button component={Link} to="/admin/categories" variant="contained">Danh mục</Button>
             <Button component={Link} to="/admin/products" variant="outlined">Sản phẩm</Button>
             <Button component={Link} to="/admin/inventory" variant="outlined">Kho</Button>
+            <Button component={Link} to="/admin/settings" variant="outlined">Cài đặt</Button>
           </Stack>
         </>}
     </Paper>
