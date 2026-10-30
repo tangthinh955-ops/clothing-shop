@@ -28,6 +28,7 @@ export const CATALOG_PAGE_SIZE = 12;
 export const catalogKey = ['shop-catalog'] as const;
 export const catalogCategoriesKey = ['shop-catalog-categories'] as const;
 export const catalogDetailKey = ['shop-catalog-detail'] as const;
+export const catalogHomeKey = ['shop-home'] as const;
 
 export const catalogApi = {
   // GET /api/v1/products — danh sách hàng công khai; chỉ trạng thái PUBLISHED (backend lọc).

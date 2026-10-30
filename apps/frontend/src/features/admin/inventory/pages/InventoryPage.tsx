@@ -6,6 +6,7 @@ import { ApiError } from '../../../../shared/api/client';
 import { inventoryApi, inventoryKey, type AdjustmentInput, type AdjustmentResult, type InventoryItem, type InventoryList } from '../api/inventory.api';
 import { AdjustmentDialog } from '../components/AdjustmentDialog';
 import { MovementHistory } from '../components/MovementHistory';
+import { pageTitle } from '../../../../shared/shop';
 
 const VARIANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -60,7 +61,7 @@ export function InventoryPage() {
   }
 
   return <Box sx={{ maxWidth: 1080, mx: 'auto', py: { xs: 4, md: 6 }, minWidth: 0 }}>
-    <title>Kho | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Kho | Quản trị')}</title>
     <Button component={Link} to="/admin" sx={{ mb: 2 }}>Về quản trị</Button>
     <Typography component="h1" variant="h3" sx={{ mb: 2 }}>Kho</Typography>
     <Typography color="text.secondary" sx={{ mb: 3 }}>Xem tồn theo từng SKU. Còn bán = tồn thực có − đang giữ.</Typography>

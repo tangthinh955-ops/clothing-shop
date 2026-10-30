@@ -80,6 +80,13 @@ afterAll(async () => {
 });
 
 describe('seed demo CLI', () => {
+  it('refuses to run when NODE_ENV=production, before touching any database', async () => {
+    await expect(run(process.execPath, ['dist/cli/seed-demo.js'], { env: { ...process.env, NODE_ENV: 'production' } }))
+      .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('không chạy trên production') });
+    expect(await db.product.count({ where: { slug: { in: demoProductSlugs } } })).toBe(0);
+    expect(await db.category.count({ where: { slug: { in: demoCategorySlugs } } })).toBe(0);
+  });
+
   it('leaves no demo image file or asset behind when a product transaction fails', async () => {
     // A user-owned variant already holds the first demo SKU, so the demo-ao-cotton transaction must roll back.
     const category = await db.category.create({ data: { name: 'Danh mục chặn seed', slug: `seed-block-${randomUUID()}` } });
