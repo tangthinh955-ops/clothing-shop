@@ -1,5 +1,66 @@
 # Chạy thử M3 theo từng phần
 
+## UI.4 — trang chi tiết sản phẩm
+
+Chạy `dev:backend` và `dev:frontend`, mở `/shop` rồi bấm một sản phẩm (nên chọn sản phẩm có từ 2 ảnh, nhiều màu/size).
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở trang trên máy tính | Đường dẫn "Tất cả sản phẩm / danh mục / tên"; ảnh lớn xếp 2 cột bên trái, khung thông tin bên phải đứng yên khi cuộn qua ảnh; giá đậm (chữ "Từ" chỉ khi các size giá khác nhau) |
+| Xem phần chọn | "Màu: …" với màu đầu đã chọn sẵn; "Size: chưa chọn" với các size của màu đó; size hết hàng bị gạch ngang |
+| Bấm một size | Giá đúng của size, "Còn N sản phẩm" (xanh) hoặc "Hết hàng" (đỏ), và "Mã sản phẩm: SKU" dưới nút đặt |
+| Đổi sang màu khác | Size đã chọn bị bỏ, danh sách size đổi theo màu; chọn lại size để thấy tồn |
+| Bấm "Nhắn shop qua Instagram để đặt" | Mở Instagram @rmglabels ở tab mới |
+| Bấm "Giao hàng" / "Đổi & trả" | Mở ra nội dung chính sách thật (30.000đ, thời gian giao; đổi trả 7 ngày…) và link "Xem chính sách …" |
+| Điện thoại 390px | Ảnh vuốt ngang từng tấm, góc ảnh có "1 / N" đổi theo; thông tin nằm dưới ảnh; không có thanh cuộn ngang |
+| Mở `/products/khong-co` | "Không tìm thấy sản phẩm." và link "Quay lại bộ sưu tập" như trước |
+
+## UI.3 — lưới và bộ lọc trang `/shop`
+
+Chạy `dev:backend` và `dev:frontend`, mở `http://127.0.0.1:5173/shop`.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở `/shop` | Tiêu đề "Tất cả sản phẩm"; hàng nút bo tròn "Tất cả" (đen) + các danh mục; dòng "N sản phẩm" và ô "Thứ tự sắp xếp"; lưới 4 cột (máy tính), 3 cột (tablet), 2 cột (điện thoại 390px) |
+| Bấm nút một danh mục | Nút chuyển đen, tiêu đề và tab trình duyệt đổi thành tên danh mục, URL có `categoryId`, chỉ còn hàng của danh mục đó; bấm "Tất cả" để bỏ lọc |
+| Đổi "Thứ tự sắp xếp" sang "Giá thấp đến cao" rồi bấm một danh mục | Vẫn giữ thứ tự giá, về trang 1 |
+| Tìm từ kính lúp trên header | Tiêu đề "Kết quả cho “…”", có nhãn "Tìm: “…” ✕"; bấm ✕ để bỏ tìm kiếm; nút Back của trình duyệt trả lại kết quả tìm |
+| Có bộ lọc bất kỳ | Hiện "Xóa lọc"; bấm để về `/shop` mặc định |
+| Máy tính: rê chuột lên một card có từ 2 ảnh | Ảnh chuyển sang ảnh thứ 2; rời chuột thì về ảnh bìa |
+| Điện thoại 390px | Hàng nút danh mục vuốt ngang được, thẳng lề với tiêu đề; không có thanh cuộn ngang cả trang |
+| Có hơn 12 sản phẩm | Phân trang ở giữa dưới lưới; chuyển trang giữ bộ lọc |
+
+## UI.2 — trang chủ `/`
+
+Chạy `dev:backend` và `dev:frontend`, mở `http://127.0.0.1:5173/`. Cần ít nhất một sản phẩm đang bán có ảnh để thấy banner có hình.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở `/` trên máy tính | Banner: khối đen "Bộ sưu tập mới" bên trái, ảnh sản phẩm mới nhất bên phải; bên dưới là "Danh mục" (4 ô một hàng) và "Hàng mới về" (tối đa 8 sản phẩm, 4 cột), cuối có "Xem tất cả sản phẩm"; tab trình duyệt "RMG Labels" |
+| Bấm ảnh banner / "Xem bộ sưu tập" | Mở trang sản phẩm đó / sang `/shop` |
+| Bấm một ô danh mục | Sang `/shop?categoryId=…` đã lọc |
+| Bấm bất kỳ chỗ nào trên một card (ảnh hoặc tên) | Mở trang chi tiết sản phẩm |
+| Xem card | Giá đậm; chỉ có chữ "Từ" khi các size có giá khác nhau; dòng size dạng "S – XL", thêm "2 màu" nếu có nhiều màu |
+| Thu về 390px | Ảnh banner ở trên, khối chữ đen ở dưới; danh mục vuốt ngang; hàng mới 2 cột; không có thanh cuộn ngang |
+| Bấm logo RMG LABELS ở trang bất kỳ | Về trang chủ `/` |
+| Ẩn hết sản phẩm (hoặc dùng DB trống) rồi mở `/` | Banner chỉ còn khối chữ; "Shop đang chuẩn bị hàng mới." và link "Theo dõi @rmglabels" |
+| Mở `/shop` | Card mới, nhưng lưới và bộ lọc giữ như cũ (đổi ở UI.3) |
+
+## UI.1 — khung cửa hàng mới: font, header, footer
+
+Chạy `dev:backend` và `dev:frontend` như thường lệ, mở `http://127.0.0.1:5173/shop`. Để xem bản điện thoại: DevTools → bật thanh thiết bị, chọn rộng 390px. Bố cục danh sách, trang chi tiết và trang chủ chưa đổi (UI.2–UI.4).
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở `/shop` trên máy tính | Dải đen trên cùng "Giao hàng toàn quốc · Phí 30.000đ · Kiểm hàng khi nhận"; header trắng: RMG LABELS, "Tất cả sản phẩm" có gạch chân, các danh mục đang bật, biểu tượng kính lúp bên phải; chữ toàn trang là Be Vietnam Pro |
+| Bấm một danh mục trên header | Sang `/shop?categoryId=…`, danh sách đã lọc, gạch chân chuyển sang danh mục đó |
+| Cuộn xuống | Dải đen trôi đi, header dính trên cùng |
+| Bấm kính lúp, gõ từ khóa rồi Enter (thử ở `/shipping`) | Sang `/shop?q=…` với kết quả tìm; ô tìm kiếm đóng. Esc hoặc nút X cũng đóng |
+| Thu về 390px, bấm ☰ | Menu trượt từ trái: Mua sắm (Tất cả sản phẩm + danh mục), Hỗ trợ khách hàng (Bảng size, Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật). Bấm một link → sang trang đó và menu đóng; Esc hoặc X cũng đóng |
+| Kéo xuống chân trang | Nền xám nhạt, 3 cột (1 cột trên điện thoại): người bán + Instagram, Hỗ trợ khách hàng, Mua sắm |
+| Đăng nhập admin, mở `/admin/products` | Header có thêm "Quản trị"; các khung trang admin có viền mảnh, thao tác như cũ |
+| Trang bất kỳ ở 390px | Không có thanh cuộn ngang |
+
 ## M3.1 — admin xem và thêm danh mục
 
 Phần M3.1 ban đầu có danh sách và tạo danh mục thật trong PostgreSQL. M3.2 bổ sung sửa/bật/tắt; M3.3 bổ sung tạo sản phẩm nháp với một biến thể; M3.4.1 bổ sung sửa thông tin nháp; M3.4.2 bổ sung sửa/thêm/tắt biến thể của nháp; M3.5 bổ sung tải và gắn ảnh thật; M3.6 bổ sung sắp xếp/gỡ ảnh; M3.8 bổ sung xuất bản/ẩn; M3.7.1 (Người B) bổ sung xem/tìm tồn kho theo hướng dẫn phía dưới; M3.7.2 (Người B) bổ sung điều chỉnh tồn với idempotency key; M3.7.3 (Người B) bổ sung lịch sử tồn của từng SKU; M3.9 (Người B) thay trang giới thiệu `/shop` bằng catalog khách tìm/lọc/phân trang theo hướng dẫn phía dưới; M3.10 (Người B) bổ sung trang chi tiết `/products/:slug` và chọn biến thể theo hướng dẫn phía dưới; M3.11 (Người B) bổ sung lệnh `npm run seed:demo` nhập bộ dữ liệu demo. M3.12 ghép ca tổng `catalog.spec.ts` vào bộ E2E và có runbook toàn luồng phía dưới. Trạng thái kỹ thuật và nghiệm thu xem [progress.md](../progress.md); lộ trình tiếp theo xem [m3-implementation-plan.md](m3-implementation-plan.md).
@@ -190,6 +251,21 @@ Phần này không có thay đổi giao diện; nó làm backend sẵn sàng ch�
 | Thử khởi động với `NODE_ENV=production` mà thiếu `TRUST_PROXY` hoặc `UPLOADS_DIR` | Backend dừng và in "Invalid configuration: TRUST_PROXY is required in production" (hoặc UPLOADS_DIR), không in giá trị bí mật |
 
 Kiểm tra tự động: `environment.spec.ts` (HOST, số hop proxy, thư mục ảnh, ràng buộc production), integration `production-config.integration.spec.ts` (upload chạy ở production và ghi vào `UPLOADS_DIR`; cookie `__Host-` Secure khi proxy chuyển HTTPS), `catalog.integration.spec.ts` (header cache ảnh).
+
+## M3.15 — cửa hàng mang thông tin thật, bỏ dấu vết demo
+
+Cửa hàng hiển thị tên **RMG Labels**, thông tin người bán (cá nhân kinh doanh, TP. Hồ Chí Minh, Instagram @rmglabels) và các chính sách thật đã được chủ shop duyệt. SĐT/Zalo và email chưa có nên chưa hiển thị; bổ sung trong `apps/frontend/src/shared/shop.ts` trước khi mở bán (M4.1 sẽ chuyển sang Cài đặt shop).
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở `/shop` | Đầu trang "RMG LABELS", không còn banner "BẢN DEMO · DỮ LIỆU GIẢ"; header chỉ có Bộ sưu tập, Bảng size (admin đã đăng nhập thấy thêm Quản trị) |
+| Kéo xuống chân trang | "Cá nhân kinh doanh · TP. Hồ Chí Minh", link Instagram @rmglabels mở tab mới; link Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật |
+| Mở `/shipping`, `/returns-policy`, `/payment`, `/privacy`, `/contact` | Nội dung thật: phí 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; COD/VietQR, hạn 2 giờ; dữ liệu thu và quyền của khách; thông tin người bán |
+| Tab trình duyệt | Tiêu đề dạng "Giao hàng \| RMG Labels" |
+| Mở `/login` | Không còn "Chưa có tài khoản? Đăng ký"; admin vẫn đăng nhập ở đây |
+| Chạy `seed:demo` với `NODE_ENV=production` | Báo "seed:demo chỉ dùng trên máy local…, không chạy trên production." và dừng, không ghi gì |
+
+Kiểm tra tự động: `StoreLayout.test.tsx`, `PolicyPage.test.tsx`, `App.test.tsx` (trang đăng nhập không quảng cáo đăng ký), integration `seed-demo.integration.spec.ts` (chặn production), E2E `auth.spec.ts`.
 
 ## M3.14 — Người A: sửa sản phẩm đang bán hoặc đã ẩn
 

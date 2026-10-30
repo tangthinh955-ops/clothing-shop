@@ -5,11 +5,14 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authApi, type User } from '../features/auth/api/auth.api';
 import * as apiClient from '../shared/api/client';
+import { catalogApi } from '../features/catalog/api/catalog.api';
 import { App } from './App';
 
 afterEach(() => vi.restoreAllMocks());
 
 function renderApp(path: string) {
+  // The store header loads category links on every page; these tests are not about them.
+  vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
   </QueryClientProvider>);
@@ -63,6 +66,14 @@ describe('login and registration with an existing session', () => {
     vi.spyOn(authApi, 'me').mockResolvedValue(null);
     renderApp(path);
     expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
+  });
+
+  it('does not advertise customer sign-up on the login page, since shoppers order without an account', async () => {
+    vi.spyOn(authApi, 'me').mockResolvedValue(null);
+    renderApp('/login');
+    expect(await screen.findByRole('heading', { name: 'Chào bạn trở lại' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Đăng ký' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Quên mật khẩu?' })).toBeVisible();
   });
 
   it('waits for the session before presenting a login form', async () => {

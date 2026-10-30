@@ -50,13 +50,13 @@ function productCalls(request: ReturnType<typeof renderCatalog>) {
 describe('public shop catalog', () => {
   it('lists published products with name link, category, price and cover image', async () => {
     const request = renderCatalog();
-    expect(await screen.findByRole('heading', { name: 'Bộ sưu tập' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Tất cả sản phẩm', level: 1 })).toBeVisible();
     const card = await screen.findByRole('listitem', { name: product.name });
     expect(within(card).getByRole('link', { name: product.name })).toHaveAttribute('href', `/products/${product.slug}`);
     expect(within(card).getByText('Áo thun')).toBeVisible();
-    expect(within(card).getByText(/Giá từ 250\.000\s*₫/)).toBeVisible();
+    expect(within(card).getByText(/^250\.000\s*₫$/)).toBeVisible();
     expect(within(card).getByAltText(`Ảnh của ${product.name}`)).toHaveAttribute('src', '/api/v1/media/asset-1');
-    expect(screen.getByText('Tìm thấy 1 sản phẩm.')).toBeVisible();
+    expect(screen.getByText('1 sản phẩm')).toHaveAttribute('role', 'status');
     expect(request).toHaveBeenCalledWith('/products?page=1&pageSize=12');
     expect(request).toHaveBeenCalledWith('/categories');
   });
@@ -82,19 +82,17 @@ describe('public shop catalog', () => {
     expect(await screen.findByRole('listitem', { name: product.name })).toBeVisible();
   });
 
-  it('searches on submit, trims input, resets the page and restores on Back', async () => {
+  it('titles a search with its term, clears it back to page one and restores it on Back', async () => {
     const request = renderCatalog('/shop?q=c%C5%A9&page=2');
-    const field = await screen.findByLabelText('Tìm theo tên hoặc SKU');
+    expect(await screen.findByRole('heading', { name: 'Kết quả cho “cũ”', level: 1 })).toBeVisible();
     await screen.findByRole('listitem', { name: product.name });
     expect(productCalls(request)).toHaveLength(1);
-    await userEvent.clear(field);
-    await userEvent.type(field, '  Áo & M  ');
-    expect(productCalls(request)).toHaveLength(1);
-    await userEvent.keyboard('{Enter}');
-    await waitFor(() => expect(request).toHaveBeenLastCalledWith('/products?q=%C3%81o+%26+M&page=1&pageSize=12'));
-    expect(screen.getByTestId('url')).toHaveTextContent('page=1');
+    await userEvent.click(screen.getByRole('button', { name: 'Xóa tìm kiếm' }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith('/products?page=1&pageSize=12'));
+    expect(screen.getByRole('heading', { name: 'Tất cả sản phẩm', level: 1 })).toBeVisible();
+    expect(screen.getByTestId('url')).toHaveTextContent(/^\/shop\?page=1$/);
     await userEvent.click(screen.getByRole('button', { name: 'Quay lại URL trước' }));
-    await waitFor(() => expect(screen.getByLabelText('Tìm theo tên hoặc SKU')).toHaveValue('cũ'));
+    expect(await screen.findByRole('heading', { name: 'Kết quả cho “cũ”', level: 1 })).toBeVisible();
     expect(screen.getByTestId('url')).toHaveTextContent('q=c%C5%A9&page=2');
   });
 
@@ -106,15 +104,20 @@ describe('public shop catalog', () => {
     expect(screen.getByTestId('url')).toHaveTextContent('sort=price-desc');
   });
 
-  it('filters by a category from the public category list', async () => {
-    const request = renderCatalog();
-    const selector = await screen.findByLabelText('Danh mục');
+  it('filters by a category with one tap and titles the page after it', async () => {
+    const request = renderCatalog('/shop?sort=price-asc&page=2');
+    const filters = await screen.findByRole('group', { name: 'Lọc theo danh mục' });
     await screen.findByRole('listitem', { name: product.name });
-    await userEvent.selectOptions(selector, categoryIdSecond);
-    await waitFor(() => expect(request).toHaveBeenLastCalledWith(`/products?categoryId=${categoryIdSecond}&page=1&pageSize=12`));
+    expect(within(filters).getByRole('button', { name: 'Tất cả' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(await within(filters).findByRole('button', { name: 'Quần jean' }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+      `/products?categoryId=${categoryIdSecond}&sort=price-asc&page=1&pageSize=12`));
     expect(screen.getByTestId('url')).toHaveTextContent(`categoryId=${categoryIdSecond}`);
-    expect(within(selector).getByRole('option', { name: 'Quần jean' })).toBeInTheDocument();
-    expect(within(selector).getByRole('option', { name: 'Tất cả danh mục' })).toBeInTheDocument();
+    expect(within(filters).getByRole('button', { name: 'Quần jean' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(filters).getByRole('button', { name: 'Tất cả' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('heading', { name: 'Quần jean', level: 1 })).toBeVisible();
+    await userEvent.click(within(filters).getByRole('button', { name: 'Tất cả' }));
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith('/products?sort=price-asc&page=1&pageSize=12'));
   });
 
   it('paginates through the URL and keeps the search term', async () => {
@@ -132,16 +135,16 @@ describe('public shop catalog', () => {
     const request = renderCatalog(`/shop?q=gi%E1%BA%A3&sort=price-asc&categoryId=${categoryIdFixture}&page=3`);
     await screen.findByRole('listitem', { name: product.name });
     expect(request).toHaveBeenCalledWith(`/products?categoryId=${categoryIdFixture}&q=gi%E1%BA%A3&sort=price-asc&page=3&pageSize=12`);
-    expect(screen.getByLabelText('Tìm theo tên hoặc SKU')).toHaveValue('giả');
+    expect(screen.getByRole('heading', { name: 'Kết quả cho “giả”', level: 1 })).toBeVisible();
     expect(screen.getByLabelText('Thứ tự sắp xếp')).toHaveValue('price-asc');
-    expect(screen.getByLabelText('Danh mục')).toHaveValue(categoryIdFixture);
+    const filters = screen.getByRole('group', { name: 'Lọc theo danh mục' });
+    expect(await within(filters).findByRole('button', { name: 'Áo thun' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('says a category is no longer shown instead of pretending to list every category', async () => {
     const hiddenCategory = '0d6a3c1e-7f43-4c5b-9a1d-2b8e6f4c9a70';
     renderCatalog(`/shop?categoryId=${hiddenCategory}`, admin, () => Promise.resolve({ ...list, items: [], total: 0 }));
     expect(await screen.findByText('Danh mục này không còn hiển thị.')).toBeVisible();
-    expect(screen.getByRole('combobox', { name: 'Danh mục' })).toHaveDisplayValue('Danh mục không còn hiển thị');
     expect(screen.queryByText('Chưa có sản phẩm phù hợp bộ lọc hiện tại.')).not.toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: 'Xóa lọc' })[0]!); // at least one clear action is rendered
     expect(screen.getByTestId('url')).toHaveTextContent(/^\/shop$/);
@@ -201,7 +204,8 @@ describe('public shop catalog', () => {
   ])('guards $message from $path without calling the API', async ({ path, message, action }) => {
     const request = renderCatalog(path);
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
-    expect(request).not.toHaveBeenCalled();
+    // Only the product list is guarded; the store header still loads its category links.
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/^\/products/));
     await userEvent.click(screen.getByRole('button', { name: action }));
     expect(await screen.findByRole('listitem', { name: product.name })).toBeVisible();
   });

@@ -72,7 +72,7 @@ test('lists only published products of an active category, keyed by an impossibl
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveAccessibleName(newName);
   await expect(items.nth(1)).toHaveAccessibleName(oldName);
-  await expect(page.getByText('Tìm thấy 2 sản phẩm.', { exact: true })).toBeVisible();
+  await expect(page.getByText('2 sản phẩm', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: hiddenName })).toHaveCount(0);
   await expect(page.getByRole('link', { name: unlistedName })).toHaveCount(0);
   await expect(page.getByRole('link', { name: newName })).toHaveAttribute('href', `/products/${prefix}-moi`);
@@ -80,8 +80,9 @@ test('lists only published products of an active category, keyed by an impossibl
 
 test('combined URL filters survive a reload and clearing returns the default newest view', async ({ page }) => {
   await page.goto(`/shop?q=${encodeURIComponent(token)}&categoryId=${categoryId}&sort=price-asc`);
-  await expect(page.getByLabel('Tìm theo tên hoặc SKU')).toHaveValue(token);
-  await expect(page.getByLabel('Danh mục')).toHaveValue(categoryId);
+  await expect(page.getByRole('heading', { name: `Kết quả cho “${token}”`, level: 1 })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Lọc theo danh mục' }).getByRole('button', { name: 'Danh mục lưới công khai' }))
+    .toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Thứ tự sắp xếp')).toHaveValue('price-asc');
   await expect(gridItems(page)).toHaveCount(2);
   await expect(gridItems(page).nth(0)).toHaveAccessibleName(oldName);

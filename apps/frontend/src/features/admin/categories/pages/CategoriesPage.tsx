@@ -6,6 +6,7 @@ import { ApiError } from '../../../../shared/api/client';
 import { categoriesApi, type Category, type CategoryInput, type CategoryUpdateInput } from '../api/categories.api';
 import { CategoryForm } from '../components/CategoryForm';
 import { CategoryEditDialog } from '../components/CategoryEditDialog';
+import { SHOP_NAME, pageTitle } from '../../../../shared/shop';
 
 const categoriesKey = ['admin-categories'] as const;
 
@@ -42,9 +43,9 @@ export function CategoriesPage() {
   }
 
   return <Box sx={{ maxWidth: 1080, mx: 'auto', py: { xs: 4, md: 6 } }}>
-    <title>Danh mục | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Danh mục | Quản trị')}</title>
     <Button component={Link} to="/admin" variant="text" sx={{ mb: 2 }}>Về quản trị</Button>
-    <Typography variant="overline">CLOTHING SHOP / QUẢN TRỊ</Typography>
+    <Typography variant="overline">{SHOP_NAME.toUpperCase()} / QUẢN TRỊ</Typography>
     <Typography component="h1" variant="h3" sx={{ mt: 1, mb: 2 }}>Danh mục sản phẩm</Typography>
     <Typography color="text.secondary" sx={{ mb: 3 }}>Nhóm sản phẩm theo loại để khách dễ tìm và lọc.</Typography>
     {notice && <Alert severity="success" sx={{ mb: 3, overflowWrap: 'anywhere' }}>{notice}</Alert>}

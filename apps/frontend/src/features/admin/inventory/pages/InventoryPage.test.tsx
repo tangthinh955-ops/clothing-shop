@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { catalogApi } from '../../../catalog/api/catalog.api';
 import { App } from '../../../../app/App';
 import * as client from '../../../../shared/api/client';
 import { authApi, type User } from '../../../auth/api/auth.api';
@@ -25,6 +26,8 @@ function Navigation() {
 }
 
 function renderPage(path = '/admin/inventory', user: User | null = admin) {
+  // The store header loads category links on every page; these tests are not about them.
+  vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
   vi.spyOn(authApi, 'me').mockResolvedValue(user);
   const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={cache}>

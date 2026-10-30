@@ -64,7 +64,9 @@ test('register, verify, login, refresh session, reset and logout through the rea
   await expect(page.getByRole('heading', { name: 'Tài khoản của bạn' })).toBeVisible();
   await expect(page.getByText('Email đã được xác minh.', { exact: true })).toBeVisible();
   await page.goto('/shop');
-  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Tài khoản', exact: true })).toBeVisible();
+  // Shoppers order without an account: the store header offers no customer account link, signed in or not.
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Tất cả sản phẩm', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Tài khoản', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Tạo tài khoản', exact: true })).toHaveCount(0);
   await page.goto('/register');
   await expect(page).toHaveURL(`${base}/account`);
@@ -91,7 +93,8 @@ test('register, verify, login, refresh session, reset and logout through the rea
   await page.goto('/account');
   await expect(page).toHaveURL(`${base}/login`);
   await page.goto('/shop');
-  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Đăng nhập', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Tất cả sản phẩm', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Đăng nhập', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Tài khoản', exact: true })).toHaveCount(0);
 });
 

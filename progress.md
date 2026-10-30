@@ -2,6 +2,14 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 30/10/2026 — Git M4.1.2: đồng bộ main và push nhánh
+
+- Người dùng yêu cầu push nhánh hiện tại `feat/m4.0-foundation`. Đã tạo commit chức năng `f7c09c4` (`feat(settings): save shop configuration safely`), gồm M4.1.2 và bốn bản sửa review; kiểm tra đủ 26 file, không có env thật, dependency, mailbox hoặc artifact build trong commit.
+- Đồng bộ `origin/main` tại `5aa1747` để giữ giao diện storefront mới và bản sửa CI `1bce128`. Conflict duy nhất là `progress.md`: giữ đầy đủ các mục của hai bên; bỏ dòng `=======` thừa vốn đã có trên main. Không sửa nghiệp vụ mới trong bước Git.
+- Cài đúng lockfile bằng `npm ci --no-fund`: 512 package, audit 0 vulnerability; generate lại Prisma client. Không đổi Node toàn máy.
+- Kiểm tra lại **trên bản sau merge**: typecheck/build đạt; unit với `VITEST_MAX_WORKERS=2` đạt **10 tools + 32 backend + 255 frontend**; integration PostgreSQL thật **66/66**; E2E implemented **37/37** qua giao diện mới, gồm ba ca lưu Cài đặt/refresh/mobile, hai tab và ACL.
+- Các test Cài đặt vẫn dùng DB riêng, không sửa cấu hình nguồn; kiểm tra hash và cleanup trước khi hoàn tất Git. Merge/push chỉ nhắm nhánh feature theo yêu cầu, không deploy hoặc bắt đầu M4.2.1. CI của merge mới chưa có kết quả tại thời điểm ghi mục này.
+
 ## Ngày 30/10/2026 — M4.1.2: sửa 4 lỗi review
 
 **Phạm vi:** người dùng duyệt sửa 4 điểm review bằng "sửa đi": reload lỗi giữ bản nháp/command, khóa lưu với tải lại, kiểm tra response và cô lập DB test. Sửa trên phần M4.1.2 local có sẵn, không nhận phần triển khai ban đầu là thay đổi của lượt này. Chưa commit/push; chưa bắt đầu M4.2.1.
@@ -90,6 +98,18 @@ ADMIN sửa 6 trường → PATCH `/api/v1/admin/settings` kèm `Idempotency-Key
 | CI GitHub | Chưa chạy (chưa commit/push) |
 
 **Dừng sau M4.1.2 cho người dùng chạy thử theo [local-trial-m4.md M4.1.2](docs/local-trial-m4.md); M4.2.1 (giỏ hàng) chưa triển khai, cần kế hoạch riêng được duyệt.**
+
+## Ngày 30/10/2026 — Sửa CI M4.1.1 sau merge main
+
+- **Phạm vi:** người dùng yêu cầu sửa và push riêng lỗi test Cài đặt sau merge `ea002b4`; không đưa phần M4.1.2 đang làm dở vào commit. Bản sửa được làm trong checkout cách ly từ nhánh remote `feat/m4.0-foundation`.
+- **Nguyên nhân:** header mới gọi `catalogApi.categories()`, trong khi test Cài đặt mock mọi `request()` trả object cấu hình. Header nhận object thay vì mảng, gây `categories.map is not a function`; test loading còn tiêu thụ mock request của Cài đặt cho danh mục.
+- **File sửa:** `apps/frontend/src/features/admin/settings/pages/SettingsPage.test.tsx` thêm import và mock riêng `catalogApi.categories()` trả `[]` trong `renderPage()`; `progress.md` ghi kết quả. Không thay đổi hành vi ứng dụng.
+- **Data flow:** header/menu đọc danh mục từ mock riêng; các mock request của từng test chỉ phục vụ luồng Cài đặt, nên lỗi tải và retry được kiểm tra đúng API.
+- **RED:** chạy spec Cài đặt trên đúng checkout merge trước sửa: 4 failed, 2 passed và 3 lỗi chưa xử lý `categories.map is not a function`.
+- **GREEN:** chạy `node <repo>/node_modules/vitest/vitest.mjs run --config vite.config.ts --maxWorkers=2` tại `apps/frontend`: **23 file, 219/219 test đạt**, không có lỗi chưa xử lý.
+- **Typecheck:** chạy `node <repo>/node_modules/typescript/bin/tsc --noEmit` tại `apps/frontend`: exit 0. `git diff --check`: đạt.
+- **Giới hạn:** không chạy lại build/backend/integration/E2E local vì bản sửa chỉ thay mock unit/UI; CI đầy đủ sẽ chạy khi push. Chưa có kết quả CI cho commit bản sửa tại thời điểm ghi mục này.
+- **Key:** mock riêng ở ranh giới `catalogApi.categories` giữ kiểu dữ liệu mảng và không làm lệch thứ tự/số lần mock request của Cài đặt. Dừng sau bản sửa CI; M4.1.2 giữ nguyên ngoài commit.
 
 ## Ngày 30/10/2026 — M4.1.1: admin xem Cài đặt (chỉ đọc)
 
@@ -270,6 +290,140 @@ Danh sách đúng kế hoạch được duyệt. Không sửa source/backend/fro
 Đã rà nội dung/phụ thuộc, mã phần và liên kết: implementation có33 phần nhỏ, local có đúng33 phần tương ứng, không thiếu/trùng mã; các liên kết file trong5 tài liệu hợp lệ. Thứ tự thực hiện bao phủ đủ33 phần và đi sau các phụ thuộc cụ thể; `git diff --check` exit0, UTF-8 hợp lệ và không có conflict marker. Git xác nhận chỉ5 file Markdown, index rỗng. Không chạy typecheck/build/unit/integration/E2E vì chỉ sửa Markdown, không nhận kết quả các lượt M3 trước là kết quả của lượt này.
 
 **M4 mới hoàn tất bước lập kế hoạch; chưa có chức năng M4 để thử.** Người dùng đọc hai tài liệu, phản hồi; bước tiếp theo đề xuất là gửi kế hoạch chi tiết M4.0.1 để duyệt, không tự triển khai. Trạng thái production/M3 giữ theo các mục riêng bên dưới.
+
+## Ngày 30/10/2026 — UI.4: trang chi tiết sản phẩm
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch UI.4 ("oke"). Làm tiếp trên nhánh `feat/ui.1-storefront-shell` (UI.1–UI.4 chưa commit). Xong UI.4 là xong lộ trình UI.0–UI.4. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.tsx` | Chỉ còn trạng thái tải/lỗi/không tìm thấy và `ProductView`: đường dẫn "Tất cả sản phẩm › danh mục", lưới ảnh + khung thông tin dính khi cuộn (máy tính), giá, tồn, chọn biến thể, nút đặt, mô tả, chính sách |
+| `features/catalog/components/ProductGallery.tsx` (mới) | Một khối ảnh: máy tính lưới 2 cột tất cả ảnh, điện thoại vuốt ngang có số "1 / N"; alt "Ảnh i của …"; bỏ hàng ảnh nhỏ |
+| `features/catalog/components/VariantPicker.tsx` (mới) | Chọn màu (màu đầu chọn sẵn) rồi size của màu đó, xếp XS→3XL; size hết hàng gạch ngang, tên đọc "M, hết hàng"; link "Bảng size". Đổi màu thì bỏ size đã chọn để tồn/giá không thuộc biến thể sai |
+| `features/catalog/components/OrderByMessage.tsx` (mới) | Nút "Nhắn shop qua Instagram để đặt" (tab mới, `noopener noreferrer`) + "Mã sản phẩm: SKU" khi đã chọn đủ |
+| `features/catalog/components/ProductPolicies.tsx` (mới) | Mục gập Giao hàng, Đổi & trả đọc từ `features/information/content/policies.ts` (không chép lại nội dung) + link xem đầy đủ |
+| `features/catalog/catalogFormat.ts` (mới) | `formatMoney`, `priceLabel` ("Từ …" chỉ khi giá khác nhau), `sortSizes` — dùng chung cho card và trang chi tiết (chuyển từ `ProductCard.tsx`) |
+| `shared/ui/icons.tsx` | Thêm `ExpandIcon` cho mục gập |
+| Test | `ProductDetailPage.test.tsx` viết lại 8 ca (ảnh đánh số, màu chọn sẵn/size theo màu, giá–tồn–SKU, đổi màu bỏ size, size hết hàng, nút Instagram, mục gập chính sách), giữ 4 ca lỗi/không tìm thấy/đang tải/không ảnh; E2E `catalog-detail.spec.ts`, `catalog.spec.ts` (chọn size), `products.spec.ts` (giá một mức) |
+
+**TDD:** 8 ca RED (chưa có ảnh đánh số, chọn màu/size, SKU, nút Instagram, mục gập) → GREEN 12/12.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 13 backend + 211 frontend |
+| `npm run test:integration` | 38/38 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (44.6s); lượt đầu 33/34 vì `catalog.spec.ts` còn bấm nút "M · đen" cũ — đã sửa sang chọn size |
+| Chụp màn hình Playwright 390px và 1440px (trước/sau chọn size, mở mục Giao hàng) | Không tràn ngang |
+
+**Giới hạn:** đặt hàng vẫn qua Instagram cho tới M4 (giỏ hàng); ảnh chưa phóng to khi bấm; không có bảng size riêng theo sản phẩm (trang Bảng size chung). **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § UI.4. **Dừng chờ người dùng thử.**
+
+## Ngày 30/10/2026 — UI.3: lưới và bộ lọc trang `/shop`
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch UI.3 ("oke"), gồm bỏ bảng lọc trượt trên điện thoại vì chỉ có 2 bộ lọc (danh mục, sắp xếp). Làm tiếp trên nhánh `feat/ui.1-storefront-shell` (UI.1–UI.3 chưa commit). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/pages/CatalogPage.tsx` | Còn 77 dòng: tiêu đề động ("Tất cả sản phẩm" / tên danh mục / "Kết quả cho “…”", cả tiêu đề tab), thanh lọc, lưới 2/3/4 cột, phân trang giữa; bỏ dòng "EVERYDAY ESSENTIALS", đoạn mô tả kỹ thuật và ô tìm riêng (header đã có) |
+| `features/catalog/hooks/useCatalogFilters.ts` (mới) | Đọc/kiểm tra/đổi `q`, `page`, `sort`, `categoryId` trên URL, tách nguyên từ page cũ (cùng quy tắc kiểm tra) |
+| `features/catalog/components/CatalogToolbar.tsx` (mới) | Nhóm nút danh mục bo tròn (`aria-pressed`, điện thoại vuốt ngang); số sản phẩm; nhãn "Tìm: “…” ✕" khi đang tìm; "Xóa lọc"; ô "Thứ tự sắp xếp" gọn; báo khi không tải được danh mục |
+| `features/catalog/components/ProductCard.tsx` | Máy có chuột rê lên card thì hiện ảnh thứ 2 (ảnh trang trí `alt=""`, không đọc hai lần); màn cảm ứng giữ ảnh bìa |
+| Test | `CatalogPage.test.tsx`: lọc bằng nút danh mục (giữ sắp xếp, về trang 1, đổi tiêu đề), xóa tìm kiếm bằng ✕ và Back khôi phục, đọc bộ lọc từ URL qua tiêu đề/nút đang chọn; `ProductCard.test.tsx` +2 (ảnh thứ 2); `StoreLayout.test` tiêu đề sau khi tìm; E2E `catalog-list.spec.ts` theo tiêu đề/nút/số sản phẩm mới |
+
+**TDD:** 6 test RED (tiêu đề động, nút danh mục, nhãn tìm kiếm, ảnh thứ 2) → GREEN. Các test cũ về sắp xếp, phân trang giữ lưới, URL sai, danh mục đã tắt, lỗi/thử lại giữ nguyên và đạt.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 13 backend + 209 frontend |
+| `npm run test:integration` | 38/38 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (44.3s) |
+| Chụp màn hình Playwright 390px và 1440px (mặc định, lọc danh mục, tìm kiếm, rê chuột) | Không tràn ngang; ảnh chụp phát hiện nút danh mục chưa bo tròn (số `999` bị nhân với bo góc 0 của theme) và hàng nút thụt lề trên điện thoại (Stack ghi đè margin) — đã sửa và chụp lại |
+
+**Giới hạn:** tìm từ header thay bộ lọc hiện tại bằng đúng từ khóa (không giữ danh mục/sắp xếp đang chọn); trang chi tiết chưa đổi (UI.4). **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § UI.3. **Dừng chờ người dùng thử.**
+
+## Ngày 29/10/2026 — UI.2: trang chủ `/`
+
+**Phạm vi đã duyệt:** người dùng xem UI.1 ("oke") rồi duyệt kế hoạch UI.2 ("oke làm tiếp đi"). Làm tiếp trên nhánh `feat/ui.1-storefront-shell` (UI.1 chưa commit; PR #17 đã CLEAN, chờ người dùng merge). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/catalog/pages/HomePage.tsx` (mới) | Trang chủ: banner, dải danh mục, lưới 8 hàng mới + "Xem tất cả sản phẩm"; trạng thái đang tải, lỗi có "Tải lại", rỗng có link Instagram; tiêu đề tab "RMG Labels" |
+| `features/catalog/components/HomeHero.tsx` (mới) | Banner: ảnh đầu của sản phẩm mới nhất có ảnh (bấm vào mở sản phẩm), khối đen "Bộ sưu tập mới" + nút "Xem bộ sưu tập"; chưa có hàng thì chỉ còn khối chữ. Câu chữ chỉ nêu sự thật đã có trong chính sách, không tự đặt slogan |
+| `features/catalog/components/CategoryStrip.tsx` (mới) | Ô danh mục có mũi tên; điện thoại vuốt ngang, máy tính lưới 4 cột |
+| `features/catalog/components/ProductCard.tsx` (mới) | Card dùng chung: ảnh 3:4 nền xám nhạt (phóng nhẹ khi rê chuột), danh mục, tên (link phủ cả card), giá đậm — "Từ …" chỉ khi các biến thể đang bật có giá khác nhau, dải size theo thứ tự XS→3XL và số màu |
+| `features/catalog/hooks/useCatalogCategories.ts` | Chuyển từ `layouts/store/useStoreCategories.ts` vì trang chủ cũng dùng; header/menu/footer import chỗ mới |
+| `features/catalog/api/catalog.api.ts` | Thêm `catalogHomeKey` |
+| `features/catalog/pages/CatalogPage.tsx` | Bỏ card cũ, dùng `ProductCard` (lưới/bộ lọc giữ nguyên tới UI.3) |
+| `app/App.tsx`, `layouts/store/StoreHeader.tsx` | `/` hiển thị trang chủ thay vì chuyển sang `/shop`; logo dẫn về `/` |
+| Test | Mới `ProductCard.test.tsx` (4), `HomePage.test.tsx` (5); `StoreLayout.test` logo → `/`; `CatalogPage.test` giá một mức không còn chữ "Giá từ" |
+
+**TDD:** 9 test mới + 2 test sửa RED (chưa có card/trang chủ, logo vẫn `/shop`, card ghi "Giá từ") → GREEN.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 13 backend + 207 frontend |
+| `npm run test:integration` | 38/38 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (45.2s) |
+| Chụp màn hình Playwright 390px và 1440px (`/`, `/shop`) | Không tràn ngang; banner, dải danh mục, lưới hàng mới hiển thị đúng dữ liệu local |
+
+**Giới hạn:** `/shop` vẫn lưới 1 cột trên điện thoại và bộ lọc cũ (UI.3); trang chi tiết chưa đổi (UI.4); chưa có nhãn "Mới" vì API chưa trả ngày đăng. **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § UI.2. **Dừng chờ người dùng thử.**
+
+## Ngày 29/10/2026 — UI.1: khung cửa hàng mới (theme, header, footer)
+
+**Phạm vi đã duyệt:** người dùng duyệt lộ trình UI.0–UI.4 (tham khảo cách trình bày của Uniqlo, không dùng nhận diện của họ) cùng 4 lựa chọn: đen/trắng + một màu nhấn, logo chữ, font `@fontsource/be-vietnam-pro` tự host, nút "Nhắn shop qua Instagram" ở UI.4; sau đó duyệt kế hoạch chi tiết UI.1 ("oke"). **UI.0:** merge `main` vào `feat/m3.15-real-storefront` (giữ cả mục M3.15 và M3.16 trong `progress.md`, `docs/local-trial-m3.md`), kiểm tra lại đạt (unit 8 + 13 + 193, integration 38/38, E2E 34/34), push; PR #17 hết xung đột, chờ CI và merge. **UI.1:** nhánh `feat/ui.1-storefront-shell` tách từ nhánh M3.15 vì PR #17 chưa merge; chỉ mở PR sau khi M3.15 vào `main`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/package.json`, `package-lock.json` | Thêm `@fontsource/be-vietnam-pro@5.3.0` (bản cố định) |
+| `apps/frontend/src/main.tsx` | Nạp font tự host, chỉ bộ chữ tiếng Việt + Latin, độ đậm 400/500/700 (6 file woff2, mỗi file 11–22 kB) |
+| `apps/frontend/src/theme/theme.ts` | Nền trắng, chữ `#111`, màu nhấn `#b42318` (khai báo sẵn cho nhãn "Mới"), bo góc 0, tiêu đề đậm không chân; `Paper elevation={0}` có viền mảnh để các khung admin không chìm trên nền trắng |
+| `apps/frontend/src/layouts/StoreLayout.tsx` | Chỉ ghép dải thông báo, header, nội dung và footer |
+| `apps/frontend/src/layouts/store/` (mới) | `AnnouncementBar` (dải đen "Giao hàng toàn quốc · Phí 30.000đ · Kiểm hàng khi nhận"); `StoreHeader` (dính khi cuộn, nav danh mục trên máy tính có gạch chân mục đang xem, nút ☰, nút "Mở ô tìm kiếm", link Quản trị cho admin); `HeaderSearch` (ô tìm, Enter → `/shop?q=…`, Esc đóng); `MobileMenu` (menu trượt: danh mục + hỗ trợ khách hàng, bấm link thì đóng); `StoreFooter` (3 cột: người bán, Hỗ trợ khách hàng, Mua sắm); `useStoreCategories` (dùng chung cache `catalogCategoriesKey`); `storeLinks` |
+| `apps/frontend/src/shared/ui/icons.tsx` (mới) | 3 biểu tượng nét (menu, tìm, đóng) bằng `SvgIcon`, không thêm `@mui/icons-material` |
+| `CatalogPage.tsx`, `ProductDetailPage.tsx`, `AuthLayout.tsx` | Bỏ font Georgia đặt cứng để dùng font theme; nút "Tìm kiếm" của `/shop` không xuống dòng với font mới |
+| Test | `StoreLayout.test.tsx` +5 (dải thông báo, cột Mua sắm, menu điện thoại mở/đóng bằng Esc và khi bấm link, tìm kiếm từ trang bất kỳ), 3 test cũ kiểm tra trong `banner` thay vì nav; 5 file test admin/App stub `catalogApi.categories` vì header gọi thêm `/categories`; `CatalogPage.test` chỉ kiểm tra không gọi API sản phẩm khi URL sai; E2E `auth.spec.ts` dùng tên link mới "Tất cả sản phẩm" |
+| `docs/plan.md`, `docs/local-trial-m3.md` | Thêm UI.0–UI.4 vào lộ trình; mục chạy thử UI.1 |
+
+**TDD:** 5 test mới RED (chưa có dải thông báo, menu, ô tìm kiếm, cột Mua sắm) → GREEN 8/8. E2E bắt được hai nút cùng tên "Tìm kiếm" (header và trang kho) → đổi nút header thành "Mở ô tìm kiếm".
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt (cảnh báo chunk >500 kB như trước) |
+| `npm test` | 8 công cụ + 13 backend + 198 frontend |
+| `npm run test:integration` | 38/38 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (44.1s) |
+| Chụp màn hình Playwright 390px và 1440px (`/shop`, `/shipping`, menu, ô tìm kiếm, footer) | Không tràn ngang (`scrollWidth − innerWidth = 0`), font Be Vietnam Pro đã nạp, header dính khi cuộn |
+
+**Giới hạn:** trang chủ `/`, card sản phẩm/bộ lọc `/shop` và trang chi tiết chưa đổi bố cục (UI.2–UI.4); logo vẫn trỏ `/shop` cho tới khi có trang chủ. **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § UI.1. **Dừng chờ người dùng thử.**
+
+## Ngày 29/10/2026 — M3.15: cửa hàng mang thông tin thật, bỏ dấu vết demo
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M3.15 ("oke"): tên shop **RMG Labels**, người bán cá nhân ở TP. Hồ Chí Minh, Instagram @rmglabels, nội dung chính sách theo đề xuất (đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; giao toàn quốc 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; COD/VietQR hạn 2 giờ; bảo mật dữ liệu). SĐT/Zalo, email chưa có nên không hiển thị (không điền giả). Nhánh `feat/m3.15-real-storefront` từ `main`. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/shared/shop.ts` (mới) | `SHOP_NAME`, `seller` (tên, người bán, khu vực, Instagram; phone/email null) và `pageTitle()`. Đặt ở `shared` thay vì `features/information/content/shop.ts` như kế hoạch vì trang admin và layout cùng dùng, tránh import chéo feature |
+| `apps/frontend/src/features/information/content/policies.ts`, `pages/PolicyPage.tsx` | Chính sách chia mục; nội dung thật cho Giao hàng, Đổi & trả, Liên hệ (lấy từ `seller`, chỉ hiện kênh đã có); thêm `/payment` và `/privacy` |
+| `apps/frontend/src/layouts/StoreLayout.tsx` | Bỏ banner/dòng demo; tên RMG LABELS; header không còn Đăng nhập/Tài khoản của khách (admin vẫn thấy Quản trị); chân trang có người bán, Instagram và 5 link chính sách |
+| `layouts/AuthLayout.tsx`, `features/auth/pages/AuthPage.tsx` | Tên shop; trang đăng nhập bỏ link "Đăng ký" (route `/register` giữ nguyên, không còn link tới) |
+| 10 trang khác (`AccountPage`, `AdminPage`, `CategoriesPage`, `InventoryPage`, 3 trang sản phẩm admin, `CatalogPage`, `ProductDetailPage`), `index.html` | Tiêu đề/thương hiệu dùng `pageTitle`/`SHOP_NAME` thay "Clothing Shop"; meta mô tả không tự thêm định vị thương hiệu |
+| `apps/backend/src/cli/seed-demo.ts` | `NODE_ENV=production` → báo lỗi và thoát trước khi đọc cấu hình hay kết nối DB |
+| Test | Mới `StoreLayout.test.tsx` (3), `PolicyPage.test.tsx` (5); `App.test.tsx` +1; `seed-demo.integration.spec.ts` +1; E2E `auth.spec.ts` theo header mới |
+| `README.md`, `docs/local-trial-m3.md` | Mục M3.15; `seed:demo` từ chối production |
+
+**TDD:** 8 test UI RED (còn banner demo, tên cũ, link đăng nhập/đăng ký, chưa có trang thanh toán/bảo mật) → GREEN 20/20. Seed: RED vì lệnh chỉ dừng tình cờ do cấu hình test không hợp lệ cho production (cấu hình production thật sẽ nhập demo) → GREEN sau chặn có chủ đích.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` | 8 công cụ + 9 backend + 193 frontend |
+| `npm run test:integration` | 36/36 |
+| `npm run test:e2e:implemented` (DB `_test`) | 34/34 (42.8s) |
+
+**Còn trước mở bán:** SĐT/Zalo và email của shop (sửa `shared/shop.ts`); thủ tục website bán hàng với Bộ Công Thương do chủ shop làm. **Chạy thử:** [docs/local-trial-m3.md](docs/local-trial-m3.md) § M3.15. **Dừng chờ người dùng thử.**
+
 
 ## Ngày 29/10/2026 — Chốt Git M3.16 và M3.16.1
 
