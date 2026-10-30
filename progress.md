@@ -2,6 +2,18 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 30/10/2026 — Sửa CI M4.1.1 sau merge main
+
+- **Phạm vi:** người dùng yêu cầu sửa và push riêng lỗi test Cài đặt sau merge `ea002b4`; không đưa phần M4.1.2 đang làm dở vào commit. Bản sửa được làm trong checkout cách ly từ nhánh remote `feat/m4.0-foundation`.
+- **Nguyên nhân:** header mới gọi `catalogApi.categories()`, trong khi test Cài đặt mock mọi `request()` trả object cấu hình. Header nhận object thay vì mảng, gây `categories.map is not a function`; test loading còn tiêu thụ mock request của Cài đặt cho danh mục.
+- **File sửa:** `apps/frontend/src/features/admin/settings/pages/SettingsPage.test.tsx` thêm import và mock riêng `catalogApi.categories()` trả `[]` trong `renderPage()`; `progress.md` ghi kết quả. Không thay đổi hành vi ứng dụng.
+- **Data flow:** header/menu đọc danh mục từ mock riêng; các mock request của từng test chỉ phục vụ luồng Cài đặt, nên lỗi tải và retry được kiểm tra đúng API.
+- **RED:** chạy spec Cài đặt trên đúng checkout merge trước sửa: 4 failed, 2 passed và 3 lỗi chưa xử lý `categories.map is not a function`.
+- **GREEN:** chạy `node <repo>/node_modules/vitest/vitest.mjs run --config vite.config.ts --maxWorkers=2` tại `apps/frontend`: **23 file, 219/219 test đạt**, không có lỗi chưa xử lý.
+- **Typecheck:** chạy `node <repo>/node_modules/typescript/bin/tsc --noEmit` tại `apps/frontend`: exit 0. `git diff --check`: đạt.
+- **Giới hạn:** không chạy lại build/backend/integration/E2E local vì bản sửa chỉ thay mock unit/UI; CI đầy đủ sẽ chạy khi push. Chưa có kết quả CI cho commit bản sửa tại thời điểm ghi mục này.
+- **Key:** mock riêng ở ranh giới `catalogApi.categories` giữ kiểu dữ liệu mảng và không làm lệch thứ tự/số lần mock request của Cài đặt. Dừng sau bản sửa CI; M4.1.2 giữ nguyên ngoài commit.
+
 ## Ngày 30/10/2026 — M4.1.1: admin xem Cài đặt (chỉ đọc)
 
 **Phạm vi được duyệt:** kế hoạch M4.1.1 gửi trong chat (ADMIN xem `/admin/settings` chỉ đọc; public allowlist hai trường; không PATCH/expectedVersion — thuộc M4.1.2). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**

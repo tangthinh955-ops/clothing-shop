@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../../app/App';
 import { authApi, type User } from '../../../auth/api/auth.api';
+import { catalogApi } from '../../../catalog/api/catalog.api';
 import * as client from '../../../../shared/api/client';
 
 const admin: User = { id: 'settings-admin', name: 'Admin', email: 'settings@example.test', role: 'ADMIN', emailVerified: true };
@@ -17,6 +18,7 @@ const feePattern = /45\.000/;
 afterEach(() => vi.restoreAllMocks());
 
 function renderPage(user: User | null = admin) {
+  vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
   vi.spyOn(authApi, 'me').mockResolvedValue(user);
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter initialEntries={['/admin/settings']}><App /></MemoryRouter>
