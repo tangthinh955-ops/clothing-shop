@@ -73,7 +73,7 @@ Lịch sử kho và lịch sử đơn lưu `actorType` + `actorId` nullable; res
 
 ## 7. Idempotency
 
-- Scope do **server** đặt theo nghiệp vụ: `orders.create`, `orders.cancel`, `orders.transition:<action>`, `payments.receipt` (M4.6). Identity do server xác định (mục 6), key từ header `Idempotency-Key` do client gửi, server kiểm tra định dạng.
+- Scope do **server** đặt theo nghiệp vụ: `orders.create`, `orders.cancel`, `orders.transition:<action>`, `settings.update` (M4.1.2), `payments.receipt` (M4.6). Identity do server xác định (mục 6), key từ header `Idempotency-Key` do client gửi, server kiểm tra định dạng.
 - **Canonical hash:** SHA-256 của biểu diễn chuẩn `{scope, items sắp theo variantId tăng dần, số điện thoại đã chuẩn hóa, các trường nghiệp vụ theo thứ tự cố định}`; hash lưu cùng record.
 - Cùng scope+identity+key + cùng hash → trả lại resource/response đã lưu, **không** chạy lại hiệu ứng. Khác hash → **409**. Record (kèm response) commit **cùng** transaction với nghiệp vụ; bản ghi chỉ có sau khi commit thành công.
 - Mất response: frontend giữ nguyên command (key + body) trong memory đến khi biết kết quả và cho truy lại bằng cùng key/body; không tự tạo key mới, không tự retry mutation ngoài cơ chế này.
@@ -106,6 +106,6 @@ Lịch sử kho và lịch sử đơn lưu `actorType` + `actorId` nullable; res
 ## 11. Chưa chốt trong văn bản này
 
 - Chính sách hoàn khi giao thất bại (tiền hàng/phí giao) — chủ shop xác nhận trong kế hoạch M4.9.2 trước khi code.
-- Cách nhập/quản lý tài khoản ngân hàng ở Cài đặt — chốt ở M4.1.2.
+- ~~Cách nhập/quản lý tài khoản ngân hàng ở Cài đặt~~ — **đã chốt (M4.1.2):** nhập tay 4 trường, dùng đủ hoặc trống toàn bộ; không thêm dataset ngân hàng.
 - Nội dung chi tiết VietQR khi thanh toán một phần/quá hạn/đã hủy — chốt ở M4.6.1.
 - Endpoint ghi chú admin — chốt trước M4.5.2.
