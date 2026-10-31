@@ -95,7 +95,7 @@ Nếu `nginx -t` lỗi thì phục hồi file vừa thay và không reload. Khô
 
 ## Cập nhật, rollback và giới hạn
 
-Release tiếp theo build image với tag mới, chạy migration đã review, đổi `RMG_RELEASE` trong file riêng và khởi động API/web từ release mới. Chỉ chuyển `/srv/rmg-shop/current` sau khi các dịch vụ healthy. Nếu lỗi ứng dụng và schema tương thích, chọn lại release/tag cũ và chạy `up -d --wait api web`; giữ nguyên database, ảnh và secret. Không tự rollback schema/data; migration không tương thích cần phương án riêng và backup trước khi áp dụng.
+Release tiếp theo build image với tag mới, chạy migration đã review, đổi `RMG_RELEASE` trong file riêng và khởi động API/web từ release mới. Chỉ chuyển `/srv/rmg-shop/current` sau khi các dịch vụ healthy. Nếu lỗi ứng dụng và schema tương thích, chọn lại release/tag cũ và chạy `up -d --wait api web`; giữ nguyên database, ảnh và secret. **Đã diễn tập 31/10/2026 (M6.1.3):** rollback về `m4-2-20261031-1410-899b52c` rồi roll-forward về `ci-20261031-1218-6d35c3d` bằng đúng script — mỗi pha ~35 giây, DB/ảnh/secret không đổi, share endpoint biến mất/khôi phục đúng lúc (bằng chứng ở progress.md). Không tự rollback schema/data; migration không tương thích cần phương án riêng và backup trước khi áp dụng.
 
 M3.16.1 chưa bao gồm nhập dữ liệu shop, backup ngoài VPS/diễn tập khôi phục (M6.2), cảnh báo downtime (M6.3), bảo vệ admin M3.17 hoặc luồng đơn hàng M4. Không kết luận sẵn sàng mở bán chỉ từ healthcheck xanh. Cấu hình Resend hiện chỉ hỗ trợ gửi thử; gửi cho khách cần domain gửi được xác minh.
 

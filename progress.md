@@ -2,6 +2,26 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M6.1.3: diễn tập rollback trên production
+
+**Phạm vi đã duyệt:** bảng kế hoạch M6.1.3 trong chat ("oke"): rollback có chủ đích về release trước rồi roll-forward lại, không thay đổi code. **Đã diễn tập và xác minh đủ 3 pha; M6.1 hoàn tất 3/3 phần.**
+
+- Pha rollback: `deploy-release.sh` với release `m4-2-20261031-1410-899b52c` — 6/6 bước đạt trong ~34 giây (layer cache); `current` + `RMG_RELEASE` trả về release cũ; health 200, `/shop` 200, **5 sản phẩm còn nguyên**; share preview trả **404** — chứng minh thật sự đang chạy bản cũ thiếu M7.1.1.
+- Pha roll-forward: script với release `ci-20261031-1218-6d35c3d` — 6/6 bước đạt ~32 giây; `current` + `RMG_RELEASE` trở lại; health 200, `/shop` 200, 5 sản phẩm, share preview **200 + og:image** khôi phục.
+- Container DB giữ nguyên cả hai pha; volume/ảnh/secret không đụng tới; downtime mỗi pha chỉ vài giây lúc recreate (shop chưa mở bán). Rollback tự động của script không kích hoạt có chủ ý — dùng cùng bộ lệnh với rollback tay đã diễn tập (rủi ro khi cố phá health trên production không đáng).
+
+| Pha | Lệnh | current/RMG_RELEASE | health | shop | products | share preview |
+|---|---|---|---|---|---|---|
+| Trước diễn tập | — | ci-20261031-1218-6d35c3d | 200 | 200 | 5 | 200 |
+| Sau rollback | script + release cũ | m4-2-20261031-1410-899b52c | 200 | 200 | 5 | **404** |
+| Sau roll-forward | script + release mới | ci-20261031-1218-6d35c3d | 200 | 200 | 5 | **200** |
+
+**Key:** rollback = chạy lại script với thư mục release cũ (không lệnh đặc biệt nào khác); schema không rollback — migration giữ nguyên, app cũ vẫn chạy vì schema tương thích xuôi; `current`/`RMG_RELEASE` — hai con trỏ phải luôn khớp nhau.
+
+**Chạy thử:** người dùng không cần làm gì — trang [cửa hàng](https://rmglabels.duckdns.org/shop) vẫn chạy bình thường. Khi có sự cố thật: chạy `bash /srv/rmg-shop/releases/<tag-tốt>/deploy/deploy-release.sh /srv/rmg-shop/releases/<tag-tốt>`.
+
+**Còn lại:** M6.1 chốt phía Người A; còn M6.1.3 không có phần code — các giới hạn M6.2 (backup ngoài VPS, cấp bách vì dữ liệu thật) và M6.3 (bảo vệ VPS/báo động) thuộc Người B; M7.1.2 E2E mobile tiếp theo khi người dùng yêu cầu.
+
 ## Ngày 31/10/2026 — M6.1.2: lượt deploy đầu qua GitHub Actions
 
 **Phạm vi đã duyệt:** kế hoạch M6.1.2 (workflow bấm-chạy, gate CI, key riêng cho CI). Người dùng merge PR #22 (workflow + secret `DEPLOY_SSH_KEY` đã set, host key ghim `deploy/ci-known-hosts`) và PR #23 (M7.1.1); CI của `main` `6d35c3d` xanh → chạy workflow **Deploy production** lần đầu (run [41200471146](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41200471146), ref=main). **Đã deploy và agent đã kiểm tra; chờ người dùng thử card Zalo.**
