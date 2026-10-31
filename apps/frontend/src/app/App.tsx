@@ -3,6 +3,7 @@ import { CartProvider } from '../features/cart/CartProvider';
 import { CartPage } from '../features/cart/pages/CartPage';
 import { CheckoutPage } from '../features/checkout/pages/CheckoutPage';
 import { OrderSubmissionProvider } from '../features/checkout/OrderSubmissionProvider';
+import { OrderDetailPage } from '../features/orders/pages/OrderDetailPage';
 import { StoreLayout } from '../layouts/StoreLayout';
 import { AuthPage } from '../features/auth/pages/AuthPage';
 import { VerifyPage } from '../features/auth/pages/VerifyPage';
@@ -33,6 +34,8 @@ export function App() {
         <Route path="products/:slug" element={<ProductDetailPage />} />
         <Route path="cart" element={<CartPage />} />
         <Route path="checkout" element={<CheckoutPage />} />
+        {/* /orders/:code is the guest access route: the fragment token is read by the page itself. */}
+        <Route path="orders/:code" element={<OrderDetailPage />} />
         <Route path="login" element={<AuthPage key="login" mode="login" />} />
         <Route path="register" element={<AuthPage key="register" mode="register" />} />
         <Route path="forgot-password" element={<AuthPage key="forgot" mode="forgot" />} />
