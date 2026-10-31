@@ -18,6 +18,30 @@ Workflow `Deploy production` (`.github/workflows/deploy.yml`) chạy bằng nút
 
 Bí mật: `DEPLOY_SSH_KEY` là private key **ed25519 riêng cho CI** (không phải key cá nhân của ai), public key nằm trong `authorized_keys` của VPS. Host key của VPS ghim công khai trong `deploy/ci-known-hosts` — VPS đổi key/host thì phải sửa file này qua PR. Xoá secret trên GitHub là thu hồi quyền deploy ngay lập tức; xoá dòng public key trên VPS cũng vậy.
 
+## Backup và khôi phục (từ M6.2)
+
+`deploy/backup.sh` (bản cài ổn định tại `/srv/rmg-shop/bin/backup.sh` — **nhớ cập nhật bản này khi script trong repo đổi**) chạy cron **03:00 hằng ngày** trên VPS: `pg_dump -Fc` DB production qua container + `tar` thư mục uploads + `SHA256SUMS` vào `/var/backups/rmg-shop/<ngày-giờ>/` (thư mục `0700`, file `0600`), giữ **7 bản** mới nhất, log `/var/log/rmg-shop-backup.log`. Chạy tay ngay khi muốn: `bash /srv/rmg-shop/bin/backup.sh`.
+
+Bản sao **ngoài VPS** (thông lệ — làm lại sau mỗi lần có dữ liệu mới quan trọng):
+
+```sh
+STAMP=$(ssh masoi 'ls -1 /var/backups/rmg-shop | grep -v lock | tail -1')
+mkdir -p .local/backups/$STAMP
+scp "masoi:/var/backups/rmg-shop/$STAMP/*" .local/backups/$STAMP/
+cd .local/backups/$STAMP && sha256sum -c SHA256SUMS
+```
+
+Khôi phục (diễn tập đã chứng minh 31/10/2026) — **luôn tạo DB mới, không bao giờ restore đè production**:
+
+```sh
+ssh masoi 'docker exec rmg-shop-db-1 createdb -U postgres rmg_shop_restore_drill'
+ssh masoi 'cat /var/backups/rmg-shop/<stamp>/database.dump | docker exec -i rmg-shop-db-1 pg_restore -U postgres -d rmg_shop_restore_drill'
+# pg_restore KHÔNG dùng --no-owner: ownership trả về role rmg_shop, role ứng dụng đọc được ngay.
+ssh masoi 'docker exec rmg-shop-db-1 dropdb -U postgres rmg_shop_restore_drill'   # sau khi kiểm tra xong
+```
+
+Ảnh khôi phục bằng giải nén `uploads.tar.gz` về `/var/lib/rmg-shop/uploads/` (chỉ khi cần thật). Bằng chứng diễn tập: 9 bảng khớp số hàng nguồn, `_prisma_migrations` 3/3 applied, `migrate status` báo "Database schema is up to date!" trên DB drill — chi tiết ở progress.md.
+
 ## Phạm vi và bố cục
 
 Domain `rmglabels.duckdns.org` trỏ tới VPS Ubuntu 24.04. nginx trên host kết thúc HTTPS, phục vụ thử thách ACME và chuyển `/api/` tới `127.0.0.1:4200`, đường dẫn còn lại tới `127.0.0.1:4180`. Container web phục vụ SPA và deep link; container API chạy Node 24.22.1 bằng user `node`. PostgreSQL 18.6 nằm trên mạng Docker riêng, không publish cổng.
