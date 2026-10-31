@@ -8,7 +8,7 @@ Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (qu
 
 Điểm dừng hiện tại: M3.16.1 đã deploy catalog/API tại [rmglabels.duckdns.org/shop](https://rmglabels.duckdns.org/shop), kiểm tra HTTPS/proxy, restart/persistence và gia hạn chứng chỉ đạt; chờ người dùng chạy thử. Database VPS mới chưa có sản phẩm hoặc admin; source deploy chưa gồm M3.15 nên UI còn nhãn demo. Xem [hướng dẫn deploy](docs/deployment-guide.md), [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn tài khoản M2](docs/local-trial-m2.md).
 
-**Chưa mở bán:** chưa có giỏ hàng/đặt hàng (M4), backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
+**Chưa mở bán:** giỏ hàng M4.2.1 và báo giá server M4.2.2 đã viết trên nhánh phát triển, còn chờ kiểm tra/nghiệm thu; chưa có đặt hàng, backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
 ## Tài liệu
 

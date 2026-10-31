@@ -41,7 +41,7 @@
 
 ## 3. Bảng chia phần và phụ thuộc
 
-**Tất cả các dòng hiện CHƯA TRIỂN KHAI.** Cột chạy thử là tiêu chí dự kiến, không phải kết quả pass. Tên URL/API xem mục4; hướng dẫn thao tác chi tiết cùng mã ở tài liệu local.
+Tình trạng từng phần xem mục điểm dừng và progress. Cột chạy thử là tiêu chí, không phải kết quả pass. Tên URL/API xem mục4; hướng dẫn thao tác chi tiết cùng mã ở tài liệu local.
 
 | Mã | Thay đổi người dùng thấy được | Phạm vi chính | Chạy thử / kết quả mong đợi | Phụ thuộc |
 |---|---|---|---|---|
@@ -94,7 +94,7 @@ Các endpoint dưới đây là **dự kiến theo architecture**, chưa có ngh
 | Phần | API / đầu vào chính | Đầu ra / trách nhiệm |
 |---|---|---|
 | Settings | GET `/shop-settings/public`; GET/PATCH `/admin/settings` với expectedVersion | Allowlist public; admin validate, version; không credentials/secrets trong response |
-| Cart resolve | POST `/cart/resolve` `{items:[{variantId,quantity}]}` — đề xuất chốt ở0.1 | Chỉ đọc thông tin public của IDs trong giỏ sau refresh, báo hàng không còn bán; không tạo quote/giữ kho. Đi qua CSRF/client chung, không dùng admin API |
+| Cart resolve | POST `/cart/resolve` `{items:[{variantId,quantity}]}` | Đã viết M4.2.1; đọc thông tin public của IDs trong giỏ, báo hàng không còn bán; không tạo quote/giữ kho. Đi qua CSRF/client chung, không dùng admin API |
 | Quote | POST `/checkout/quote` `{items:[{variantId,quantity}],method}` | quoteId/currency/subtotal/shippingFee/total/expiresAt/settingsVersion; không reserved |
 | Create | POST `/orders`, header Idempotency-Key, quoteId/items/contact/address/method | Mã đơn, snapshot xác nhận và cách tra cứu; guest throttle; cùng transaction order/items/history/stock/idem |
 | Lookup | GET `/orders/:code` với token header; POST `/orders/lookup` mã+SĐT | Đúng một đơn; uniform404; token không query; quyền hủy phải được xác định ở server |
@@ -185,4 +185,4 @@ Integration/E2E mới phải dùng fixture riêng từng lượt, cleanup theo I
 - Trước mở bán phải chốt các phần bảo vệ/vận hành M3/M6/M7 liên quan, backup/restore và chính sách của shop; M4 không tự xử lý hay tự đánh dấu các mốc ấy đạt.
 - M4.11.1 chỉ chốt khi COD/bank/Instagram, lookup/cancel, money/stock invariants, email failure và restart đã kiểm chứng; người dùng còn phải chạy thử. Không tự deploy hay commit/push sau khi code xong.
 
-**Điểm dừng hiện tại (30/10/2026):** M4.0.1 chốt contract tại [m4-contract.md](m4-contract.md); M4.0.2 schema nền tảng (migration `202610290001_m4_order_core` áp dụng local/test) và M4.0.3 `InventoryOperationsService` đã triển khai; 4 nhóm lỗi review (idempotency effectKey, hiển thị lịch sử kho, đồng bộ tài liệu, cleanup spec) đã sửa; **M4.1.1 (admin xem Cài đặt, chỉ đọc) và M4.1.2 (admin lưu Cài đặt — PATCH `/api/v1/admin/settings`, phiên bản lạc quan + Idempotency-Key, 409 khi cấu hình thay đổi) đã triển khai với API + UI thật** — tất cả đã kiểm tra local, **dừng chờ người dùng kiểm tra, chưa nghiệm thu**; kết quả thật ở [progress](../progress.md). M4.2.1 (giỏ hàng) chưa triển khai, cần kế hoạch riêng được duyệt.
+**Điểm dừng hiện tại (31/10/2026):** M4.0.1–M4.0.3, M4.1.1–M4.1.2 đã triển khai; M4.2.1 giỏ khách, Drawer và resolver đã viết; **M4.2.2 báo giá server (POST /checkout/quote, COD, TTL 15 phút) đã triển khai cùng trang /checkout và link từ giỏ** — tất cả đã kiểm tra local, kết quả thật ở [progress](../progress.md). Chờ người dùng chạy thử, chưa nghiệm thu. M4.3 đặt hàng chưa triển khai; cần kế hoạch/duyệt riêng.

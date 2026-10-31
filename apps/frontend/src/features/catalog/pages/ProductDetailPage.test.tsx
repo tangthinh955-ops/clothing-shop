@@ -8,9 +8,10 @@ import * as client from '../../../shared/api/client';
 import { authApi, type User } from '../../auth/api/auth.api';
 
 const categoryId = 'b2b6d857-58b7-4c07-9d88-b33d3a2469dd';
+// Variant ids follow the cart contract (UUIDs), so the resolve reply can echo them back.
 const admin: User = { id: 'catalog-admin', name: 'Admin', email: 'catalog@example.test', role: 'ADMIN', emailVerified: true };
-const variantS = { id: 'v1', sku: 'AO-1-S', size: 'S', color: 'trắng', price: 200000, active: true, available: 3 };
-const variantM = { id: 'v2', sku: 'AO-1-M', size: 'M', color: 'đen', price: 250000, active: true, available: 10 };
+const variantS = { id: 'f7c2e471-1a58-4f97-9fd7-d7ea6f563301', sku: 'AO-1-S', size: 'S', color: 'trắng', price: 200000, active: true, available: 3 };
+const variantM = { id: 'c5c6d528-9e73-4f68-87c1-90af0fbb0f4e', sku: 'AO-1-M', size: 'M', color: 'đen', price: 250000, active: true, available: 10 };
 const product = {
   id: 'p1', name: 'Áo cotton hanh phúc', slug: 'ao-cotton-hanh-phuc', description: 'Áo cotton co giãn, dễ mặc hàng ngày.',
   categoryId, category: { id: categoryId, name: 'Áo thun', slug: 'ao-thun' }, priceFrom: 200000,
@@ -119,6 +120,51 @@ describe('public product detail page', () => {
     expect(order).toHaveAttribute('target', '_blank');
     expect(order).toHaveAttribute('rel', 'noopener noreferrer');
     expect(within(screen.getByRole('main')).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');
+  });
+
+  it('adds the chosen variant to the cart and opens the drawer with that row', async () => {
+    const user = userEvent.setup();
+    // The fake backend answers both endpoints the flow touches: detail + resolve.
+    vi.spyOn(authApi, 'me').mockResolvedValue(admin);
+    vi.spyOn(client, 'request').mockImplementation(async (path: string) => {
+      if (path === '/cart/resolve') {
+        return { items: [{ variantId: variantM.id, status: 'AVAILABLE', available: 10,
+          product: { name: product.name, slug: product.slug }, sku: variantM.sku, size: variantM.size,
+          color: variantM.color, price: variantM.price, image: null }] };
+      }
+      if (path.startsWith('/products/')) return product;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={[`/products/${product.slug}`]}><Navigation /><App /></MemoryRouter>
+    </QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'đen' }));
+    await user.click(screen.getByRole('button', { name: 'M' }));
+    await user.click(screen.getByRole('button', { name: 'Thêm vào giỏ' }));
+    const dialog = await screen.findByRole('dialog', { name: 'GIỎ HÀNG' });
+    expect(within(dialog).getByRole('link', { name: product.name })).toBeVisible();
+    // The drawer footer is a link to the full cart page.
+    expect(screen.getByRole('link', { name: 'Đi tới giỏ hàng' })).toBeVisible();
+    // Close to reveal the header again (the drawer hides it) and check the badge.
+    await user.click(screen.getByRole('button', { name: 'Đóng giỏ hàng' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'GIỎ HÀNG' })).not.toBeInTheDocument());
+    expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Giỏ hàng: 1 sản phẩm' })).toBeVisible();
+  });
+
+  it('keeps the quantity field inside the remaining stock of the picked variant', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: 'trắng' }));
+    await user.click(screen.getByRole('button', { name: 'S' }));
+    const field = screen.getByRole('spinbutton', { name: 'Số lượng' });
+    const add = screen.getByRole('button', { name: 'Thêm vào giỏ' });
+    // Variant S carries 3 pieces; over-ordering is refused before anything reaches the cart.
+    await user.type(field, '5');
+    expect(add).toBeDisabled();
+    expect(field).toHaveAccessibleDescription('Chỉ còn 3 sản phẩm có thể thêm vào giỏ.');
+    await user.clear(field);
+    await user.type(field, '3');
+    expect(add).toBeEnabled();
   });
 
   it('folds the real shipping and returns policies into the page', async () => {

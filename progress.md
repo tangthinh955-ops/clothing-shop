@@ -2,6 +2,111 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — Git M4.2: đưa giỏ hàng và báo giá lên main
+
+- Người dùng yêu cầu push toàn bộ M4.2.1/M4.2.2 lên `main`, sau đó xác nhận **giữ hạn báo giá 15 phút** thay cho 30 phút trong kế hoạch ban đầu. Giữ nguyên hằng số backend đã sửa; đồng bộ test unit/integration, fixture E2E, hướng dẫn và contract. UI dùng thời hạn server trả thay vì câu 30 phút cố định; hạn chuyển khoản vẫn là 120 phút.
+- Kiểm chứng trước commit tái hiện thêm lỗi cập nhật quote: timer dùng hạn của quote cũ đã hết hạn làm quote mới đổi giá bị hết hạn ngay. Thêm regression RED→GREEN tại `CheckoutPage.test.tsx`; `useCheckoutQuote.ts` đếm theo pendingQuote khi xác nhận và chặn xác nhận quote đã hết hạn.
+- Kiểm tra mới trên bản chuẩn bị push: `typecheck` đạt, `build` đạt; `VITEST_MAX_WORKERS=2` + `npm test` đạt **10 tools + 45 backend + 334 frontend**; integration PostgreSQL thật **81/81**; E2E implemented **41/41** (14 spec, DB riêng do runner tạo). Cảnh báo chunk >500 kB và pg deprecation có sẵn; khi E2E dừng server có log preview exit 1, nhưng runner hoàn tất exit 0 và đủ 41 ca đạt.
+- Đã fetch và xác nhận base `960f518` trùng `origin/main` trước tích hợp. Rà danh sách 50 file staged, diff, remote và tác giả; env thật/runtime/dependency/build bị ignore, không nằm trong commit. Không force push hoặc deploy. CI của commit mới chưa có kết quả tại thời điểm ghi mục này; việc nghiệm thu thủ công vẫn chờ người dùng.
+
+## Ngày 31/10/2026 — M4.2.2: báo giá giỏ hàng từ server
+
+**Phạm vi được duyệt:** kế hoạch M4.2.2 gửi trong chat (POST `/checkout/quote` chỉ COD, TTL 30 phút theo giờ PostgreSQL, RepeatableRead, không giữ kho, không tạo đơn; FE `/cart` → `/checkout` với máy trạng thái báo giá). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### Phân biệt phần có sẵn và phần mới
+
+- **M4.2.1 có sẵn trên nhánh `feat/m4.2.1-cart` (staged, không commit):** cart-store/CartProvider/AddToCartForm/CartDrawer/CartPage, `/cart/resolve` (cart-products.controller/service/dto), `e2e/cart.spec.ts`, các test cart. Giữ nguyên toàn bộ; nhánh `feat/m4.2.2-quote` tạo từ trạng thái này.
+- **M4.2.2 mới trong lượt này:** các file dưới đây.
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/orders/dto/quote.dto.ts` (mới) | DTO quote: items 1..100 dòng thô, variantId UUID chuẩn hóa lowercase, quantity 1..99, `method` chỉ COD (BANK bị từ chối rõ ràng); whitelist chặn trường giá/tổng client gửi |
+| `apps/backend/src/modules/orders/checkout.service.ts` (mới) | Gộp variant trùng → giới hạn 50 dòng/99 chiếc → transaction RepeatableRead đọc variant+inventory+settings cùng snapshot → chặn hàng không bán (409 ITEM_UNAVAILABLE) và thiếu tồn (409 OUT_OF_STOCK, fieldErrors chỉ mang variantId client gửi) → tính lineTotal/subtotal/total nguyên VND → `now()` từ PostgreSQL + TTL 30 phút → ghi 1 row CheckoutQuote; không đụng inventory/orders/network |
+| `apps/backend/src/modules/orders/checkout.controller.ts`, `orders.module.ts`, `app.module.ts` | POST `/checkout/quote` guest qua CSRF + rate limit hiện có; đăng ký OrdersModule |
+| `apps/backend/src/modules/settings/settings.service.ts` + spec | Thêm `currentInTx(tx)` đọc cấu hình trong transaction của caller cùng mặc định an toàn, không ghi; +2 unit test |
+| `apps/frontend/src/features/checkout/api/checkout.api.ts` (mới) | Gọi POST quote qua `request()` chung; `parseCheckoutQuote` kiểm tra runtime từng trường (malformed → INVALID_RESPONSE, không bao giờ hiển thị như quote) |
+| `apps/frontend/src/features/checkout/hooks/useCheckoutQuote.ts` (mới) | Máy trạng thái idle/pending/accepted/stale/expired/confirm/error: chặn gửi đúp (ref + sequence), response của giỏ cũ bị bỏ, drift giỏ → stale, hết hạn theo serverNow+offset (đếm hiển thị, không thẩm quyền), giá/phí đổi → confirm "Dùng báo giá mới" |
+| `apps/frontend/src/features/checkout/components/QuoteSummary.tsx` (mới) | Hiển thị quote từ số server (items/tiền hàng/phí/tổng) + `describeQuoteChanges` liệt kê thay đổi |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.tsx` (mới) | Trang public: empty state, COD, Lấy báo giá/Cập nhật/Thử lại, quay lại sửa giỏ, không form PII, không nút đặt hàng |
+| `apps/frontend/src/app/App.tsx`, `features/cart/pages/CartPage.tsx` | Route `/checkout`; nút "Xem phí và tổng tiền" trên giỏ không rỗng |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` (mới) | 8 UI test: empty, render đúng số server, double-click 1 request, response giỏ cũ bị bỏ, malformed, hết hạn, confirm giá mới, lỗi mạng + không persist quote |
+| `apps/backend/test/checkout-quote.integration.spec.ts` (mới) | 6 ca PostgreSQL thật (isolated DB): 730.000 + snapshot DB khớp, hạn ~30 phút, không write kho/đơn, giá/settings đổi không sửa quote cũ mà quote mới đọc mới, unknown field/BANK/quantity sai bị chặn, không lộ hàng ẩn, CSRF |
+| `apps/frontend/e2e/checkout-quote.spec.ts` (mới) | 3 E2E thật (isolated DB): luồng 2×A+1×B thấy 730.000 + DB kiểm chứng + mobile 390; giá đổi qua hết hạn → confirm "Dùng báo giá mới"; hàng ẩn/hết tồn bị chặn không ghi gì |
+| `package.json`, `.github/workflows/ci.yml` | Thêm checkout-quote.spec.ts vào bộ implemented; tên bước CI ghi M4.2.2 |
+| `docs/m4-contract.md` | Chốt response/error quote (ITEM_UNAVAILABLE/OUT_OF_STOCK kèm fieldErrors variantId), field mapping, TTL 30 phút chuyển từ đề xuất sang đã chốt cho M4.2.2 |
+| `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md`, `docs/plan.md`, `README.md` | Trạng thái + hướng dẫn chạy thử M4.2.2 |
+
+### Data flow / key
+
+Khách bấm "Lấy báo giá" → `checkoutApi.quote` POST `/checkout/quote` (CSRF pre-session) → DTO whitelist/validate → `CheckoutService.quote` mở transaction RepeatableRead: `settings.currentInTx` đọc phí + version, đọc variant/inventory/product/category, chặn hàng ẩn/thiếu tồn, tính tiền nguyên VND, `now()` PostgreSQL + 30 phút → ghi CheckoutQuote → response → hook so signature giá/phí: cùng mức → accepted; khác → confirm chờ "Dùng báo giá mới". Giỏ đổi giữa chừng → response bị bỏ và quote cũ thành stale.
+
+- `RepeatableRead`: product/inventory/settings đọc cùng snapshot, không khóa kho, không giữ hàng.
+- `serverNow`/`expiresAt`: giờ PostgreSQL; FE chỉ dùng để hiển thị, server kiểm tra lại ở M4.3.1.
+- `signature` (items+fee): ranh giới "đã được khách chấp nhận" — khác signature phải confirm.
+- `currentInTx`: đọc cấu hình trong transaction của caller, không nhân bản DEFAULTS.
+- ITEM_UNAVAILABLE/OUT_OF_STOCK: 409 với `fieldErrors[items.variantId]` chỉ chứa id client gửi.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Backend unit RED → GREEN | checkout.service.spec thất bại vì thiếu module; sau triển khai 32/32 (checkout 12 + settings 20) |
+| UI RED → GREEN | 8 test thất bại vì route/trang chưa có; các chỉnh trong lượt: matcher tiền theo convention regex (NBSP), text trùng nút/status, sửa luôn nút pending đổi nhãn "Đang lấy báo giá…"; sau sửa 74/74 (checkout 8 + cart 66) |
+| Integration | 4/6 đầu thất bại: message BANK nằm ở fieldErrors, `variantId` bị exception filter strip (filter chỉ phát code/message/fieldErrors), count quote dính fixture test trước — sửa: variantId đi qua `fieldErrors[items.variantId]`, count trước/sau; sau sửa **6/6** |
+| E2E | 2 lần chỉnh: confirm flow phải qua hết hạn (navigate sang /cart làm unmount state → dùng `page.clock.fastForward('31:00')`), strict-mode "Dùng báo giá mới" trùng Alert → getByRole button; sau sửa **3/3** |
+| `typecheck` / `build` | 1 lỗi TS Prisma InputJsonValue (sửa theo pattern settings M4.1.2); sau sửa đạt — kết quả cuối ở mục kiểm chứng cuối phiên dưới đây |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+**Dừng sau M4.2.2 cho người dùng chạy thử; M4.3.1 (tạo đơn COD) chưa triển khai.**
+
+
+## Ngày 31/10/2026 — M4.2.1: giỏ hàng khách và Drawer
+
+**Phạm vi:** kế hoạch giỏ đã duyệt trong chat. OpenCode đã viết nền API/UI/test ban đầu trên nhánh `feat/m4.2.1-cart`; Codex tiếp tục hoàn thiện, sửa findings review và bổ sung E2E/tài liệu. Chưa commit/push. M4.2.2 quote và M4.3 đặt hàng chưa triển khai; chờ người dùng chạy thử, chưa nghiệm thu.
+
+**Luồng:** khách chọn variant/số lượng → Context lưu IDs và quantity ở localStorage, mở Drawer → `/cart/resolve` đọc batch dữ liệu công khai/tồn mà không ghi DB → UI hiển thị dữ liệu hiện tại. `/cart` chỉnh số lượng bằng Enter hoặc rời ô; giỏ không giữ/trừ hàng. Dữ liệu tồn/giá cũ được ẩn trong lúc tải lại hoặc lỗi, bản nháp số lượng vẫn giữ khi refetch cùng giỏ.
+
+**Key:** `schemaVersion` đánh dấu định dạng giỏ; `variantId` định danh tổ hợp size/màu; `available` là tồn có thể bán lúc đọc; `UNAVAILABLE` thống nhất hàng ẩn/vô hiệu/không tồn tại; query key theo giỏ ngăn response giỏ cũ ghi đè giỏ khác.
+
+**Các file trong phạm vi M4.2.1:**
+
+| File | Trách nhiệm |
+|---|---|
+| `apps/backend/src/modules/products/cart-products.controller.ts` | Endpoint public chỉ đọc đi qua CSRF |
+| `apps/backend/src/modules/products/dto/cart-items.dto.ts` | Validate payload giỏ và giới hạn thô |
+| `apps/backend/src/modules/products/cart-products.service.ts` | Chuẩn hóa UUID, gộp dòng, batch query public và tình trạng tồn |
+| `apps/backend/src/modules/products/products.module.ts` | Đăng ký controller/service giỏ |
+| `apps/backend/test/cart-products.integration.spec.ts` | Test API, quyền công khai, input và tồn trên DB cô lập |
+| `apps/frontend/src/features/cart/cart-store.ts` | Chuẩn hóa, giới hạn và lưu/đọc giỏ |
+| `apps/frontend/src/features/cart/cart-store.test.ts` | Test gộp, giới hạn và storage không tin cậy |
+| `apps/frontend/src/features/cart/CartProvider.tsx` | Context giỏ, trạng thái Drawer và fallback memory |
+| `apps/frontend/src/features/cart/CartProvider.test.tsx` | Test state, lỗi storage và StrictMode |
+| `apps/frontend/src/features/cart/api/cart.api.ts` | Gọi resolve, kiểm tra shape và tập ID response |
+| `apps/frontend/src/features/cart/api/cart.api.test.ts` | Test hợp đồng API và response lỗi |
+| `apps/frontend/src/features/cart/hooks/useCartResolve.ts` | Cache và cập nhật dữ liệu giỏ theo query key |
+| `apps/frontend/src/features/cart/hooks/useCartResolve.test.tsx` | Test cache và truy vấn giỏ |
+| `apps/frontend/src/features/cart/components/AddToCartForm.tsx` | Nhập số lượng, chặn vượt tồn, thêm hàng |
+| `apps/frontend/src/features/cart/components/AddToCartForm.test.tsx` | Test số lượng không nguyên, giới hạn và thông báo vượt tồn |
+| `apps/frontend/src/features/cart/components/CartDrawer.tsx` | Drawer có danh sách, truy cập bàn phím và điều hướng |
+| `apps/frontend/src/features/cart/components/CartDrawer.test.tsx` | Test mở/đóng, refetch, dialog và điều hướng |
+| `apps/frontend/src/features/cart/pages/CartPage.tsx` | Xem/sửa/xóa giỏ, giữ draft khi refetch và ẩn tổng không đủ dữ liệu |
+| `apps/frontend/src/features/cart/pages/CartPage.test.tsx` | Test giao diện, nhập số lượng, lỗi và refetch |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.tsx` | Nối form thêm biến thể vào giỏ |
+| `apps/frontend/src/features/catalog/pages/ProductDetailPage.test.tsx` | Test thêm giỏ và kiểm tra tồn trong chi tiết |
+| `apps/frontend/src/app/App.tsx` | Gắn provider và route `/cart` |
+| `apps/frontend/src/layouts/StoreLayout.tsx` | Gắn Drawer cho cửa hàng |
+| `apps/frontend/src/layouts/StoreLayout.test.tsx` | Test header và tích hợp giỏ |
+| `apps/frontend/src/layouts/store/StoreHeader.tsx` | Nút giỏ và badge tổng số lượng |
+| `apps/frontend/src/shared/ui/icons.tsx` | Icon giỏ phù hợp hệ thống icon hiện có |
+| `apps/frontend/e2e/cart.spec.ts` | Kiểm tra guest, Drawer, giỏ, mobile, thay đổi tồn/ẩn và DB không bị giữ kho |
+| `package.json`, `.github/workflows/ci.yml` | Đưa spec giỏ vào E2E implemented và cập nhật tên bước |
+| `docs/m4-contract.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Ghi hợp đồng resolve và điểm dừng lộ trình |
+| `docs/local-trial-m4.md`, `README.md`, `progress.md` | Hướng dẫn chạy thử, trạng thái và bằng chứng |
+
+**Review và kiểm tra:** 5 lỗi ban đầu được tái hiện/sửa (getter storage, số lượng, giỏ sai giới hạn, response sai IDs, dữ liệu cache lỗi); review độc lập bổ sung chuẩn hóa UUID, refetch khi mở giỏ, tạm tính thiếu dòng, dialog/điều hướng và giữ draft khi refetch. Đã chạy RED→GREEN cho các lỗi UI chính. Typecheck cuối đạt; build backend/frontend đạt trên bản cuối qua E2E; unit với `VITEST_MAX_WORKERS=2` đạt **10 tools + 32 backend + 325 frontend**; integration sau sửa UUID **75/75**; E2E implemented bản cuối **38/38**, dùng DB riêng và không còn DB tạm của lượt kiểm tra. Lượt integration đầu chạy song song bị timeout hook Settings, chạy riêng đạt; unit có một lượt fail assertion cũ sau đổi thông báo tồn, đã cập nhật và chạy lại đạt; không tăng timeout. Build có cảnh báo chunk >500 kB, không phải lỗi.
+
+**Chạy thử:** làm theo [M4.2.1](docs/local-trial-m4.md#m421--giỏ-hàng); dùng sản phẩm và dữ liệu thử local. Không có checkout, quote, thanh toán hay đặt hàng thật trong phần này.
+
 ## Ngày 30/10/2026 — Git M4.1.2: đồng bộ main và push nhánh
 
 - Người dùng yêu cầu push nhánh hiện tại `feat/m4.0-foundation`. Đã tạo commit chức năng `f7c09c4` (`feat(settings): save shop configuration safely`), gồm M4.1.2 và bốn bản sửa review; kiểm tra đủ 26 file, không có env thật, dependency, mailbox hoặc artifact build trong commit.

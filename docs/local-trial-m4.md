@@ -1,6 +1,6 @@
 # Chạy thử M4 theo từng phần — Người B
 
-> Cập nhật 30/10/2026. **M4.0.1–M4.0.3, M4.1.1 và M4.1.2 đã triển khai và agent đã kiểm tra local** (contract tại [m4-contract.md](m4-contract.md), migration `202610290001_m4_order_core` áp dụng local/test, service kho cho đơn, Settings xem + lưu) — **chưa có API/UI đặt hàng và chưa được người dùng nghiệm thu.** Các phần M4.2 trở đi vẫn là runbook dự kiến, chưa triển khai; URL/API tương lai có thể chưa tồn tại; không coi 404 hiện tại là bug của tính năng đã làm.
+> Cập nhật 31/10/2026. M4.0.1–M4.0.3, M4.1.1–M4.1.2 và M4.2.1 giỏ hàng đã viết; kết quả kiểm tra thực tế xem [progress.md](../progress.md). **Chưa có API/UI đặt hàng và chưa được người dùng nghiệm thu.** M4.2.2 trở đi là runbook dự kiến, chưa triển khai.
 
 Kế hoạch kỹ thuật cùng mã: [m4-implementation-plan.md](m4-implementation-plan.md). Kết quả thật: [progress.md](../progress.md). Người B phụ trách toàn bộ M4; duyệt runbook/lộ trình không cho phép agent tự code hoặc chạy hết các phần.
 
@@ -59,7 +59,7 @@ Không chạy `seed:demo` ở production. Giỏ2×A +1×B → subtotal700.000, p
 
 Với mỗi mã bên dưới, ghi ở progress: mã/commit/môi trường → điều kiện → thao tác → mong đợi → thực tế → đạt/chưa đạt/chưa chạy → giới hạn và điểm dừng. Token/PII không được sao chép vào bằng chứng. Phân biệt **đã viết**, **agent đã kiểm tra**, **chờ người dùng thử**, **người dùng xác nhận**, **CI**, **deploy**.
 
-Hiện trạng của mọi ca trong mục3 là **CHƯA TRIỂN KHAI / CHƯA CHẠY**. Bảng/giá trị dưới đây chỉ là tiêu chí để thử sau khi có code; không ghi pass trước.
+Các ca dưới đây là tiêu chí thao tác, không tự coi là đã đạt. Xem từng mục và progress để phân biệt phần đã viết, đã kiểm tra, chưa triển khai và chưa nghiệm thu.
 
 ## 3. Chạy thử theo đúng mã implementation
 
@@ -114,11 +114,31 @@ Giới hạn: mất kết nối/mất gói chỉ thử tay (E2E không chủ ý 
 
 ### M4.2.1 — Giỏ hàng
 
-Khách mở chi tiết SKU-A, chọn biến thể, thêm2; thêm lại cùng variant thì gộp dòng theo giới hạn đã chốt. Mở `/cart`, sửa số lượng/xóa/refresh. Kiểm tra localStorage chỉ chứa IDs/qty/schemaVersion; resolver public đọc lại tên/ảnh/giá hiển thị từ IDs, không cần giá đã lưu hoặc quyền ADMIN. Sửa dữ liệu local sai phải phục hồi an toàn. Hàng ẩn/vô hiệu không được âm thầm thay thành biến thể khác; chưa giữ kho.
+Trên local, tạo sản phẩm xuất bản có biến thể còn hàng bằng tài khoản ADMIN (dùng dữ liệu thử), sau đó mở `/shop` như khách:
 
-### M4.2.2 — Quote/tạm tính
+1. Mở chi tiết, chọn màu/size, nhập số lượng và bấm **Thêm vào giỏ**. Drawer bên phải mở và hiện hàng vừa thêm; đóng bằng nút hoặc Escape để chọn tiếp.
+2. Thêm biến thể khác; bấm biểu tượng giỏ ở header để mở lại. Badge hiện tổng số chiếc. Bấm **Đi tới giỏ hàng** đến `/cart`.
+3. Đổi số lượng rồi nhấn Enter hoặc rời ô; refresh trang, giỏ vẫn còn. Xóa một dòng hoặc bấm **Tiếp tục mua**.
+4. Dùng ADMIN giảm tồn hoặc ẩn sản phẩm thử, sau đó refresh `/cart`: dòng tương ứng báo không đủ hàng hoặc không truy cập được, không tự xóa. Kiểm tra Kho trước/sau: chỉ thêm/xem giỏ không giữ hay trừ hàng.
+5. Kiểm tra cửa sổ rộng 390px và thử mất mạng: có thông báo lỗi/tải lại; giỏ vẫn giữ. Nếu storage bị chặn thì có cảnh báo và giỏ chỉ tồn tại trong tab.
 
-Giỏ2×A +1×B → `/checkout` hoặc phần tạm tính đã bàn giao: thấy730.000đ do API trả. Đối chiếu Kho trước/sau quote, reserved vẫn0. Gửi thử giá/tổng client giả trong integration → backend không tin; số lượng sai/quá50 dòng sau chuẩn hóa bị chặn. Quote hết hạn/giá hoặc phí đổi phải có xác nhận lại, không tự tăng tổng.
+Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ API public. Giá tạm hiển thị chưa gồm phí giao; quote/đặt đơn thuộc M4.2.2/M4.3.1. E2E chạy qua `./tools/npm.ps1 run test:e2e:implemented`, dùng database `_test` riêng của runner.
+
+### M4.2.2 — Quote/tạm tính từ server
+
+**Đã triển khai và agent đã kiểm tra local (31/10/2026): giỏ 2×A +1×B → bấm "Xem phí và tổng tiền" trên `/cart` → `/checkout` → "Lấy báo giá" thấy tiền hàng 700.000đ, phí 30.000đ, tổng 730.000đ do server tính; hết hạn 15 phút theo giờ server; chưa có bước đặt đơn.**
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| `/cart` giỏ không rỗng → "Xem phí và tổng tiền" | Vào `/checkout`, thấy dòng "Phương thức hiện tại: COD" |
+| Bấm "Lấy báo giá" | Danh sách dòng đúng giỏ (đơn giá × số lượng), tiền hàng/phí/tổng từ server; "Báo giá chưa giữ hàng"; hết hạn ~15 phút |
+| Chỉnh giỏ rồi lấy lại | "Giỏ đã thay đổi…" hoặc quote mới khớp giỏ; giá/phí đổi thì hiện "Dùng báo giá mới" để xác nhận, không tự thay tổng |
+| Chờ hết 15 phút | "Báo giá đã hết hạn" + "Cập nhật báo giá"; không tự lấy mới |
+| Giỏ có hàng ẩn/hết tồn | Bị chặn toàn bộ (409 ITEM_UNAVAILABLE/OUT_OF_STOCK), không có dòng nào được báo giá |
+| Mất mạng khi lấy | Báo lỗi giữ giỏ; chỉ thử lại khi bấm |
+| Reload `/checkout` | Trang mở lại được; quote không lưu localStorage |
+
+Đối chiếu DB: row `checkout_quotes` khớp response, `inventory` không đổi, không có row orders/movements. Test riêng: integration `test/checkout-quote.integration.spec.ts` và `./tools/npm.ps1 run test:e2e -- checkout-quote.spec.ts`.
 
 ### M4.3.1 — Đặt COD không cần tài khoản
 
@@ -249,7 +269,7 @@ Chạy các lệnh kiểm tra ở mục4, ghi số ca/kết quả thật và cá
 
 ## 4. Kiểm tra tự động dự kiến
 
-Các lệnh đã tồn tại, nhưng **spec M4 chưa có**. Khi một phần được làm, thêm test tương ứng vào phạm vi implemented và tên bước CI; không skip test M3 hay tăng timeout để che lỗi. Điều kiện `_test` phải được kiểm tra trước bất kỳ setup/cleanup DB nào.
+Các lệnh đã tồn tại; M4 đã có test cho phần nền, Settings và giỏ. Kết quả từng lượt xem progress; không skip test M3 hay tăng timeout để che lỗi. Điều kiện `_test` phải được kiểm tra trước bất kỳ setup/cleanup DB nào.
 
 ```powershell
 .\tools\npm.ps1 run typecheck
@@ -263,4 +283,4 @@ Chỉ cài browser test nếu máy thiếu và phần E2E đã được giao, th
 
 ## 5. Điểm dừng
 
-**Đã hoàn thành M4.0.1–M4.0.3 (29/10/2026) và M4.1.1 (30/10/2026): contract chốt, migration nền tảng áp dụng local/test, service kho cho đơn hàng có test thật, trang Cài đặt chỉ đọc chạy được bằng UI.** M4.1.2 (lưu cài đặt) trở đi cần kế hoạch riêng được duyệt trước khi code. Trạng thái chi tiết và kết quả thật: [progress.md](../progress.md).
+**Điểm dừng: M4.2.1 giỏ hàng + M4.2.2 báo giá server, chờ người dùng chạy thử.** M4.3.1 tạo đơn và các phần sau cần kế hoạch riêng được duyệt trước khi code. Trạng thái chi tiết và kết quả thật: [progress.md](../progress.md).

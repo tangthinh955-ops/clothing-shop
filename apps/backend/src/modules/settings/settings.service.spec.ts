@@ -39,6 +39,18 @@ describe('SettingsService read-only views', () => {
     await expect(service.adminView()).rejects.toThrow('database unavailable');
     await expect(service.publicView()).rejects.toThrow('database unavailable');
   });
+
+  it('currentInTx reads through a caller transaction with the same safe defaults', async () => {
+    const missingTx = { shopSettings: { findUnique: vi.fn(async () => null) } };
+    const service = new SettingsService({ shopSettings: missingTx.shopSettings } as unknown as PrismaService);
+    await expect(service.currentInTx(missingTx as never)).resolves.toEqual(
+      { shippingFeeVnd: 30000, bankDeadlineMinutes: 120, version: 0 });
+    expect(missingTx.shopSettings.findUnique).toHaveBeenCalledWith({ where: { id: 'default' } });
+    const savedTx = { shopSettings: { findUnique: vi.fn(async () => savedRow) } };
+    const service2 = new SettingsService({ shopSettings: savedTx.shopSettings } as unknown as PrismaService);
+    await expect(service2.currentInTx(savedTx as never)).resolves.toEqual(
+      { shippingFeeVnd: 25000, bankDeadlineMinutes: 90, version: 2 });
+  });
 });
 
 const failureOf = async (run: () => Promise<unknown>) => {

@@ -1,5 +1,6 @@
 import { Container } from '@mui/material';
 import { Outlet } from 'react-router';
+import { CartDrawer } from '../features/cart/components/CartDrawer';
 import { AnnouncementBar } from './store/AnnouncementBar';
 import { StoreFooter } from './store/StoreFooter';
 import { StoreHeader } from './store/StoreHeader';
@@ -13,5 +14,7 @@ export function StoreLayout() {
       <Outlet />
     </Container>
     <StoreFooter />
+    {/* One drawer per layout so every route opens the same cart panel. */}
+    <CartDrawer />
   </>;
 }

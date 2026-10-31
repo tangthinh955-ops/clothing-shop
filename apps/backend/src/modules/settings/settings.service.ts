@@ -73,6 +73,16 @@ export class SettingsService {
   }
 
   /**
+   * Consistent read for coordinating services inside their own transaction (M4.2.2 quote): the same
+   * safe defaults as the standalone views, the stored version for snapshots, and never a write.
+   */
+  async currentInTx(tx: Prisma.TransactionClient): Promise<{ shippingFeeVnd: number; bankDeadlineMinutes: number; version: number }> {
+    const row = await tx.shopSettings.findUnique({ where: { id: 'default' } });
+    return { shippingFeeVnd: row?.shippingFeeVnd ?? DEFAULTS.shippingFeeVnd,
+      bankDeadlineMinutes: row?.bankDeadlineMinutes ?? DEFAULTS.bankDeadlineMinutes, version: row?.version ?? 0 };
+  }
+
+  /**
    * Save configuration (M4.1.2), m4-contract §7: scope is server-owned, the identity is the signed-in
    * admin, and the hash covers the normalized content plus the frozen expectedVersion. The command
    * record commits together with the settings row, so a replay is detected before any version check

@@ -1,9 +1,10 @@
-import { Box, Container, IconButton, Link, Stack } from '@mui/material';
+import { Badge, Box, Container, IconButton, Link, Stack } from '@mui/material';
 import { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router';
 import { useCurrentUser } from '../../features/auth/hooks/useCurrentUser';
+import { useCart } from '../../features/cart/CartProvider';
 import { SHOP_NAME } from '../../shared/shop';
-import { MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { CartIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
 import { HeaderSearch } from './HeaderSearch';
 import { MobileMenu } from './MobileMenu';
 import { allProductsLabel } from './storeLinks';
@@ -24,6 +25,7 @@ function NavLink({ to, label, active }: { to: string; label: string; active: boo
 export function StoreHeader() {
   // Shoppers order without an account, so only a signed-in admin gets an extra link (into the admin area).
   const user = useCurrentUser();
+  const cart = useCart();
   const categories = useCatalogCategories();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -54,6 +56,13 @@ export function StoreHeader() {
           <IconButton aria-label="Mở ô tìm kiếm" color="inherit" aria-expanded={searchOpen} aria-controls={searchOpen ? SEARCH_PANEL_ID : undefined}
             onClick={() => setSearchOpen((open) => !open)}>
             <SearchIcon />
+          </IconButton>
+          {/* The badge is only rendered when there is something in the cart; the button always opens the drawer. */}
+          <IconButton aria-label={cart.totalQuantity > 0 ? `Giỏ hàng: ${cart.totalQuantity} sản phẩm` : 'Mở giỏ hàng'}
+            color="inherit" onClick={cart.openDrawer}>
+            <Badge badgeContent={cart.totalQuantity > 0 ? cart.totalQuantity : undefined} color="primary">
+              <CartIcon />
+            </Badge>
           </IconButton>
           {user.data?.role === 'ADMIN' && <Link component={RouterLink} to="/admin" sx={{ fontWeight: 500 }}>Quản trị</Link>}
         </Stack>

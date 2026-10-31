@@ -19,7 +19,7 @@
     "test": "node --test tools/*.test.mjs && npm run test --workspaces",
     "test:integration": "npm run test:integration -w @clothing/backend",
     "test:e2e": "node tools/test-e2e.mjs",
-    "test:e2e:implemented": "node tools/test-e2e.mjs auth.spec.ts catalog-detail.spec.ts catalog.spec.ts catalog-list.spec.ts categories.spec.ts products.spec.ts product-images.spec.ts product-status.spec.ts inventory.spec.ts inventory-adjust.spec.ts inventory-history.spec.ts settings.spec.ts",
+    "test:e2e:implemented": "node tools/test-e2e.mjs auth.spec.ts catalog-detail.spec.ts catalog.spec.ts catalog-list.spec.ts categories.spec.ts products.spec.ts product-images.spec.ts product-status.spec.ts inventory.spec.ts inventory-adjust.spec.ts inventory-history.spec.ts settings.spec.ts cart.spec.ts checkout-quote.spec.ts",
     "test:e2e:install": "node tools/test-e2e.mjs install",
     "db:generate": "npm run db:generate -w @clothing/backend",
     "db:migrate": "npm run db:migrate -w @clothing/backend",

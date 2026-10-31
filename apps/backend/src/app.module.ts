@@ -13,13 +13,14 @@ import { CategoriesModule } from './modules/categories/categories.module.js';
 import { ProductsModule } from './modules/products/products.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
+import { OrdersModule } from './modules/orders/orders.module.js';
 import { UploadsModule } from './modules/uploads/uploads.module.js';
 
 @Module({})
 export class AppModule {
   static register(config: AppConfig): DynamicModule {
     return { module: AppModule,
-      imports: [ConfigModule.forRoot(config), PrismaModule, AuthModule, UsersModule, CategoriesModule, ProductsModule, InventoryModule, SettingsModule, UploadsModule,
+      imports: [ConfigModule.forRoot(config), PrismaModule, AuthModule, UsersModule, CategoriesModule, ProductsModule, InventoryModule, SettingsModule, OrdersModule, UploadsModule,
         ThrottlerModule.forRoot([{ name: 'ip', ttl: 60000, limit: 120 }, { name: 'identity', ttl: 60000, limit: 120 }])],
       controllers: [HealthController], providers: [{ provide: APP_GUARD, useClass: AuthRateGuard }, { provide: APP_GUARD, useClass: CsrfGuard }] };
   }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link as RouterLink, useParams } from 'react-router';
 import { ApiError } from '../../../shared/api/client';
 import { pageTitle } from '../../../shared/shop';
+import { AddToCartForm } from '../../cart/components/AddToCartForm';
 import { catalogApi, catalogDetailKey, type CatalogProduct } from '../api/catalog.api';
 import { formatMoney, priceLabel } from '../catalogFormat';
 import { OrderByMessage } from '../components/OrderByMessage';
@@ -48,6 +49,8 @@ function ProductView({ item }: { item: CatalogProduct }) {
             setSize('');
           }}
           onSize={setSize} />
+        {/* Buying is the primary action once a variant is picked; messaging shop stays one option below. */}
+        <AddToCartForm variant={selected} />
         <OrderByMessage selected={selected} />
         {item.description !== '' && <Typography sx={{ whiteSpace: 'pre-line' }}>{item.description}</Typography>}
         <ProductPolicies />

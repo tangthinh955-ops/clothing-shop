@@ -51,13 +51,15 @@ Prefix `/api/v1`, envelope lỗi hiện có `{code, message, fieldErrors, reques
 
 | Phần | Request chính | Response thành công | Lỗi |
 |---|---|---|---|
-| Quote | POST `/checkout/quote` `{items:[{variantId,quantity}], method}` | `{quoteId, currency, subtotal, shippingFee, total, expiresAt, settingsVersion}` | 400; 429 |
+| Giỏ | POST `/cart/resolve` `{items:[{variantId,quantity}]}` | `{items:[{variantId,status,...thông tin công khai}]}`; chỉ đọc, qua CSRF, không giữ kho | 400 validation; 403 CSRF |
+| Quote | POST `/checkout/quote` `{items:[{variantId,quantity}], method}` — **đã triển khai M4.2.2, chỉ COD** | `{quoteId, method, currency, items:[{variantId,productName,sku,size,color,unitPriceVnd,quantity,lineTotalVnd}], subtotal, shippingFee, total, settingsVersion, serverNow, expiresAt}`; lỗi: 400 `VALIDATION_ERROR` (input sai, giỏ rỗng, quá 50 dòng sau gộp/100 dòng thô, >99/variant sau gộp, tổng >1 tỷ), 409 `ITEM_UNAVAILABLE`/`OUT_OF_STOCK` kèm variantId client gửi qua `fieldErrors[items.variantId]`, 429 rate limit hiện có. Transaction RepeatableRead đọc nhất quán product/inventory/settings, ghi 1 row CheckoutQuote, `serverNow`/`expiresAt` lấy từ `now()` PostgreSQL, TTL 15 phút | 403 khi thiếu CSRF |
 | Tạo đơn | POST `/orders`, header `Idempotency-Key`, body `{quoteId, items, contact, address, method}` | `{code, status, items snapshot, subtotal, shippingFee, total, method, bankDeadlineAt?, lookupPath}` | 400; 409 `QUOTE_CHANGED`/`OUT_OF_STOCK`/`CONFLICT` (key khác nội dung); 429 |
 | Xem đơn | GET `/orders/:code`, token ở header `X-Order-Token` hoặc fragment link | view một đơn (timeline, money summary) | 404 đồng nhất (sai code/token) |
 | Tra cứu | POST `/orders/lookup` `{code, phone}` | view đơn + cấp token mới | 404 đồng nhất; 429 |
 | Hủy khách | POST `/orders/:code/cancel` với token + `{reason, expectedVersion, Idempotency-Key}` | đơn `CANCELLED` | 404; 409 trạng thái/version; 429 |
 | Admin chuyển trạng thái | POST `/admin/orders/:id/{confirm,pack,ship,deliver,cancel,cancellation-decisions}` session + `{expectedVersion, Idempotency-Key, …}` | đơn sau chuyển | 401/403; 409; 404 |
 
+- Resolve giỏ nhận tối đa 100 dòng thô, gộp trùng rồi tối đa 50 variant, quantity nguyên 1–99 mỗi variant. Kết quả theo thứ tự xuất hiện: `AVAILABLE`, `EXCEEDS_STOCK`, `OUT_OF_STOCK` trả thông tin công khai và available; `UNAVAILABLE` chỉ trả variantId/status cho ID không tồn tại hoặc hàng/biến thể/danh mục không công khai. Không tạo quote, không ghi kho. Giá và tồn chỉ phản ánh lúc đọc.
 - `QUOTE_CHANGED` (409): giá/phí/settings đã đổi so với quote — khách xác nhận lại bằng quote mới, không tự tăng tiền. `OUT_OF_STOCK` (409): thiếu hàng một phần hoặc toàn bộ — rollback tất cả SKU.
 - Tra cứu sai mã, sai SĐT, token sai/ hết hạn trả **cùng một** thông báo 404, không tiết lộ đơn có tồn tại.
 
@@ -96,7 +98,7 @@ Lịch sử kho và lịch sử đơn lưu `actorType` + `actorId` nullable; res
 
 | Đề xuất | Giá trị đề xuất | Ảnh hưởng nếu đổi |
 |---|---|---|
-| Quote TTL | 30 phút, hằng số v1 (không cấu hình) | CheckoutQuote.expiresAt; đổi sau chỉ ảnh hưởng giá trị ghi |
+| ~~Quote TTL~~ **ĐÃ CHỐT 31/10/2026 cho M4.2.2** | 15 phút, hằng số `QUOTE_TTL_MINUTES` v1 (không cấu hình) | CheckoutQuote.expiresAt; đổi sau chỉ ảnh hưởng giá trị ghi |
 | Chống spam tạo đơn | theo IP và theo SĐT; số PENDING tối đa mỗi SĐT; con số chốt ở M4.3 | không ảnh hưởng schema |
 | Tra cứu/hủy rate limit | giới hạn theo IP, failure đồng nhất; con số chốt ở M4.4 | không ảnh hưởng schema |
 | Địa chỉ | nhập tay 4 trường, giới hạn độ dài; không dataset hành chính | cột text có sẵn, đổi sau không migrate |

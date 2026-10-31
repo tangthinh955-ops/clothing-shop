@@ -2,15 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../app/App';
 import { authApi, type User } from '../features/auth/api/auth.api';
+import { CART_STORAGE_KEY } from '../features/cart/cart-store';
 import { catalogApi, type CatalogCategory } from '../features/catalog/api/catalog.api';
+import * as client from '../shared/api/client';
 
 const admin: User = { id: 'store-admin', name: 'Admin', email: 'store@example.test', role: 'ADMIN', emailVerified: true };
 const tees: CatalogCategory = { id: '0b6f2d7e-3c1a-4e8b-9f5d-2a7c9e1b4d60', name: 'Áo thun', slug: 'ao-thun' };
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => { window.localStorage.clear(); });
 
 function renderStore(path: string, user: User | null, categories: CatalogCategory[] = []) {
   vi.spyOn(authApi, 'me').mockResolvedValue(user);
@@ -95,5 +98,42 @@ describe('store layout of the real shop', () => {
     expect(await screen.findByRole('heading', { name: 'Kết quả cho “áo khoác”', level: 1 })).toBeVisible();
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'áo khoác', page: 1 }));
     expect(screen.queryByRole('searchbox', { name: 'Tìm trong cửa hàng' })).not.toBeInTheDocument();
+  });
+
+  it('opens the empty cart drawer from the header without any pricing call', async () => {
+    const user = userEvent.setup();
+    const request = vi.spyOn(client, 'request');
+    renderStore('/shipping', null);
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Mở giỏ hàng' }));
+    const drawer = await screen.findByRole('dialog', { name: 'GIỎ HÀNG' });
+    expect(within(drawer).getByText('Giỏ hàng trống. Hãy chọn một sản phẩm để bắt đầu.')).toBeVisible();
+    expect(request).not.toHaveBeenCalled();
+    // Closing restores the page underneath instead of navigating.
+    await user.click(screen.getByRole('button', { name: 'Đóng giỏ hàng' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'GIỎ HÀNG' })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Mở giỏ hàng' })).toBeVisible());
+  });
+
+  it('counts the saved pieces in the header badge and resolves them when the drawer opens', async () => {
+    const user = userEvent.setup();
+    const variantA = '17bfecab-9df4-4de4-bd91-3c11116fca5b';
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+      schemaVersion: 1, items: [{ variantId: variantA, quantity: 2 }],
+    }));
+    const request = vi.spyOn(client, 'request').mockResolvedValue({ items: [{
+      variantId: variantA, status: 'AVAILABLE', available: 5,
+      product: { name: 'Áo cotton', slug: 'ao-cotton' }, sku: 'CART-A-1', size: 'M', color: 'Đen',
+      price: 200000, image: null,
+    }] });
+    renderStore('/shipping', null);
+    const header = screen.getByRole('banner');
+    // Pieces, not rows: the badge mirrors the cart the shopper built earlier.
+    expect(within(header).getByRole('button', { name: 'Giỏ hàng: 2 sản phẩm' })).toBeVisible();
+    await user.click(within(header).getByRole('button', { name: 'Giỏ hàng: 2 sản phẩm' }));
+    const drawer = await screen.findByRole('dialog', { name: 'GIỎ HÀNG' });
+    expect(await within(drawer).findByRole('link', { name: 'Áo cotton' })).toBeVisible();
+    expect(request).toHaveBeenCalledWith('/cart/resolve', {
+      method: 'POST', body: { items: [{ variantId: variantA, quantity: 2 }] },
+    });
   });
 });
