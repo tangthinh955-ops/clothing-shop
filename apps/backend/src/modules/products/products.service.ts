@@ -37,6 +37,41 @@ export class ProductsService {
     if (!row) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Không tìm thấy sản phẩm.' });
     return view(row, admin);
   }
+  /**
+   * Server-rendered link preview (M7.1.1): crawlers (Zalo/Instagram/Messenger) do not run JS, so
+   * the OG tags must arrive in the served HTML; people get a meta-refresh to the SPA page. Only
+   * sellable stock (visible) resolves; hidden/draft slugs answer the same 404 as unknown ones.
+   */
+  async sharePreview(slug: string, origin: string) {
+    const row = await this.db.product.findFirst({ where: { ...visible, slug }, include });
+    if (!row) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Không tìm thấy sản phẩm.' });
+    const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const price = `${Number(row.priceFrom).toLocaleString('vi-VN')}đ`;
+    const description = row.description !== '' ? row.description : `Giá từ ${price} — đặt hàng online, giao hàng toàn quốc.`;
+    const title = `${row.name} | RMG Labels`;
+    const image = row.images[0];
+    const imageTag = image ? `\n    <meta property="og:image" content="${escape(`${origin}/api/v1/media/${image.assetId}`)}" />` : '';
+    return `<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escape(title)}</title>
+    <meta name="description" content="${escape(description)}" />
+    <meta property="og:title" content="${escape(title)}" />
+    <meta property="og:description" content="${escape(description)}" />
+    <meta property="og:type" content="product" />${imageTag}
+    <meta property="og:url" content="${escape(`${origin}/api/v1/share/products/${slug}`)}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta http-equiv="refresh" content="0; url=/products/${escape(slug)}" />
+  </head>
+  <body>
+    <p>Bạn đang được chuyển tới trang sản phẩm. <a href="/products/${escape(slug)}">Mở ngay nếu trình duyệt không tự chuyển.</a></p>
+  </body>
+</html>
+`;
+  }
   private validate(dto: ProductDto) {
     if (new Set(dto.variants.map((v) => v.sku)).size !== dto.variants.length
       || new Set(dto.variants.map((v) => `${v.size}:${v.color}`)).size !== dto.variants.length) conflict('SKU hoặc tổ hợp size/màu bị trùng.');

@@ -2,6 +2,36 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M7.1.1: link preview sản phẩm cho Zalo/Instagram
+
+**Phạm vi đã duyệt:** bảng kế hoạch M7.1.1 trong chat (người dùng "oke" + "bắt đầu làm M7.1.1 đi"): endpoint public server-render cho link share, thêm thẻ tĩnh `og:site_name`/`twitter:card` vào `index.html`. Làm trên nhánh `feat/m7.1.1-share-preview` từ `main` sau merge PR #22. **Đã viết, agent đã kiểm tra local; chưa vào production — sẽ có ở lượt deploy qua workflow.**
+
+| File thực tế | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/products/products.service.ts` | Thêm `sharePreview(slug, origin)`: đọc sản phẩm PUBLISHED (cùng bộ lọc `visible` như detail) + ảnh đầu, trả HTML tĩnh với `og:title/description/type/url`, `og:image` tuyệt đối theo `APP_ORIGIN`, `twitter:card`, `meta refresh 0s` về `/products/<slug>`; mọi giá trị đưa vào HTML qua hàm escape (chống XSS qua og-tags); 404 đồng nhất cho hàng ẩn/nháp/sai slug |
+| `apps/backend/src/modules/products/share-preview.controller.ts` (mới) | `GET /share/products/:slug` public, `text/html; charset=utf-8`, GET không CSRF, không đụng kho |
+| `apps/backend/src/modules/products/products.module.ts` | Khai báo `SharePreviewController` |
+| `apps/frontend/index.html` | Thêm `og:site_name`, `twitter:card summary` cho các trang SPA (không thêm `og:image` tĩnh vì chưa có logo — để trống thay vì ảnh giả) |
+| `apps/backend/test/share-preview.integration.spec.ts` (mới) | 4 ca PostgreSQL thật: HTML đủ og-tags + ảnh tuyệt đối; fallback "Giá từ …" khi thiếu mô tả; tên/mô tả chứa `<b>"&` bị escape; 404 cho nháp/sai slug. Ba sản phẩm PUBLISHED cần ảnh riêng (asset 1-1 sản phẩm) — helper upload+gắn+publish |
+| `apps/frontend/e2e/share-preview.spec.ts` (mới) | Fixture DB runner riêng (user ADMIN cho `ownerId` + asset + sản phẩm): link share → meta-refresh về trang chi tiết render đúng; fetch HTML khẳng định og-tags (origin-agnostic vì APP_ORIGIN khác nhau giữa local/CI); slug lạ → 404 |
+| `package.json`, `docs/architecture.md`, `progress.md` | Thêm spec vào `test:e2e:implemented`; chốt lại đường dẫn `/api/v1/share/products/:slug` (trước đây dự kiến `/share/…`, đổi để không phải sửa nginx; URL ngắn hơn có thể thêm sau bằng 1 location nginx) |
+
+**Data flow:** người bán dán link `…/api/v1/share/products/<slug>` vào Zalo/Instagram → crawler GET endpoint → `sharePreview` đọc sản phẩm đang bán + ảnh đầu → trả HTML với OG tags URL tuyệt đối → crawler dựng card (ảnh + tên + giá); người thật mở link → meta refresh về SPA `/products/<slug>`. Không đăng nhập, GET thuần.
+
+| Kiểm tra thực tế | Kết quả |
+|---|---|
+| `typecheck`, `build` | Đạt |
+| `./tools/npm.ps1 test` | Tools + backend **45** + frontend **334** đạt |
+| `./tools/npm.ps1 run test:integration` | **11 file, 85/85** (4 ca share mới) |
+| `test:e2e:implemented` (15 spec) | **43/43** (2 ca share mới) |
+| Chưa chạy | Crawler thực của Zalo/Instagram — cần route vào production rồi dán link thật (sau deploy) |
+
+**Key:** `sharePreview` — trang HTML server-render duy nhất của app, chỉ phục vụ crawler + redirect; hàm `escape` — toàn bộ tên/mô tả/slug đưa vào attribute phải qua escape; `APP_ORIGIN` — gốc URL tuyệt đối cho `og:image`/`og:url` (đã có cho CSRF, tái sử dụng); bộ lọc `visible` — share và detail dùng cùng điều kiện hàng đang bán.
+
+**Chạy thử (local):** mở `http://localhost:5173/api/v1/share/products/<slug>` — trình duyệt nhảy ngay về trang sản phẩm; `curl -s <link> | head -30` thấy og-tags. **Trên production:** sau khi PR này merge và deploy qua workflow, dán link sản phẩm vào Zalo để xem card.
+
+**Còn lại:** crawler thực (Zalo/IG) chỉ xác minh được sau deploy; E2E mobile 390px (M7.1.2) tiếp theo — gửi kế hoạch riêng; PR #22 đã merge nên workflow deploy sẵn sàng, lượt deploy đầu qua workflow thực hiện sau khi PR M7.1.1 merge (vừa test pipeline vừa đưa tính năng lên).
+
 ## Ngày 31/10/2026 — M6.1.1: deploy qua script `deploy-release.sh`
 
 **Phạm vi đã duyệt:** bảng kế hoạch M6.1.1 trong chat (người dùng duyệt "duyệt"): script hoá deploy trên VPS và chạy một lượt deploy thật của `main` `899b52c`. Không sửa code ứng dụng; release gồm M4.2 giỏ/quote **chưa nghiệm thu** (đã nêu khi duyệt — catalog production trống nên khách không thao tác được giỏ). **Đã deploy và agent đã kiểm tra local + URL công khai; chờ người dùng chạy thử.**
