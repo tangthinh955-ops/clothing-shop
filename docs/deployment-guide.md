@@ -1,5 +1,47 @@
 # Deploy RMG lên VPS — M3.16.1
 
+## Deploy qua script (từ M6.1.1)
+
+Các lượt deploy sau lần đầu dùng script `deploy/deploy-release.sh` (nằm trong release, chạy trên VPS với root) thay cho việc gõ tay từng lệnh build/migrate/up:
+
+```sh
+bash /srv/rmg-shop/releases/<tag-mới>/deploy/deploy-release.sh /srv/rmg-shop/releases/<tag-mới>
+```
+
+Script lần lượt: khoá chống chạy song song (flock) → `compose config` → build `api`/`web`/`migrate` với tag riêng của release → `migrate` tường minh → ghi `RMG_RELEASE` mới vào `/etc/rmg-shop/backend.env` (giữ `0600 root:root`) → `up -d --wait api web` → đợi readiness `200 {"status":"ok"}` ở `127.0.0.1:4200` → kiểm tra chuỗi công khai qua HTTPS (health 200, `/shop` 200, admin không phiên 401, cookie `__Host-shop.sid` có Secure/HttpOnly/SameSite=Lax — chỉ kiểm thuộc tính, không in giá trị) → mới đổi symlink `/srv/rmg-shop/current`. Nếu bất kỳ bước nào lỗi **sau khi đã thay container**, script tự rollback: trả `RMG_RELEASE` cũ, `up -d --wait api web` từ thư mục release cũ và trả symlink; lỗi trước khi thay container thì release cũ không bị ảnh hưởng. Script không đụng volume DB, thư mục uploads, secret, nginx, certbot hay website khác; image release cũ vẫn giữ trên máy để quay lại khi cần.
+
+Chuẩn bị trước khi gọi script vẫn theo các mục bên dưới: kiểm tra local/CI xanh, đóng gói đúng allowlist từ một Git commit, tạo thư mục release mới và giải nén vào đó. Việc đóng gói/tải lên đã tự động hoá qua GitHub Actions từ M6.1.2.
+
+## Deploy qua GitHub Actions (từ M6.1.2)
+
+Workflow `Deploy production` (`.github/workflows/deploy.yml`) chạy bằng nút **Run workflow** (`workflow_dispatch`), chọn ref (mặc định `main`). Thứ tự: resolve SHA → gate: **mọi** check-run CI của đúng commit phải hoàn tất và `success`, chưa thì dừng trước khi đụng VPS → đóng gói allowlist từ đúng SHA (`git archive`) → scp kèm đối chiếu SHA256 → giải nén vào release tag `ci-<ngày>-<giờ>-<sha7>` → chạy `deploy/deploy-release.sh` của release. `concurrency: production-deploy` chặn hai lượt deploy chạy chồng.
+
+Bí mật: `DEPLOY_SSH_KEY` là private key **ed25519 riêng cho CI** (không phải key cá nhân của ai), public key nằm trong `authorized_keys` của VPS. Host key của VPS ghim công khai trong `deploy/ci-known-hosts` — VPS đổi key/host thì phải sửa file này qua PR. Xoá secret trên GitHub là thu hồi quyền deploy ngay lập tức; xoá dòng public key trên VPS cũng vậy.
+
+## Backup và khôi phục (từ M6.2)
+
+`deploy/backup.sh` (bản cài ổn định tại `/srv/rmg-shop/bin/backup.sh` — **nhớ cập nhật bản này khi script trong repo đổi**) chạy cron **03:00 hằng ngày** trên VPS: `pg_dump -Fc` DB production qua container + `tar` thư mục uploads + `SHA256SUMS` vào `/var/backups/rmg-shop/<ngày-giờ>/` (thư mục `0700`, file `0600`), giữ **7 bản** mới nhất, log `/var/log/rmg-shop-backup.log`. Chạy tay ngay khi muốn: `bash /srv/rmg-shop/bin/backup.sh`.
+
+Bản sao **ngoài VPS** (thông lệ — làm lại sau mỗi lần có dữ liệu mới quan trọng):
+
+```sh
+STAMP=$(ssh masoi 'ls -1 /var/backups/rmg-shop | grep -v lock | tail -1')
+mkdir -p .local/backups/$STAMP
+scp "masoi:/var/backups/rmg-shop/$STAMP/*" .local/backups/$STAMP/
+cd .local/backups/$STAMP && sha256sum -c SHA256SUMS
+```
+
+Khôi phục (diễn tập đã chứng minh 31/10/2026) — **luôn tạo DB mới, không bao giờ restore đè production**:
+
+```sh
+ssh masoi 'docker exec rmg-shop-db-1 createdb -U postgres rmg_shop_restore_drill'
+ssh masoi 'cat /var/backups/rmg-shop/<stamp>/database.dump | docker exec -i rmg-shop-db-1 pg_restore -U postgres -d rmg_shop_restore_drill'
+# pg_restore KHÔNG dùng --no-owner: ownership trả về role rmg_shop, role ứng dụng đọc được ngay.
+ssh masoi 'docker exec rmg-shop-db-1 dropdb -U postgres rmg_shop_restore_drill'   # sau khi kiểm tra xong
+```
+
+Ảnh khôi phục bằng giải nén `uploads.tar.gz` về `/var/lib/rmg-shop/uploads/` (chỉ khi cần thật). Bằng chứng diễn tập: 9 bảng khớp số hàng nguồn, `_prisma_migrations` 3/3 applied, `migrate status` báo "Database schema is up to date!" trên DB drill — chi tiết ở progress.md.
+
 ## Phạm vi và bố cục
 
 Domain `rmglabels.duckdns.org` trỏ tới VPS Ubuntu 24.04. nginx trên host kết thúc HTTPS, phục vụ thử thách ACME và chuyển `/api/` tới `127.0.0.1:4200`, đường dẫn còn lại tới `127.0.0.1:4180`. Container web phục vụ SPA và deep link; container API chạy Node 24.22.1 bằng user `node`. PostgreSQL 18.6 nằm trên mạng Docker riêng, không publish cổng.
@@ -77,7 +119,7 @@ Nếu `nginx -t` lỗi thì phục hồi file vừa thay và không reload. Khô
 
 ## Cập nhật, rollback và giới hạn
 
-Release tiếp theo build image với tag mới, chạy migration đã review, đổi `RMG_RELEASE` trong file riêng và khởi động API/web từ release mới. Chỉ chuyển `/srv/rmg-shop/current` sau khi các dịch vụ healthy. Nếu lỗi ứng dụng và schema tương thích, chọn lại release/tag cũ và chạy `up -d --wait api web`; giữ nguyên database, ảnh và secret. Không tự rollback schema/data; migration không tương thích cần phương án riêng và backup trước khi áp dụng.
+Release tiếp theo build image với tag mới, chạy migration đã review, đổi `RMG_RELEASE` trong file riêng và khởi động API/web từ release mới. Chỉ chuyển `/srv/rmg-shop/current` sau khi các dịch vụ healthy. Nếu lỗi ứng dụng và schema tương thích, chọn lại release/tag cũ và chạy `up -d --wait api web`; giữ nguyên database, ảnh và secret. **Đã diễn tập 31/10/2026 (M6.1.3):** rollback về `m4-2-20261031-1410-899b52c` rồi roll-forward về `ci-20261031-1218-6d35c3d` bằng đúng script — mỗi pha ~35 giây, DB/ảnh/secret không đổi, share endpoint biến mất/khôi phục đúng lúc (bằng chứng ở progress.md). Không tự rollback schema/data; migration không tương thích cần phương án riêng và backup trước khi áp dụng.
 
 M3.16.1 chưa bao gồm nhập dữ liệu shop, backup ngoài VPS/diễn tập khôi phục (M6.2), cảnh báo downtime (M6.3), bảo vệ admin M3.17 hoặc luồng đơn hàng M4. Không kết luận sẵn sàng mở bán chỉ từ healthcheck xanh. Cấu hình Resend hiện chỉ hỗ trợ gửi thử; gửi cho khách cần domain gửi được xác minh.
 

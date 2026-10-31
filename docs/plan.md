@@ -152,10 +152,10 @@ Quyết định 29/10/2026: đổi trả xử lý thủ công. Admin nhận lạ
 ### M6 — Vận hành trên VPS (trước mở bán)
 
 - M3.16.1 thực hiện sớm phần deploy đầu tiên theo bảng kế hoạch đã duyệt trong chat: snapshot source hiện tại được kiểm tra local, build trên Linux, database mới riêng cho RMG, nginx/HTTPS và smoke test. Kết quả thật ghi trong `progress.md`; không nhận kết quả local là CI. Chưa coi toàn M6 đạt.
-- [ ] [CREATE] Hoàn tất vận hành deploy VPS: cấu hình proxy/service và `docs/deployment-guide.md` được làm ở M3.16.1; còn quy trình backup/restore DB + thư mục ảnh ra ngoài VPS.
+- [x] [CREATE] Hoàn tất vận hành deploy VPS: cấu hình proxy/service và `docs/deployment-guide.md` được làm ở M3.16.1; deploy sau CI + rollback đã diễn tập (M6.1, 31/10/2026); **backup/restore DB + ảnh ngoài VPS đã làm ở M6.2 (31/10/2026, Người A nhận lại từ Người B theo duyệt): backup nightly + bản sao ngoài VPS + diễn tập khôi phục vào DB khác đạt.**
 - [ ] [MODIFY] health/log/CI/README theo môi trường thật; các lượt deploy qua pipeline chỉ chạy sau khi CI xanh. Snapshot thủ công M3.16.1 chưa có kết quả CI riêng.
 - [ ] Bảo vệ VPS: chỉ SSH bằng key, tường lửa chỉ mở 22/80/443, PostgreSQL không mở ra ngoài, cập nhật bảo mật tự động; báo động khi `/api/v1/health/ready` lỗi.
-- [ ] Smoke test HTTPS/proxy/refresh, restart/catch-up, ảnh/đơn còn nguyên sau restart, restore sang DB khác, rollback app tương thích schema.
+- [ ] Smoke test HTTPS/proxy/refresh, restart/catch-up, ảnh/đơn còn nguyên sau restart (đã đạt ở M3.16.1/M6.1), rollback app tương thích schema (đã diễn tập M6.1.3); restore sang DB khác đã diễn tập ở M6.2.
 - Hoàn thành khi có bằng chứng deploy/restore; chưa đạt nếu chỉ có hướng dẫn chưa chạy.
 
 ### M7 — Nghiệm thu (rút gọn)

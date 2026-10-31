@@ -83,7 +83,7 @@ Cache catalog ngắn (đề xuất 60s), invalidate sau sửa; detail refetch kh
 
 Thiết kế trắng/đen, ảnh 3:4, responsive hai cột mobile khi đủ chỗ, một cột khi quá hẹp, 3–4 desktop. Label/error/focus/keyboard rõ; target chạm rộng; không dùng hover/màu làm tín hiệu duy nhất. Loading/empty/error/retry và submitting state bắt buộc.
 
-Refresh deep URL phải tới SPA. HTML ban đầu có metadata chung; `/share/products/:slug` HTML metadata do Nest trả, link tới SPA, phải thử crawler thực. Không hứa SPA có SEO/preview động đầy đủ chỉ vì JS đổi title.
+Refresh deep URL phải tới SPA. HTML ban đầu có metadata chung; từ M7.1.1 link preview sản phẩm là `/api/v1/share/products/:slug` — HTML với OG tags do Nest trả (URL tuyệt đối theo `APP_ORIGIN`), meta-refresh về SPA; đường `/share/…` ngắn hơn có thể thêm sau bằng một location nginx, không chặn gì. Phải thử crawler thực (Zalo/Instagram) sau khi route vào production. Không hứa SPA có SEO/preview động đầy đủ chỉ vì JS đổi title.
 
 ## Phiên, proxy và bảo vệ
 

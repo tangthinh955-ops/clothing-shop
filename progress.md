@@ -109,6 +109,142 @@ Khách điền form → bấm "Đặt hàng COD" → provider chụp command (ke
 
 **Dừng sau M4.3.1 cho người dùng chạy thử; M4.4 tra cứu/hủy và M4.5 admin đơn chưa triển khai.**
 
+=======
+## Ngày 31/10/2026 — M6.2: backup ngoài VPS + diễn tập khôi phục
+
+**Phạm vi đã duyệt:** kế hoạch M6.2 trong chat ("duyệt") — người dùng chuyển phần này từ Người B sang phía A. Backup DB + ảnh hằng ngày trên VPS, bản sao ngoài VPS, diễn tập khôi phục vào DB khác. **Đã làm và xác minh đầy đủ; bản sao ngoài VPS nằm tại máy người dùng `.local/backups/20261031-130938/` (ngoài Git).**
+
+- `deploy/backup.sh` (mới): `pg_dump -Fc` qua container DB + `tar` uploads + `SHA256SUMS` vào `/var/backups/rmg-shop/<stamp>/` (`0700`/`0600`), retention **7 bản**, flock chống chồng, không in dữ liệu. Bản cài ổn định: `/srv/rmg-shop/bin/backup.sh`. Lỗi đầu tiên (mở lock trước khi mkdir) đã sửa trước khi chạy thành công.
+- Cron VPS: `0 3 * * * /srv/rmg-shop/bin/backup.sh` — entry riêng, không đụng backup của website khác trên cùng máy; log `/var/log/rmg-shop-backup.log`.
+- Backup đầu tiên: `20261031-130938` (732K — dump 47K + uploads 691K); pull về máy người dùng, **SHA256 khớp**, `.local/backups/` được gitignore xác nhận.
+- Diễn tập khôi phục: tạo DB `rmg_shop_restore_drill` → `pg_restore` — lần đầu dùng `--no-owner` khiến role ứng dụng mất quyền đọc `_prisma_migrations` (`migrate status` lỗi) → làm lại **không** `--no-owner`: 9 bảng khớp số hàng nguồn (products 5, categories 4, users 2, variants 5, product_images 17, upload_assets 17, inventory 5, movements 5, quotes 4), `_prisma_migrations` 3/3 applied, `migrate status` → **"Database schema is up to date!"**. DB drill đã xóa sạch (0 còn lại). Runbook trong guide ghi rõ cờ đúng.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Backup chạy tay + cron entry | Đạt (log 3 bước, 732K, quyền 0700/0600) |
+| SHA256 sau khi pull về máy | Khớp `SHA256SUMS` |
+| Restore drill: đếm 9 bảng vs nguồn | Khớp toàn bộ |
+| `migrate status` trên DB drill | "Database schema is up to date!" |
+| Dọn DB drill | dropdb thành công, còn lại 0 |
+| Backup lọt Git? | Không — `.local/` gitignore |
+
+**Key:** `pg_dump -Fc` — format nén của PostgreSQL, restore bằng `pg_restore`; `--no-owner` — cờ KHÔNG dùng khi restore về cluster này (ownership phải trả về `rmg_shop`); retention 7 — vòng đời bản backup trên VPS; bản ngoài VPS — pull thủ công về `.local/backups/`, cập nhật theo thông lệ sau các mốc dữ liệu.
+
+**Chạy thử:** người dùng xác nhận file tồn tại tại thư mục `.local/backups/20261031-130938/` trên máy. Muốn bản mới hơn: chạy 3 lệnh pull trong guide.
+
+**Còn lại:** backup tự động hoàn toàn ra ngoài VPS cần lưu trữ đám mây (cần tài khoản người dùng cung cấp); M6.3 (bảo vệ VPS/báo động) còn lại của mốc M6; cron chạy lần đầu tự động 03:00 ngày mai — kiểm log buổi sáng sau.
+
+## Ngày 31/10/2026 — M6.1.3: diễn tập rollback trên production
+
+**Phạm vi đã duyệt:** bảng kế hoạch M6.1.3 trong chat ("oke"): rollback có chủ đích về release trước rồi roll-forward lại, không thay đổi code. **Đã diễn tập và xác minh đủ 3 pha; M6.1 hoàn tất 3/3 phần.**
+
+- Pha rollback: `deploy-release.sh` với release `m4-2-20261031-1410-899b52c` — 6/6 bước đạt trong ~34 giây (layer cache); `current` + `RMG_RELEASE` trả về release cũ; health 200, `/shop` 200, **5 sản phẩm còn nguyên**; share preview trả **404** — chứng minh thật sự đang chạy bản cũ thiếu M7.1.1.
+- Pha roll-forward: script với release `ci-20261031-1218-6d35c3d` — 6/6 bước đạt ~32 giây; `current` + `RMG_RELEASE` trở lại; health 200, `/shop` 200, 5 sản phẩm, share preview **200 + og:image** khôi phục.
+- Container DB giữ nguyên cả hai pha; volume/ảnh/secret không đụng tới; downtime mỗi pha chỉ vài giây lúc recreate (shop chưa mở bán). Rollback tự động của script không kích hoạt có chủ ý — dùng cùng bộ lệnh với rollback tay đã diễn tập (rủi ro khi cố phá health trên production không đáng).
+
+| Pha | Lệnh | current/RMG_RELEASE | health | shop | products | share preview |
+|---|---|---|---|---|---|---|
+| Trước diễn tập | — | ci-20261031-1218-6d35c3d | 200 | 200 | 5 | 200 |
+| Sau rollback | script + release cũ | m4-2-20261031-1410-899b52c | 200 | 200 | 5 | **404** |
+| Sau roll-forward | script + release mới | ci-20261031-1218-6d35c3d | 200 | 200 | 5 | **200** |
+
+**Key:** rollback = chạy lại script với thư mục release cũ (không lệnh đặc biệt nào khác); schema không rollback — migration giữ nguyên, app cũ vẫn chạy vì schema tương thích xuôi; `current`/`RMG_RELEASE` — hai con trỏ phải luôn khớp nhau.
+
+**Chạy thử:** người dùng không cần làm gì — trang [cửa hàng](https://rmglabels.duckdns.org/shop) vẫn chạy bình thường. Khi có sự cố thật: chạy `bash /srv/rmg-shop/releases/<tag-tốt>/deploy/deploy-release.sh /srv/rmg-shop/releases/<tag-tốt>`.
+
+**Còn lại:** M6.1 chốt phía Người A; còn M6.1.3 không có phần code — các giới hạn M6.2 (backup ngoài VPS, cấp bách vì dữ liệu thật) và M6.3 (bảo vệ VPS/báo động) thuộc Người B; M7.1.2 E2E mobile tiếp theo khi người dùng yêu cầu.
+
+## Ngày 31/10/2026 — M6.1.2: lượt deploy đầu qua GitHub Actions
+
+**Phạm vi đã duyệt:** kế hoạch M6.1.2 (workflow bấm-chạy, gate CI, key riêng cho CI). Người dùng merge PR #22 (workflow + secret `DEPLOY_SSH_KEY` đã set, host key ghim `deploy/ci-known-hosts`) và PR #23 (M7.1.1); CI của `main` `6d35c3d` xanh → chạy workflow **Deploy production** lần đầu (run [41200471146](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41200471146), ref=main). **Đã deploy và agent đã kiểm tra; chờ người dùng thử card Zalo.**
+
+- Tất cả bước workflow đạt: gate mọi check-run của đúng SHA → `git archive` allowlist → SSH bằng key ed25519 riêng cho CI (không dùng key cá nhân) → scp + đối chiếu SHA256 → chạy `deploy-release.sh` trên VPS. `concurrency: production-deploy` chống deploy chồng.
+- Release mới: `/srv/rmg-shop/releases/ci-20261031-1218-6d35c3d` — gồm M4.2 giỏ/quote, 5 sản phẩm thật và M7.1.1 link preview. API/web healthy sau recreate; DB container giữ nguyên. `current` + `RMG_RELEASE` đã trỏ đúng.
+- Kiểm tra công khai sau deploy: health `{"status":"ok"}`; `/shop` 200; products total 5; share preview `…/api/v1/share/products/rmg-black-wash-vtg-horse-tee` trả `og:title`/`og:image` với origin production + refresh đúng slug.
+
+**Key:** gate CI trong workflow — dừng trước khi đụng VPS nếu commit chưa xanh; `DEPLOY_SSH_KEY` — key CI-only, xoá secret hoặc dòng `authorized_keys` là thu hồi quyền deploy.
+
+**Chạy thử:** bấm Run workflow trên GitHub chọn commit bất kỳ đã có CI xanh — deploy tự diễn ra; link share để dán Zalo: `https://rmglabels.duckdns.org/api/v1/share/products/<slug>`.
+
+**Còn lại:** diễn tập rollback có chủ đích (M6.1.3 — kế hoạch riêng); backup ngoài VPS (M6.2) càng cấp vì dữ liệu thật đã trên production.
+
+## Ngày 31/10/2026 — M7.1.1: link preview sản phẩm cho Zalo/Instagram
+
+**Phạm vi đã duyệt:** bảng kế hoạch M7.1.1 trong chat (người dùng "oke" + "bắt đầu làm M7.1.1 đi"): endpoint public server-render cho link share, thêm thẻ tĩnh `og:site_name`/`twitter:card` vào `index.html`. Làm trên nhánh `feat/m7.1.1-share-preview` từ `main` sau merge PR #22. **Đã viết, agent đã kiểm tra local; đã vào production qua workflow (release `ci-20261031-1218-6d35c3d` — xem mục M6.1.2 bên dưới); chờ người dùng dán link share vào Zalo thử card.**
+
+| File thực tế | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/products/products.service.ts` | Thêm `sharePreview(slug, origin)`: đọc sản phẩm PUBLISHED (cùng bộ lọc `visible` như detail) + ảnh đầu, trả HTML tĩnh với `og:title/description/type/url`, `og:image` tuyệt đối theo `APP_ORIGIN`, `twitter:card`, `meta refresh 0s` về `/products/<slug>`; mọi giá trị đưa vào HTML qua hàm escape (chống XSS qua og-tags); 404 đồng nhất cho hàng ẩn/nháp/sai slug |
+| `apps/backend/src/modules/products/share-preview.controller.ts` (mới) | `GET /share/products/:slug` public, `text/html; charset=utf-8`, GET không CSRF, không đụng kho |
+| `apps/backend/src/modules/products/products.module.ts` | Khai báo `SharePreviewController` |
+| `apps/frontend/index.html` | Thêm `og:site_name`, `twitter:card summary` cho các trang SPA (không thêm `og:image` tĩnh vì chưa có logo — để trống thay vì ảnh giả) |
+| `apps/backend/test/share-preview.integration.spec.ts` (mới) | 4 ca PostgreSQL thật: HTML đủ og-tags + ảnh tuyệt đối; fallback "Giá từ …" khi thiếu mô tả; tên/mô tả chứa `<b>"&` bị escape; 404 cho nháp/sai slug. Ba sản phẩm PUBLISHED cần ảnh riêng (asset 1-1 sản phẩm) — helper upload+gắn+publish |
+| `apps/frontend/e2e/share-preview.spec.ts` (mới) | Fixture DB runner riêng (user ADMIN cho `ownerId` + asset + sản phẩm): link share → meta-refresh về trang chi tiết render đúng; fetch HTML khẳng định og-tags (origin-agnostic vì APP_ORIGIN khác nhau giữa local/CI); slug lạ → 404 |
+| `package.json`, `docs/architecture.md`, `progress.md` | Thêm spec vào `test:e2e:implemented`; chốt lại đường dẫn `/api/v1/share/products/:slug` (trước đây dự kiến `/share/…`, đổi để không phải sửa nginx; URL ngắn hơn có thể thêm sau bằng 1 location nginx) |
+
+**Data flow:** người bán dán link `…/api/v1/share/products/<slug>` vào Zalo/Instagram → crawler GET endpoint → `sharePreview` đọc sản phẩm đang bán + ảnh đầu → trả HTML với OG tags URL tuyệt đối → crawler dựng card (ảnh + tên + giá); người thật mở link → meta refresh về SPA `/products/<slug>`. Không đăng nhập, GET thuần.
+
+| Kiểm tra thực tế | Kết quả |
+|---|---|
+| `typecheck`, `build` | Đạt |
+| `./tools/npm.ps1 test` | Tools + backend **45** + frontend **334** đạt |
+| `./tools/npm.ps1 run test:integration` | **11 file, 85/85** (4 ca share mới) |
+| `test:e2e:implemented` (15 spec) | **43/43** (2 ca share mới) |
+| Chưa chạy | Crawler thực của Zalo/Instagram — cần route vào production rồi dán link thật (sau deploy) |
+
+**Key:** `sharePreview` — trang HTML server-render duy nhất của app, chỉ phục vụ crawler + redirect; hàm `escape` — toàn bộ tên/mô tả/slug đưa vào attribute phải qua escape; `APP_ORIGIN` — gốc URL tuyệt đối cho `og:image`/`og:url` (đã có cho CSRF, tái sử dụng); bộ lọc `visible` — share và detail dùng cùng điều kiện hàng đang bán.
+
+**Chạy thử (local):** mở `http://localhost:5173/api/v1/share/products/<slug>` — trình duyệt nhảy ngay về trang sản phẩm; `curl -s <link> | head -30` thấy og-tags. **Trên production (đã xác minh bằng curl):** `https://rmglabels.duckdns.org/api/v1/share/products/<slug>` trả og:title/og:image production + refresh đúng — người dùng dán link vào Zalo để xem card.
+
+**Còn lại:** card thực tế trên Zalo/IG do người dùng dán link thử; E2E mobile 390px (M7.1.2) tiếp theo — gửi kế hoạch riêng.
+## Ngày 31/10/2026 — Nhập dữ liệu thật lên production (admin + 5 sản phẩm)
+
+**Phạm vi:** người dùng yêu cầu "mang dữ liệu lên VPS". Tạo **tài khoản ADMIN production** (email do người dùng cung cấp trực tiếp; mật khẩu sinh ngẫu nhiên 24 ký tự, lưu `/etc/rmg-shop/admin-initial-password` `0600 root:root` trên VPS — không ghi mật khẩu/email vào repo, log hay chat) và nhập **5 sản phẩm thật** từ `data/import` (5 dòng CSV đủ giá/tồn + 17 ảnh RMG; giá 500.000–1.000.000đ) bằng CLI `import-products` chạy trong container API production, trạng thái **PUBLISHED** theo lựa chọn của người dùng. **Đã import và kiểm tra công khai; chờ người dùng đăng nhập, đổi mật khẩu và xem /shop.**
+
+- Chuyển dữ liệu: tar 18 file → `/srv/rmg-shop/import-data` trên VPS (giữ lại để chạy lại an toàn — CLI bỏ qua slug đã có) → bơm vào container qua `docker exec -i` tar vào `/tmp/rmg-import` (container API `read_only`, `/tmp` là tmpfs; `docker cp` bị rootfs chặn). Tmp trong container đã xoá sau import.
+- Admin: `create-admin` với env một lần (mật khẩu không in ra); CLI chỉ tạo mới, không nâng quyền tài khoản có sẵn; email là trường đăng nhập của chủ shop.
+- Import: 5 sản phẩm PUBLISHED — mỗi cái 1 biến thể theo size trong CSV, kho theo cột `stock` kèm movement "Nhập kho lúc import" actor là admin; 4 danh mục tự tạo; SKU tự sinh `RMG<hash>-<size>`; ảnh nén webp 750×1000 vào `/var/lib/rmg-shop/uploads` (persistent volume); 0 dòng bị bỏ qua, 0 slug trùng.
+- Data flow: `products.csv` + ảnh → CLI đọc/validate từng dòng (thiếu file/giá sai thì bỏ qua dòng, không nửa vời) → webp + UploadAsset (owner admin) → Product + Variant + Inventory + Movement + ProductImage trong DB production → `/api/v1/products` và `/shop` hiện ngay.
+
+| Kiểm tra công khai (curl từ máy ngoài) | Kết quả |
+|---|---|
+| `GET /api/v1/products?pageSize=12` | total **5**, đúng tên/giá/danh mục/kho (avail 5/5/10/5/10) |
+| `GET /api/v1/categories` | 4 danh mục: Áo thun, Áo polo, Quần, Áo hoodie |
+| `GET /api/v1/media/<assetId>` | 200 `image/webp`; id lạ → 404 |
+| `/shop` | 200 |
+
+**Key:** `import-products --dir` — nhập CSV thật cho production (khác `seed:demo`), tự tạo danh mục bật, mỗi dòng = 1 sản phẩm nhiều size; `admin:create` — env `ADMIN_EMAIL`/`ADMIN_PASSWORD` một lần, không có mặc định; chuỗi ảnh — file → `UploadAsset` (owner admin) → `ProductImage`, dùng chung cơ chế `/api/v1/media` với upload admin.
+
+**Chạy thử:** mở [/shop](https://rmglabels.duckdns.org/shop) — thấy 5 sản phẩm + ảnh; đăng nhập `/login` bằng email admin và mật khẩu trong file trên VPS (`ssh masoi cat /etc/rmg-shop/admin-initial-password`), vào `/admin` kiểm tra sản phẩm/kho, **đổi mật khẩu ngay** sau lần đăng nhập đầu.
+
+**Còn lại:** đổi mật khẩu admin (khuyến nghị làm ngay); chưa có backup ngoài VPS (M6.2) — dữ liệu thật đã nằm trên production nên backup cần sớm; M6.1.2 chờ merge PR #22 để test workflow; các file docs chưa commit nằm trên nhánh PR.
+
+## Ngày 31/10/2026 — M6.1.1: deploy qua script `deploy-release.sh`
+
+**Phạm vi đã duyệt:** bảng kế hoạch M6.1.1 trong chat (người dùng duyệt "duyệt"): script hoá deploy trên VPS và chạy một lượt deploy thật của `main` `899b52c`. Không sửa code ứng dụng; release gồm M4.2 giỏ/quote **chưa nghiệm thu** (đã nêu khi duyệt — catalog production trống nên khách không thao tác được giỏ). **Đã deploy và agent đã kiểm tra local + URL công khai; chờ người dùng chạy thử.**
+
+- Release mới: `/srv/rmg-shop/releases/m4-2-20261031-1410-899b52c`; sau khi healthy script đã đổi `/srv/rmg-shop/current` và `RMG_RELEASE` trong `/etc/rmg-shop/backend.env` (vẫn `0600 root:root`). URL: [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop).
+- Đóng gói 204 file (291 entry gồm cả dòng thư mục) từ đúng commit `899b52c` theo allowlist guide; archive có SHA256 `790610dd239a7424e607d5852d7567698525e850b4d71317fe5a13472d0ae50d`, đối chiếu khớp sau khi tải lên VPS. So sánh danh sách file trong archive với `git ls-tree` của commit: **không thừa, không thiếu**. `deploy/deploy-release.sh` (mới, chưa commit) được tải riêng vào thư mục release.
+- Image IDs: API `sha256:3b21203fee7e7c8c26eba03e57dc3b3e46c6a64ef4584083e2cbb83678696534`; web `sha256:edd9de0577780fa81c91bf1b85decaa583fdcc4876d3c74c16d19363d4bf2b88`; migrate `sha256:45f2bdbacd0253a35b7f644e1180cf418fd5790196c2ea1f075023eb3dc5662e`.
+- Script chạy đủ 6 bước: `config --quiet` → build 3 image tag riêng → `migrate` tường minh — áp lần đầu migration `202610290001_m4_order_core` lên DB production (tổng 3 migrations) → recreate API/web với `--wait` → readiness local 200 → kiểm tra chuỗi công khai → đổi symlink. Container DB giữ nguyên (up 44 giờ), volume `rmg-shop_postgres_data` không đổi; không seed, không tạo admin, không đọc bảng dữ liệu.
+- Rollback: script có rollback tự động (trả `RMG_RELEASE` + `up -d` từ release cũ + trả symlink) kích hoạt khi health fail **sau khi** đã thay container — lượt này không phải kích hoạt; release cũ `ui-20261030-ad9c854-01` và đủ bộ image cũ còn trên máy. Diễn tập rollback có chủ đích để M6.1.3. Tarball tạm trong `/tmp` đã xoá sau khi giải nén.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Local trên đúng `899b52c` (sáng cùng ngày) | typecheck/build đạt; unit tools+backend 45+frontend 334; integration 81/81; E2E implemented 41/41 |
+| `bash -n deploy/deploy-release.sh` | Đạt (LF, UTF-8) |
+| SHA256 archive local ↔ trên VPS | Khớp |
+| Log script trên VPS | Đủ 6 bước, không bước lỗi; migration báo "successfully applied" |
+| Kiểm tra độc lập từ máy ngoài (curl) | readiness `200 {"status":"ok"}`; HTTP→HTTPS 301; `/` và `/shop` 200; admin không phiên 401; `/api/docs` 404; bundle mới `index-DHSXH1Sy.js` được phục vụ; HSTS+CSP có mặt; cookie `__Host-shop.sid` đủ Secure/HttpOnly/SameSite=Lax/Path=/, không Domain (chỉ kiểm thuộc tính, không in giá trị) |
+| Docker trên VPS | API/web healthy mới recreate; DB healthy giữ nguyên; `current` trỏ đúng; env `0600 root:root`; đủ 3 release (m3-16-1, ui-20261030, m4-2-20261031) và 2 bộ image để rollback |
+
+**File trong repo đổi ở lượt này:** `deploy/deploy-release.sh` (mới — script 6 bước + flock chống chạy song song + rollback tự động); `docs/deployment-guide.md` (mục "Deploy qua script" + runbook); `README.md`, `progress.md` (bản đang chạy + bằng chứng). **Chưa commit** — chờ yêu cầu.
+
+**Key:** `deploy-release.sh` — pipeline 1 lệnh trên VPS, chốt "healthy rồi mới đổi symlink", khoá flock chống deploy chồng; `RMG_RELEASE` — tag image cả 3 dịch vụ, shell env override cho build, env file chỉ đổi sau khi healthy; rollback — trả env + `up -d` từ release cũ, không đụng volume/ảnh/secret; allowlist tarball — danh sách file khoá theo guide, đối chiếu bằng `git ls-tree`.
+
+**Chạy thử:** mở [trang chủ](https://rmglabels.duckdns.org/) và [/shop](https://rmglabels.duckdns.org/shop) — giao diện như trước; giỏ hàng M4.2 giờ có trên production nhưng catalog trống nên chỉ xem được khung giỏ rỗng; việc thử giỏ đầy đủ làm local theo [local-trial-m4.md §M4.2](docs/local-trial-m4.md).
+
+**Còn lại:** M6.1.2 (workflow GitHub Actions bấm-chạy, cần SSH key riêng cho deploy vào Secrets) và M6.1.3 (diễn tập rollback) — gửi kế hoạch riêng; M6.2/M6.3 thuộc Người B; file mới/docs chưa commit.
 
 ## Ngày 31/10/2026 — Git M4.2: đưa giỏ hàng và báo giá lên main
 
@@ -504,6 +640,32 @@ Danh sách đúng kế hoạch được duyệt. Không sửa source/backend/fro
 
 **M4 mới hoàn tất bước lập kế hoạch; chưa có chức năng M4 để thử.** Người dùng đọc hai tài liệu, phản hồi; bước tiếp theo đề xuất là gửi kế hoạch chi tiết M4.0.1 để duyệt, không tự triển khai. Trạng thái production/M3 giữ theo các mục riêng bên dưới.
 
+## Ngày 30/10/2026 — M3.16.1: deploy lại VPS với giao diện UI.1–UI.4
+
+**Phạm vi:** người dùng yêu cầu "deploy lại VPS". Triển khai source đã commit trên nhánh `feat/ui-storefront-redesign`, SHA `ad9c854bdb6435e3cd6f333dc1614c536cccbd29`; không sửa code ứng dụng, không commit/push/merge, không nhập sản phẩm hoặc tạo admin. **Đã deploy và agent đã kiểm tra local, CI và URL production; chờ người dùng chạy thử.**
+
+- Release mới: `/srv/rmg-shop/releases/ui-20261030-ad9c854-01`; `/srv/rmg-shop/current` và `RMG_RELEASE` đã trỏ tới bản này sau khi API/web healthy. URL: [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop).
+- Đóng gói 163 file từ đúng Git commit theo allowlist của hướng dẫn deploy; archive `source-reviewed.tar.gz` có SHA256 `825bdfad69e2cb02f3748b615b400194ac93a49c687bdbb4a5bd6e0a9f01318c`, đã đối chiếu sau khi tải lên VPS. Không kèm env thật, dữ liệu local, dependency hoặc build artifact Windows; image build lại trên Linux.
+- API image ID `sha256:03d3d4ea8c525298150c464e3f701c3d8b5668e2b7a06ce2854920e552b1e38d`; web `sha256:b8ac73c82616c718852a14ed1cce0a0a8f3d6e0ef74243584dae12b7c660f69f`; migration runner `sha256:dfd9a11b3b6c6d7133d8e1874572100d327c8bc0378afd7e277957de1750bee5`.
+- Schema, hai migration và cấu hình Docker/Compose có checksum khớp bản cũ. `prisma migrate status` xác nhận schema cập nhật; `migrate deploy` báo không có migration chờ áp dụng. Chỉ recreate API/web với `--no-deps`; ID container DB không đổi, volume vẫn là `rmg-shop_postgres_data`. Không đọc bảng dữ liệu khách, seed hoặc thay đổi schema.
+- File probe riêng của lượt deploy tồn tại trong uploads qua lần recreate API và đã được xóa đúng file sau kiểm tra. Secret được giữ nguyên; file env vẫn `0600 root:root`. Release/image cũ `m3-16-1-20261029-174430` còn để rollback; cơ chế rollback khi lỗi health đã chuẩn bị nhưng không phải kích hoạt.
+- Data flow vận hành: snapshot commit → tải lên release mới và kiểm tra SHA256 → build image Linux → xác nhận migration → thay API/web và đợi healthy → kiểm tra HTTPS/bundle → đổi symlink `current`. FE tiếp tục gọi `/api/v1` qua nginx tới API và PostgreSQL/ảnh persistent hiện có.
+
+| Kiểm tra mới trong lượt này | Kết quả |
+|---|---|
+| `./tools/npm.ps1 run typecheck`, `./tools/npm.ps1 run build` | Đạt; còn cảnh báo bundle >500 kB như trước |
+| `./tools/npm.ps1 test` | 8 công cụ + 13 backend + 211 frontend, tổng 232 bài đạt |
+| `./tools/npm.ps1 run test:integration` | 38/38; lần đầu lỗi kết nối vì container PostgreSQL local đang dừng, bật lại container có sẵn rồi chạy lại đạt |
+| `./tools/npm.ps1 run test:e2e:implemented` với DB `_test` và Chromium riêng | 34/34, 46.5 giây |
+| CI của đúng SHA triển khai | Hai lượt hoàn tất thành công: [40920149321](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/40920149321), [40919923440](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/40919923440) |
+| Docker/HTTPS/API production | Cả ba dịch vụ healthy; readiness `200 {"status":"ok"}`; HTTP→HTTPS; admin không có phiên trả 401; Swagger 404; cookie `__Host-shop.sid` có Secure/HttpOnly/SameSite=Lax/Path=/, không Domain; CSP/HSTS có mặt; asset mới `index-CDEVY-r_.js` cache immutable |
+| Playwright trên URL thật, 1440px và 390px | Trang chủ, `/shop`, menu/nav, tìm kiếm, đổi sắp xếp rồi reload, deep link `/shipping` đạt; font Be Vietnam Pro nạp; không tràn ngang, không page error hoặc HTTP 5xx; browser/context đã đóng đúng cách |
+| Rà ảnh chụp và kiểm tra cuối | Đã xem ảnh trang chủ desktop/mobile và `/shop` mobile; đúng giao diện mới và empty state. Xác nhận lại release/tag, health, file probe đã dọn và image cũ còn |
+
+**File trong repo đổi ở lượt này:** `progress.md` ghi bằng chứng và điểm dừng; `README.md` cập nhật bản đang chạy. Archive/ảnh kiểm tra ở `.local/deploy/` được ignore, không đưa vào Git. Không có key ứng dụng mới.
+
+**Chạy thử:** mở trang chủ → **Xem bộ sưu tập**; trên điện thoại thử menu và tìm kiếm; tại `/shop` đổi thứ tự sắp xếp rồi tải lại. Kết quả mong đợi: giao diện mới, filter giữ trên URL, hiện **0 sản phẩm** vì catalog công khai đang trống. Chưa kiểm tra trang chi tiết sản phẩm thật trên production; luồng có sản phẩm đã được kiểm tra bằng fixture local/E2E, không tạo dữ liệu thử trên VPS. Các giới hạn M4/M3.17/M6.2/M6.3 giữ nguyên; dừng chờ người dùng thử, chưa xem là nghiệm thu mở bán.
+
 ## Ngày 30/10/2026 — UI.4: trang chi tiết sản phẩm
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch UI.4 ("oke"). Làm tiếp trên nhánh `feat/ui.1-storefront-shell` (UI.1–UI.4 chưa commit). Xong UI.4 là xong lộ trình UI.0–UI.4. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử.**
@@ -831,15 +993,17 @@ Chưa sửa điểm nhỏ "test cleanup prefix cố định" của review PR #13
 
 ## Trạng thái mốc
 
+> Cập nhật 31/10/2026. Trạng thái chi tiết từng phần đọc các mục theo ngày ở trên; bảng này chỉ tóm tắt.
+
 | Mốc | Trạng thái |
 |---|---|
 | M1 Thiết kế | Đã soạn và rà soát; tài liệu mục tiêu cho các mốc sau |
 | M2 Nền tảng/auth | Bản local đã qua kiểm tra kỹ thuật; dừng để người dùng chạy thử |
-| M3 Catalog/ảnh/kho | M3.1–M3.12 triển khai đủ. Người A: danh mục, nháp, biến thể, ảnh, xuất bản/ẩn. Người B: kho xem/tìm + điều chỉnh + lịch sử (M3.7.1–3.7.3), catalog khách (M3.9/M3.10), seed demo (M3.11), ca E2E tổng ghép vào bộ implemented (M3.12) đạt 34/34 local; M3.13a hạ tầng CSV `import:products` xong (17 ảnh RMG đã vào `data/import`, chờ người dùng điền giá/size rồi chạy). Nghiệm thu toàn mốc thuộc người dùng |
-| M4 Bán hàng | Đã lập implementation/local gồm33 phần nhỏ, toàn bộ do Người B phụ trách; chưa code chức năng, chưa duyệt triển khai M4.0.1 |
-| M5 Sau bán hàng | Chưa thực hiện |
-| M6 Deploy/restore | Chưa thực hiện |
-| M7 Nghiệm thu | Chưa thực hiện |
+| M3 Catalog/ảnh/kho | M3.1–M3.16.1 và UI.1–UI.4 đã triển khai (M3.13b sửa import, M3.14 sửa hàng đang bán, M3.15 bỏ demo, M3.16 cấu hình VPS, M3.16.1 deploy — redeploy giao diện mới 30/10); M3.17 bảo vệ admin còn lại (phân công Người B). Chờ người dùng nhập dữ liệu thật (`import:products`, 17 ảnh đã ở `data/import`) và nghiệm thu toàn mốc |
+| M4 Bán hàng | Người B phụ trách toàn bộ; M4.0.1–M4.0.3, M4.1.1–M4.1.2, M4.2.1 giỏ hàng, M4.2.2 quote server đã merge `main` (`899b52c`, 31/10). Còn M4.3.1 đặt COD trở đi; chờ người dùng chạy thử phần đã có |
+| M5 Sau bán hàng | Ngoài phạm vi mở bán theo quyết định 29/10/2026 (đổi trả thủ công) |
+| M6 Deploy/restore | M3.16.1 đã deploy tay catalog/API/UI lên VPS; còn M6.1 deploy sau CI + rollback (Người A), M6.2 backup/khôi phục ngoài VPS và M6.3 bảo vệ VPS + báo động (Người B) |
+| M7 Nghiệm thu | Chưa thực hiện; trước mở bán cần kiểm thử bảo mật auth/đơn/VietQR |
 
 ## Ngày 29/10/2026 — Bản sửa sau review M3.9–M3.12
 
