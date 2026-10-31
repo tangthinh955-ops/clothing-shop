@@ -1,0 +1,98 @@
+# Deploy production từ GitHub (M6.1.2) — bấm chạy tay, gate CI.
+# Quy trình: chọn ref → kiểm tra mọi check-run của đúng commit đã hoàn tất và xanh
+# (chưa xanh thì dừng TRƯỚC KHI đụng VPS) → đóng gói allowlist từ đúng SHA →
+# scp lên VPS → chạy deploy/deploy-release.sh (build/migrate/health/symlink, rollback tự động).
+# Chỉ giữ quyền tối thiểu: contents:read; SSH key riêng cho CI, không phải key cá nhân.
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Nhánh/tag/SHA cần deploy'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REPO: ${{ github.repository }}
+      REF: ${{ inputs.ref || 'main' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout ref cần deploy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Xác định SHA và chờ gate CI của đúng commit
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "DEPLOY_SHA=$SHA" >> "$GITHUB_ENV"
+          echo "Deploy commit: $SHA ($REF)"
+          conclusions="$(gh api "repos/$REPO/commits/$SHA/check-runs" --paginate \
+            --jq '.check_runs[] | select(.status=="completed") | .conclusion')"
+          if [ -z "$conclusions" ]; then
+            echo "Chưa có check-run CI nào hoàn tất cho $SHA — dừng, không đụng VPS."
+            exit 1
+          fi
+          if echo "$conclusions" | sort -u | grep -qv '^success$'; then
+            echo "CI của $SHA chưa xanh ($(echo "$conclusions" | sort -u | tr '\n' ' ')) — dừng."
+            exit 1
+          fi
+          echo "Gate CI: mọi check-run của $SHA đều success."
+
+      - name: Đóng gói allowlist từ đúng SHA
+        run: |
+          git archive "$DEPLOY_SHA" -- \
+            package.json package-lock.json .npmrc tsconfig.base.json .dockerignore \
+            apps/backend/package.json apps/backend/tsconfig.json apps/backend/prisma.config.ts \
+            apps/backend/prisma apps/backend/src \
+            apps/frontend/package.json apps/frontend/tsconfig.json apps/frontend/vite.config.ts \
+            apps/frontend/index.html apps/frontend/src deploy \
+            | gzip > release.tar.gz
+          FILES="$(tar -tzf release.tar.gz | grep -vc '/$')"
+          echo "release.tar.gz: $FILES file, SHA256:"
+          sha256sum release.tar.gz
+
+      - name: Cấu hình SSH (key riêng cho CI, known_hosts ghim sẵn trong repo)
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cp deploy/ci-known-hosts ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<'CFG'
+          Host rmg-vps
+            HostName rmglabels.duckdns.org
+            User root
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          CFG
+          chmod 600 ~/.ssh/config
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Upload release và chạy deploy script trên VPS
+        run: |
+          TAG="ci-$(date -u +%Y%m%d-%H%M)-${DEPLOY_SHA::7}"
+          LOCAL_SHA="$(sha256sum release.tar.gz | cut -d' ' -f1)"
+          echo "Release tag: $TAG — SHA256 $LOCAL_SHA"
+          scp -q release.tar.gz "rmg-vps:/tmp/$TAG.tar.gz"
+          ssh -q rmg-vps "test \"\$(sha256sum /tmp/$TAG.tar.gz | cut -d' ' -f1)\" = \"$LOCAL_SHA\" \
+            || { echo 'SHA256 khong khop sau khi tai len — dung, khong giai nen.'; exit 1; }
+            mkdir -p /srv/rmg-shop/releases/$TAG \
+            && tar -xzf /tmp/$TAG.tar.gz -C /srv/rmg-shop/releases/$TAG \
+            && rm -f /tmp/$TAG.tar.gz"
+          ssh rmg-vps "bash /srv/rmg-shop/releases/$TAG/deploy/deploy-release.sh /srv/rmg-shop/releases/$TAG"

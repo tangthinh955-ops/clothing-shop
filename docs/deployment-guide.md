@@ -1,5 +1,23 @@
 # Deploy RMG lên VPS — M3.16.1
 
+## Deploy qua script (từ M6.1.1)
+
+Các lượt deploy sau lần đầu dùng script `deploy/deploy-release.sh` (nằm trong release, chạy trên VPS với root) thay cho việc gõ tay từng lệnh build/migrate/up:
+
+```sh
+bash /srv/rmg-shop/releases/<tag-mới>/deploy/deploy-release.sh /srv/rmg-shop/releases/<tag-mới>
+```
+
+Script lần lượt: khoá chống chạy song song (flock) → `compose config` → build `api`/`web`/`migrate` với tag riêng của release → `migrate` tường minh → ghi `RMG_RELEASE` mới vào `/etc/rmg-shop/backend.env` (giữ `0600 root:root`) → `up -d --wait api web` → đợi readiness `200 {"status":"ok"}` ở `127.0.0.1:4200` → kiểm tra chuỗi công khai qua HTTPS (health 200, `/shop` 200, admin không phiên 401, cookie `__Host-shop.sid` có Secure/HttpOnly/SameSite=Lax — chỉ kiểm thuộc tính, không in giá trị) → mới đổi symlink `/srv/rmg-shop/current`. Nếu bất kỳ bước nào lỗi **sau khi đã thay container**, script tự rollback: trả `RMG_RELEASE` cũ, `up -d --wait api web` từ thư mục release cũ và trả symlink; lỗi trước khi thay container thì release cũ không bị ảnh hưởng. Script không đụng volume DB, thư mục uploads, secret, nginx, certbot hay website khác; image release cũ vẫn giữ trên máy để quay lại khi cần.
+
+Chuẩn bị trước khi gọi script vẫn theo các mục bên dưới: kiểm tra local/CI xanh, đóng gói đúng allowlist từ một Git commit, tạo thư mục release mới và giải nén vào đó. Việc đóng gói/tải lên đã tự động hoá qua GitHub Actions từ M6.1.2.
+
+## Deploy qua GitHub Actions (từ M6.1.2)
+
+Workflow `Deploy production` (`.github/workflows/deploy.yml`) chạy bằng nút **Run workflow** (`workflow_dispatch`), chọn ref (mặc định `main`). Thứ tự: resolve SHA → gate: **mọi** check-run CI của đúng commit phải hoàn tất và `success`, chưa thì dừng trước khi đụng VPS → đóng gói allowlist từ đúng SHA (`git archive`) → scp kèm đối chiếu SHA256 → giải nén vào release tag `ci-<ngày>-<giờ>-<sha7>` → chạy `deploy/deploy-release.sh` của release. `concurrency: production-deploy` chặn hai lượt deploy chạy chồng.
+
+Bí mật: `DEPLOY_SSH_KEY` là private key **ed25519 riêng cho CI** (không phải key cá nhân của ai), public key nằm trong `authorized_keys` của VPS. Host key của VPS ghim công khai trong `deploy/ci-known-hosts` — VPS đổi key/host thì phải sửa file này qua PR. Xoá secret trên GitHub là thu hồi quyền deploy ngay lập tức; xoá dòng public key trên VPS cũng vậy.
+
 ## Phạm vi và bố cục
 
 Domain `rmglabels.duckdns.org` trỏ tới VPS Ubuntu 24.04. nginx trên host kết thúc HTTPS, phục vụ thử thách ACME và chuyển `/api/` tới `127.0.0.1:4200`, đường dẫn còn lại tới `127.0.0.1:4180`. Container web phục vụ SPA và deep link; container API chạy Node 24.22.1 bằng user `node`. PostgreSQL 18.6 nằm trên mạng Docker riêng, không publish cổng.
