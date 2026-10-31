@@ -1,6 +1,7 @@
 import { createIsolatedTestDatabase } from '../../../tools/test-database.mjs';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
+import { Client } from 'pg';
 import supertest, { type Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../dist/application.js';
@@ -267,24 +268,46 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const lockPhone = '0900000005';
     const variantC = await makeVariant(100000, 5, 'Mũ hết hạn chờ khóa');
     const quote = await requestQuote([{ variantId: variantC, quantity: 1 }]);
-    // The quote expires in ~3 seconds of real PostgreSQL time.
-    await db.checkoutQuote.update({ where: { id: quote.id },
-      data: { expiresAt: new Date(Date.now() + 3000) } });
-    const holder = new PrismaService(readEnvironment(process.env));
+    const key = keyFor('expiry-lock');
+    const holder = new Client({ connectionString: process.env.DATABASE_URL });
+    let createPromise: Promise<supertest.Response> | undefined;
     try {
-      const createPromise = create({ key: keyFor('expiry-lock'), ipXff: ip(),
+      await holder.connect();
+      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      // Acquire the session lock before dispatching HTTP. It conflicts with the service's
+      // transaction lock and stays held until explicitly released or this connection closes.
+      await holder.query('SELECT pg_advisory_lock(hashtext($1)::bigint)', [lockPhone]);
+      createPromise = create({ key, ipXff: ip(),
         body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
-      // Hold the same phone's advisory lock past the quote expiry; the create must wait behind it.
-      // Hold past the quote expiry; the timeout override keeps Prisma from aborting the holder.
-      await holder.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockPhone})::bigint) IS NOT NULL AS locked`;
-        await new Promise((resolve) => setTimeout(resolve, 6000));
-      }, { timeout: 15000 });
+      // Observe rejection later through the original promise, even if a barrier assertion fails.
+      void createPromise.catch(() => undefined);
+      await expect.poll(async () => {
+        const [row] = await db.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
+          ) AS waiting`;
+        return row!.waiting;
+      }, { timeout: 5000, interval: 10 }).toBe(true);
+
+      // The create transaction has started and is blocked. Expire its quote using the real DB
+      // clock, then release it: now() would still see the older transaction-start timestamp.
+      await db.$executeRaw`
+        UPDATE checkout_quotes SET "expiresAt" = clock_timestamp() WHERE id = ${quote.id}::uuid`;
+      await holder.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)', [lockPhone]);
       const response = await createPromise;
       expect(response.status).toBe(409);
       expect((response.body as { code?: string }).code).toBe('QUOTE_CHANGED');
       expect(await db.order.count({ where: { phone: lockPhone } })).toBe(0);
-    } finally { await holder.$disconnect(); }
+      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } }))
+        .toMatchObject({ onHand: 5, reserved: 0 });
+      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(0);
+      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key } })).toBe(0);
+    } finally {
+      await holder.end(); // Also releases the lock when a barrier or assertion fails.
+      await createPromise?.catch(() => undefined);
+    }
   });
 
   it('rejects a create missing the contact or address objects with 400, never 500', async () => {
