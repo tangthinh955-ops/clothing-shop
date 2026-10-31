@@ -6,9 +6,9 @@ Website bán hàng thật của một shop quần áo, phục vụ khách từ I
 
 Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (quyết định và lộ trình mới ở [kế hoạch](docs/plan.md#chuyển-sang-shop-thật-29102026)). Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng hiện tại: M3.16.1 đã deploy catalog/API tại [rmglabels.duckdns.org/shop](https://rmglabels.duckdns.org/shop), kiểm tra HTTPS/proxy, restart/persistence và gia hạn chứng chỉ đạt; chờ người dùng chạy thử. Database VPS mới chưa có sản phẩm hoặc admin; source deploy chưa gồm M3.15 nên UI còn nhãn demo. Xem [hướng dẫn deploy](docs/deployment-guide.md), [hướng dẫn M3](docs/local-trial-m3.md) và [hướng dẫn tài khoản M2](docs/local-trial-m2.md).
+Điểm dừng hiện tại: ngày 31/10/2026 đã deploy `main` `899b52c` (M3.15 + UI.1–UI.4 và M4.2 giỏ hàng/quote) lên VPS qua script `deploy/deploy-release.sh` — release `m4-2-20261031-1410-899b52c` tại [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop). Cả ba dịch vụ healthy, migration M4 đã áp, đã kiểm tra HTTPS/cookie/guard/bundle mới; chờ người dùng chạy thử. Catalog công khai vẫn trống. Bằng chứng ở [progress.md](progress.md); quy trình ở [hướng dẫn deploy](docs/deployment-guide.md), [hướng dẫn M3](docs/local-trial-m3.md), [hướng dẫn M4](docs/local-trial-m4.md) và [hướng dẫn tài khoản M2](docs/local-trial-m2.md).
 
-**Chưa mở bán:** giỏ hàng M4.2.1 và báo giá server M4.2.2 đã viết trên nhánh phát triển, còn chờ kiểm tra/nghiệm thu; chưa có đặt hàng, backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
+**Chưa mở bán:** giỏ hàng M4.2.1 và quote M4.2.2 đã lên production nhưng chưa được người dùng chạy thử/nghiệm thu; chưa có đặt hàng (M4.3+), deploy sau CI tự động + diễn tập rollback (M6.1.2/M6.1.3), backup ngoài VPS/khôi phục (M6.2), bảo vệ VPS/báo động (M6.3) và bảo vệ admin (M3.17). Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
 ## Tài liệu
 
