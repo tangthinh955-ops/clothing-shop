@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../../shared/api/client';
 import { CartProvider, useCart } from '../../cart/CartProvider';
@@ -60,6 +60,11 @@ function ShopProbe() {
   </div>;
 }
 
+function OrderDetailProbe() {
+  const location = useLocation();
+  return <div>Trang đơn chi tiết {location.pathname}{location.hash}</div>;
+}
+
 function renderPage(items: { variantId: string; quantity: number }[] = [
   { variantId: variantA, quantity: 2 }, { variantId: variantB, quantity: 1 }]) {
   seed(items);
@@ -71,6 +76,7 @@ function renderPage(items: { variantId: string; quantity: number }[] = [
         <Routes>
           <Route path="checkout" element={<><CartControls /><RouteControls /><CheckoutPage /></>} />
           <Route path="shop" element={<ShopProbe />} />
+          <Route path="orders/:code" element={<OrderDetailProbe />} />
         </Routes>
       </OrderSubmissionProvider></CartProvider>
     </MemoryRouter>
@@ -124,6 +130,37 @@ describe('checkout quote page', () => {
     });
     const post = request.mock.calls.find(([, options]) => options?.method === 'POST' && JSON.stringify(options?.body).includes('quoteId'));
     expect(post).toBeTruthy();
+  });
+
+  it('shows the private access link buttons and opens /orders/:code with the fragment token', async () => {
+    const token = 'A'.repeat(32);
+    await acceptQuoteAndFillForm([
+      quoteResponse(), // quote
+      { order: { code: 'AB23456789CD', status: 'PENDING', method: 'COD', currency: 'VND',
+        items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 },
+        lookupToken: token },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
+    // M4.4.1: the confirmation exposes the private link exactly once, through buttons only.
+    expect(screen.getByRole('link', { name: 'Xem đơn hàng' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Sao chép link riêng' })).toBeVisible();
+    await userEvent.click(screen.getByRole('link', { name: 'Xem đơn hàng' }));
+    // The fragment token travels in the address; the path query stays free of it.
+    expect(await screen.findByText(/Trang đơn chi tiết \/orders\/AB23456789CD/)).toBeVisible();
+    expect(screen.getByText(/#t=A{32}/)).toBeInTheDocument();
+  });
+
+  it('does not fabricate an access link for a replay answer without a token', async () => {
+    await acceptQuoteAndFillForm([
+      quoteResponse(), // quote
+      { order: { code: 'EF23456789GH', status: 'PENDING', method: 'COD', currency: 'VND',
+        items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 }, replay: true },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText('EF23456789GH')).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Xem đơn hàng' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sao chép link riêng' })).not.toBeInTheDocument();
   });
 
   it('keeps the draft and shows the server reason on a definite failure, then allows a new intent', async () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
-import { useNavigate } from 'react-router';
+import { Link as RouterLink, useNavigate } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import type { CreateOrderResult } from '../api/orders.api';
 
@@ -11,10 +11,16 @@ interface Props {
   onContinue: () => void;
 }
 
-/** COD confirmation: order code, server snapshot and the explicit "chưa thu tiền" state. */
+/** COD confirmation: order code, server snapshot, the explicit "chưa thu tiền" state and — exactly
+ *  once, on the first committed create — the private access link for /orders/:code (M4.4.1). */
 export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
   const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  // The token is never stored anywhere: it lives in the URL fragment of the private link only.
+  const accessLink = result.lookupToken
+    ? `${window.location.origin}/orders/${result.order.code}#t=${result.lookupToken}`
+    : null;
   return <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
     <Alert severity="success">Đã tạo đơn hàng COD. Nhân viên sẽ gọi xác nhận trước khi giao.</Alert>
     <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
@@ -25,13 +31,29 @@ export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
         <Button variant="outlined" size="small" onClick={async () => {
           try {
             await navigator.clipboard.writeText(result.order.code);
-            setCopied(true);
+            setCodeCopied(true);
           } catch { /* the code stays visible for manual copying */ }
-        }}>{copied ? 'Đã sao chép' : 'Sao chép mã đơn'}</Button>
+        }}>{codeCopied ? 'Đã sao chép' : 'Sao chép mã đơn'}</Button>
       </Stack>
       <Typography sx={{ mb: 2 }}>
         Trạng thái: <strong>Chờ xác nhận</strong> · Thanh toán khi nhận hàng (COD) — <strong>chưa thu tiền</strong>.
       </Typography>
+      {accessLink && <>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
+          <Button component={RouterLink} to={`/orders/${result.order.code}#t=${result.lookupToken}`}
+            variant="contained">Xem đơn hàng</Button>
+          <Button variant="outlined" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(accessLink);
+              setLinkCopied(true);
+            } catch { /* the buttons stay usable for manual copying */ }
+          }}>{linkCopied ? 'Đã sao chép link' : 'Sao chép link riêng'}</Button>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Chỉ người có link riêng này mới xem được đơn — lưu lại hoặc gửi cho người nhận. Link giữ được
+          giữa các lần mở lại trình duyệt và vẫn xem được sau khi làm mới trang.
+        </Typography>
+      </>}
       <Stack spacing={2}>
         {result.order.items.map((item) => <Stack key={item.variantId} direction="row" useFlexGap
           sx={{ justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>

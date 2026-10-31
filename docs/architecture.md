@@ -45,6 +45,7 @@ File nhiều trách nhiệm hoặc khoảng trên 300 dòng cần đánh giá t�
 - `features/catalog/pages/CatalogIntroPage.tsx` chỉ là intro empty state hiện có, chưa phải catalog API. Trang thông tin ở `features/information/pages/PolicyPage.tsx`, nội dung tại `features/information/content/policies.ts`; trang không tìm thấy ở `app/pages/NotFoundPage.tsx`.
 - `shared/api/client.ts` gửi JSON hoặc FormData, không tự đặt Content-Type cho multipart để browser tạo boundary; nhận Idempotency-Key từ caller và giữ CSRF/no automatic mutation retry.
 - Link token chỉ lưu trong memory. Chỉ fragment có tham số `token` mới cập nhật token và bị xóa khỏi URL; query được giữ, anchor như `#main-content` vẫn hoạt động. Nội dung form/kết quả verify/reset có vòng đời theo token để kết quả cũ không chồng lên link mới.
+- Trang xem đơn khách vãng lai (M4.4.1) **không** dùng cơ chế trên: fragment `#t=` được giữ nguyên trong URL vì link phải sống qua refresh/lần mở lại; trang đọc fragment, kiểm tra dạng token rồi gửi qua header `X-Order-Token`. Query cache tách theo **nhãn SHA-256 đồng bộ của token** (`sha256Hex`): mỗi entry cache gắn đúng một token — không hash 32-bit có thể va chạm giữa hai token, không đưa token rõ vào queryKey; không tự retry 404/429, không lưu token vào storage.
 - M3.1–M3.2 có `/admin/categories` tại `features/admin/categories`: `pages/CategoriesPage.tsx` giữ Query/list/create/update flow; `components/CategoryForm.tsx` thay CategoryCreateForm, dùng chung field/state/validation cho tạo và sửa; `components/CategoryEditDialog.tsx` giữ snapshot/version của lần mở và điều khiển tải dữ liệu mới/đóng; `api/categories.api.ts` giữ contract GET/POST/PATCH. Đây là UI quản trị; module Categories ở backend vẫn độc lập. Form không tự quyết định quyền, backend guards/DTO/unique slug vẫn kiểm tra chính.
 - Query `admin-categories` được invalidate sau tạo/sửa để đọc lại dữ liệu server. Snapshot edit không tự đổi khi query refetch; lỗi 409 giữ draft và version ban đầu. Nút Tải dữ liệu mới thay snapshot/form sau khi tải thành công theo thao tác tường minh; lỗi tải giữ input. Khóa đồng bộ ngăn submit lặp và đóng/reload trong lúc lưu.
 - M3.3 thêm `features/admin/products`: `api/products.api.ts` chứa contract/allowlist size và API list/create; `components/ProductCreateForm.tsx` giữ input/error/busy; `pages/ProductCreatePage.tsx` tải danh mục và điều phối tạo; `pages/ProductsPage.tsx` đọc query list, hiển thị SKU/giá/khả dụng/status và phân trang bằng URL `?page=`. Routes đều qua PrivateRoute ADMIN; backend vẫn kiểm tra quyền độc lập.
@@ -58,7 +59,7 @@ File nhiều trách nhiệm hoặc khoảng trên 300 dòng cần đánh giá t�
 
 ## Sitemap, UI và state
 
-Public: `/`, `/shop`, `/products/:slug`, `/cart`, `/checkout`, `/orders/lookup`, `/orders/:code` (link có token tra cứu), `/size-guide`, `/contact`, `/shipping`, `/returns-policy`, `/privacy` (chính sách bảo mật), trang thông tin người bán.
+Public: `/`, `/shop`, `/products/:slug`, `/cart`, `/checkout`, `/orders/lookup`, `/orders/:code` (link riêng của khách `#t=<token>` — M4.4.1), `/size-guide`, `/contact`, `/shipping`, `/returns-policy`, `/privacy` (chính sách bảo mật), trang thông tin người bán.
 
 Auth: `/login` (admin), `/verify-email`, `/forgot-password`, `/reset-password`. `/register` và tài khoản khách của M2 ẩn khỏi cửa hàng từ 29/10/2026; code giữ lại cho nhu cầu sau.
 
@@ -95,7 +96,7 @@ Refresh deep URL phải tới SPA. HTML ban đầu có metadata chung; từ M7.1
 - Phải thử forwarding method/body/Set-Cookie/headers, CSRF và no-store trên deploy; không tự coi proxy đã đạt từ tài liệu.
 - Proxy đặt header bảo mật cho SPA: CSP, `frame-ancestors 'none'`, HSTS, `nosniff`.
 - Role/owner ở backend mỗi endpoint; không cho client chọn role/payment status; DTO whitelist + forbid unknown, query sort allowlist, giới hạn body/page.
-- Rate limit ban đầu: login 5/min theo IP + email **và** giới hạn theo tài khoản độc lập IP (M3.17); reset/resend 3/15min/tài khoản; tạo đơn khách vãng lai theo IP và SĐT, tra cứu đơn theo IP (con số chốt ở M4.3/M4.4); upload 10 ảnh/min/admin. Một instance trên VPS nên store in-memory chấp nhận được; restart làm reset bộ đếm.
+- Rate limit ban đầu: login 5/min theo IP + email **và** giới hạn theo tài khoản độc lập IP (M3.17); reset/resend 3/15min/tài khoản; tạo đơn khách vãng lai theo IP và SĐT; xem đơn qua link riêng 30/min/IP (M4.4.1); tra cứu đơn theo IP (con số chốt ở M4.3/M4.4); upload 10 ảnh/min/admin. Một instance trên VPS nên store in-memory chấp nhận được; restart làm reset bộ đếm.
 - Swagger local bật, deploy tắt. ADMIN bắt buộc xác thực 2 bước TOTP trước mở bán (M3.17).
 - Secret chỉ server, không VITE_*. Log che cookie/token/hash/password/address. Không stack trace/hạ tầng trong error response.
 
@@ -137,7 +138,7 @@ Mutation nghiệp vụ cần `Idempotency-Key`, update cần expectedVersion. Re
 | Public Settings | GET /shop-settings/public | → fees/policy public only |
 | Public Checkout | POST /checkout/quote | items/method → quoteId, currency, subtotal, shippingFee, total, expiresAt, settingsVersion; 400/409 |
 | Public Orders | POST /orders | Idempotency-Key + quoteId/items/contact/address/method → mã đơn + link tra cứu (token chỉ trả một lần); 400/409/429 |
-| Public Orders | GET /orders/:code (token trong header/body, không trong log), POST /orders/lookup | token hoặc mã đơn + SĐT → đơn đó (kèm VietQR nếu chuyển khoản); 404 đồng nhất/429 |
+| Public Orders | GET /orders/:code — **đã triển khai M4.4.1** (token chỉ ở header `X-Order-Token`, không log); POST /orders/lookup (M4.4.2) | header token → view allowlist của đơn (snapshot/timeline/tổng tiền), không VietQR ở COD; 404 đồng nhất mọi sai hụt – 30/min/IP |
 | Public Orders | POST /orders/:code/cancel, /cancellation-requests | token + reason/version → order/request; 404/409 |
 | (Ngoài phạm vi) Returns | POST /orders/:id/returns, GET /returns/:id | chỉ khi làm lại đổi trả tự động |
 | Admin Categories | GET/POST/PATCH /admin/categories[/:id] | category fields → category; 400/409 |
