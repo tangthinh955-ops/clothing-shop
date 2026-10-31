@@ -2,6 +2,28 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — Nhập dữ liệu thật lên production (admin + 5 sản phẩm)
+
+**Phạm vi:** người dùng yêu cầu "mang dữ liệu lên VPS". Tạo **tài khoản ADMIN production** (email do người dùng cung cấp trực tiếp; mật khẩu sinh ngẫu nhiên 24 ký tự, lưu `/etc/rmg-shop/admin-initial-password` `0600 root:root` trên VPS — không ghi mật khẩu/email vào repo, log hay chat) và nhập **5 sản phẩm thật** từ `data/import` (5 dòng CSV đủ giá/tồn + 17 ảnh RMG; giá 500.000–1.000.000đ) bằng CLI `import-products` chạy trong container API production, trạng thái **PUBLISHED** theo lựa chọn của người dùng. **Đã import và kiểm tra công khai; chờ người dùng đăng nhập, đổi mật khẩu và xem /shop.**
+
+- Chuyển dữ liệu: tar 18 file → `/srv/rmg-shop/import-data` trên VPS (giữ lại để chạy lại an toàn — CLI bỏ qua slug đã có) → bơm vào container qua `docker exec -i` tar vào `/tmp/rmg-import` (container API `read_only`, `/tmp` là tmpfs; `docker cp` bị rootfs chặn). Tmp trong container đã xoá sau import.
+- Admin: `create-admin` với env một lần (mật khẩu không in ra); CLI chỉ tạo mới, không nâng quyền tài khoản có sẵn; email là trường đăng nhập của chủ shop.
+- Import: 5 sản phẩm PUBLISHED — mỗi cái 1 biến thể theo size trong CSV, kho theo cột `stock` kèm movement "Nhập kho lúc import" actor là admin; 4 danh mục tự tạo; SKU tự sinh `RMG<hash>-<size>`; ảnh nén webp 750×1000 vào `/var/lib/rmg-shop/uploads` (persistent volume); 0 dòng bị bỏ qua, 0 slug trùng.
+- Data flow: `products.csv` + ảnh → CLI đọc/validate từng dòng (thiếu file/giá sai thì bỏ qua dòng, không nửa vời) → webp + UploadAsset (owner admin) → Product + Variant + Inventory + Movement + ProductImage trong DB production → `/api/v1/products` và `/shop` hiện ngay.
+
+| Kiểm tra công khai (curl từ máy ngoài) | Kết quả |
+|---|---|
+| `GET /api/v1/products?pageSize=12` | total **5**, đúng tên/giá/danh mục/kho (avail 5/5/10/5/10) |
+| `GET /api/v1/categories` | 4 danh mục: Áo thun, Áo polo, Quần, Áo hoodie |
+| `GET /api/v1/media/<assetId>` | 200 `image/webp`; id lạ → 404 |
+| `/shop` | 200 |
+
+**Key:** `import-products --dir` — nhập CSV thật cho production (khác `seed:demo`), tự tạo danh mục bật, mỗi dòng = 1 sản phẩm nhiều size; `admin:create` — env `ADMIN_EMAIL`/`ADMIN_PASSWORD` một lần, không có mặc định; chuỗi ảnh — file → `UploadAsset` (owner admin) → `ProductImage`, dùng chung cơ chế `/api/v1/media` với upload admin.
+
+**Chạy thử:** mở [/shop](https://rmglabels.duckdns.org/shop) — thấy 5 sản phẩm + ảnh; đăng nhập `/login` bằng email admin và mật khẩu trong file trên VPS (`ssh masoi cat /etc/rmg-shop/admin-initial-password`), vào `/admin` kiểm tra sản phẩm/kho, **đổi mật khẩu ngay** sau lần đăng nhập đầu.
+
+**Còn lại:** đổi mật khẩu admin (khuyến nghị làm ngay); chưa có backup ngoài VPS (M6.2) — dữ liệu thật đã nằm trên production nên backup cần sớm; M6.1.2 chờ merge PR #22 để test workflow; các file docs chưa commit nằm trên nhánh PR.
+
 ## Ngày 31/10/2026 — M6.1.1: deploy qua script `deploy-release.sh`
 
 **Phạm vi đã duyệt:** bảng kế hoạch M6.1.1 trong chat (người dùng duyệt "duyệt"): script hoá deploy trên VPS và chạy một lượt deploy thật của `main` `899b52c`. Không sửa code ứng dụng; release gồm M4.2 giỏ/quote **chưa nghiệm thu** (đã nêu khi duyệt — catalog production trống nên khách không thao tác được giỏ). **Đã deploy và agent đã kiểm tra local + URL công khai; chờ người dùng chạy thử.**
