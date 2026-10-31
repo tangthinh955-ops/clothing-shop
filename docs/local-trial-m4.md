@@ -142,12 +142,16 @@ Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ 
 
 ### M4.3.1 — Đặt COD không cần tài khoản
 
-1. Cửa sổ riêng tư, điền form dữ liệu giả hợp lệ và đặt COD, không có bước đăng nhập/xác minh email.
-2. Nhận mã đơn và màn xác nhận; với2×A, tồn ban đầu5/0 thành5/2, còn bán3. Chưa thu tiền COD.
-3. Bấm đúp, mạng chậm và mất response sau server commit: cùng key/payload phải trả cùng đơn, không giữ thêm2. Form khóa nội dung khi chưa biết kết quả, không tạo key mới tùy tiện.
-4. Integration dùng2browser tranh hàng cuối, giỏ có1SKU thiếu, quote đổi giá, input/address/SĐT sai và anti-abuse vượt limit. Chỉ trường hợp hợp lệ giữ kho; thất bại rollback hết.
+**Đã triển khai và agent đã kiểm tra local (31/10/2026): /checkout có form nhận hàng và nút "Đặt hàng COD"; thành công hiển thị mã đơn 12 ký tự, trạng thái Chờ xác nhận và tổng tiền; giữ kho qua reserved; chưa thu tiền, chưa có tra cứu/hủy.**
 
-Chưa có phần4.1 thì màn xác nhận phải vẫn xem được kết quả thật vừa tạo; không tạo link/nút dẫn vào trang chưa triển khai. Khi4.1 có, kiểm chứng thêm link/reload theo cơ chế token đã chốt.
+1. Cửa sổ riêng tư (không đăng nhập): thêm 2×A + 1×B → `/checkout` → **Lấy báo giá** → điền họ tên, SĐT (090… hoặc +84…), tỉnh/thành, phường/xã, địa chỉ cụ thể → **Đặt hàng COD**.
+2. Màn xác nhận: mã đơn (nút sao chép), trạng thái **Chờ xác nhận**, danh sách hàng và tổng 730.000đ, ghi rõ **chưa thu tiền**; giỏ được dọn nếu vẫn khớp đơn.
+3. DB đối chiếu: `orders` PENDING + snapshot đủ, `order_items`, `order_status_history` (GUEST, actorId null), `inventory` onHand giữ nguyên/reserved +2 và +1, `inventory_movements` có effectKey, `idempotency_records` không chứa token rõ/PII.
+4. Mất response: chặn phản hồi sau khi gửi (DevTools) → cảnh báo "Gửi lại" giữ nguyên command (không cho sửa nội dung/tạo key mới); bỏ chặn bấm Gửi lại → cùng mã đơn, reserved không tăng lần hai. Hard refresh trong lúc chưa rõ kết quả có thể mất command (có cảnh báo beforeunload).
+5. Quote hết hạn/giá đổi giữa chừng → 409 QUOTE_CHANGED, form giữ nguyên, lấy báo giá mới rồi đặt lại bằng key mới; thiếu tồn → 409 OUT_OF_STOCK, không giữ một phần giỏ.
+6. Giới hạn đã duyệt: tối đa 5 lần tạo đơn/phút/IP (429) và 3 đơn PENDING/SĐT.
+
+Test riêng: integration `test/order-creation.integration.spec.ts` (trong `./tools/npm.ps1 run test:integration`) và `./tools/npm.ps1 run test:e2e -- order-creation.spec.ts`.
 
 ### M4.4.1 — Xem đơn qua link
 
@@ -283,4 +287,4 @@ Chỉ cài browser test nếu máy thiếu và phần E2E đã được giao, th
 
 ## 5. Điểm dừng
 
-**Điểm dừng: M4.2.1 giỏ hàng + M4.2.2 báo giá server, chờ người dùng chạy thử.** M4.3.1 tạo đơn và các phần sau cần kế hoạch riêng được duyệt trước khi code. Trạng thái chi tiết và kết quả thật: [progress.md](../progress.md).
+**Điểm dừng: M4.2.1 giỏ hàng + M4.2.2 báo giá + M4.3.1 đặt đơn COD, chờ người dùng chạy thử.** M4.4 tra cứu/hủy và M4.5 admin đơn cần kế hoạch riêng được duyệt trước khi code. Trạng thái chi tiết và kết quả thật: [progress.md](../progress.md).

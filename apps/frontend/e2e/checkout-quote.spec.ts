@@ -84,7 +84,7 @@ test('guest quotes 2×A + 1×B from the cart and reads 730.000 from the server',
   await expect(page.getByText(nameB)).toBeVisible();
   // Deep refresh: the page renders again and the shopper can quote the persisted cart afresh.
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Xem phí và tổng tiền' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Đặt hàng — thanh toán khi nhận hàng' })).toBeVisible();
   await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByText(/730\.000/)).toBeVisible();
   const row = await db.checkoutQuote.findFirstOrThrow({ orderBy: { createdAt: 'desc' } });

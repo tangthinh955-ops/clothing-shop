@@ -134,7 +134,7 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 
 ### M4 — Bán hàng
 
-**Người B phụ trách toàn bộ; M4.0.1–M4.0.3, M4.1.1–M4.1.2, M4.2.1 giỏ hàng và M4.2.2 báo giá server cho giỏ (chưa có bước đặt đơn) đã được triển khai theo từng phạm vi duyệt — chưa có luồng đặt hàng hoàn chỉnh, đang chờ người dùng chạy thử/nghiệm thu.** Kết quả kiểm tra mới nhất và giới hạn ở [progress.md](../progress.md). Phần tiếp theo dự kiến là M4.3.1 tạo đơn COD, cần kế hoạch và duyệt riêng. Danh sách phần nhỏ, API/data flow và tiêu chí ở [m4-implementation-plan.md](m4-implementation-plan.md); hướng dẫn thao tác ở [local-trial-m4.md](local-trial-m4.md).
+**Người B phụ trách toàn bộ; M4.0.1–M4.0.3, M4.1, M4.2 và M4.3.1 (đặt đơn COD không cần tài khoản, đến màn xác nhận) đã được triển khai theo từng phạm vi duyệt — chưa có tra cứu/hủy đơn, admin xử lý đơn, thanh toán; đang chờ người dùng chạy thử/nghiệm thu.** Kết quả kiểm tra mới nhất và giới hạn ở [progress.md](../progress.md). Phần tiếp theo dự kiến là M4.4.1 tra cứu đơn qua link, cần kế hoạch và duyệt riêng.
 
 - [ ] [CREATE] orders/payments/settings và features cart/checkout/order lookup/admin orders/payments; [MODIFY] Mail bổ sung notification của đơn.
 - [ ] [MODIFY] schema/migration; thêm idempotency và lịch sử.

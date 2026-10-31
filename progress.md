@@ -2,6 +2,131 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M4.3.1: ổn định test hết hạn trong lúc chờ khóa
+
+- **Phạm vi đã duyệt:** sửa test CI nhận `201` thay vì `409`, commit và push lại `feat/m4.3.1-cod-checkout`. Làm trong worktree riêng từ `46f239e`; giữ nguyên M4.4.1 đang làm dở ở checkout chính.
+- **Nguyên nhân:** test gửi request trước khi holder lấy advisory lock; request có thể tạo đơn hợp lệ trước lúc quote hết hạn. Chờ cố định 6 giây không bảo đảm request đã bị khóa.
+- **File sửa:** `apps/backend/test/order-creation.integration.spec.ts` lấy session lock bằng kết nối `pg.Client` trước khi gửi HTTP, chờ `pg_blocking_pids` xác nhận request đang bị chặn, đặt hạn quote theo `clock_timestamp()` của PostgreSQL rồi nhả khóa. Kiểm tra `409 QUOTE_CHANGED`, không có đơn, reservation, movement hoặc idempotency record; `finally` đóng holder và đợi request kết thúc cả khi assertion thất bại. `progress.md` ghi bằng chứng và điểm dừng.
+- **Kiểm chứng regression:** tạm đổi `clock_timestamp()` thành `now()` trong build ignored, test mới thất bại đúng `expected 201 to be 409`; đã khôi phục build và chạy test này đạt **5/5 lượt độc lập**, mỗi lượt có database `_test` riêng.
+- **Kiểm tra toàn bộ:** typecheck và build đạt; `npm test` với `VITEST_MAX_WORKERS=2` đạt **10 tools + 69 backend + 345 frontend = 424 test**. Integration chạy qua npm đạt **97/97, 12 file** trên database `_test` mới của lượt này, đã cleanup. Lượt chạy Vitest trực tiếp trước đó có 1 lỗi ở test CLI import do thiếu `npm_execpath`; chạy lại đúng npm đã đạt, không sửa test CLI. Build còn cảnh báo chunk trên 500 kB; integration còn cảnh báo pg đã có sẵn.
+- **Review/phạm vi:** review độc lập không phát hiện vấn đề cần sửa. Không đổi service production, timeout, dependency, schema, nghiệp vụ quote hay luồng chờ inventory; README còn dấu conflict đã được ghi ở mục trước, ngoài phạm vi lần sửa này. Không sửa file M4.4.1 ở checkout chính.
+- **Điểm dừng:** người dùng đã yêu cầu push bản sửa lên nhánh M4.3.1; chưa có kết quả CI mới, không merge/deploy. Không chạy lại E2E vì chỉ thay test integration và tài liệu. Người dùng có thể chạy `npm run test:integration` với môi trường `_test` theo README.
+
+## Ngày 31/10/2026 — M4.3.1: sửa EJSONPARSE sau merge main
+
+- **Nguyên nhân:** commit merge `2a7c07a` để sót dòng `=======` và hai khóa `test:e2e:implemented` trong `package.json`. Đã tái hiện đúng lỗi `JSON.parse` ở dòng 23 trước sửa.
+- **Thay đổi:** gộp thành một script E2E gồm đủ `order-creation.spec.ts` và `share-preview.spec.ts`, không đổi dependency/lockfile. Bỏ dấu conflict trong `progress.md`, giữ nội dung tiến độ của cả hai bên. Local đã fast-forward tới commit merge trước khi sửa.
+- **Kiểm chứng:** parse được cả bốn manifest/lockfile; script E2E chỉ có một khóa, danh sách là hợp của hai parent và đủ 16 spec tồn tại; cấu hình dependency không đổi. `./tools/npm.ps1 ci --dry-run --ignore-scripts --no-fund` đạt (exit 0); `git diff --check` đạt. Đây là kiểm tra cài đặt thử, không chạy lại unit/integration/E2E và chưa có kết quả CI mới.
+- **Giới hạn:** rà toàn bộ file tracked còn thấy `README.md:12` có dấu conflict và hai đoạn trạng thái trùng nhau; chưa sửa vì kế hoạch được duyệt chỉ gồm `package.json` và `progress.md`.
+- **Điểm dừng:** người dùng đã yêu cầu commit/push bản sửa lên `feat/m4.3.1-cod-checkout`; không merge/deploy. Chờ kết quả CI mới và người dùng kiểm tra.
+
+## Ngày 31/10/2026 — Git M4.3.1: kiểm chứng trước push nhánh
+
+- Người dùng yêu cầu đưa bản hiện tại lên nhánh `feat/m4.3.1-cod-checkout`; phạm vi gồm đặt đơn COD khách và các bản sửa review. Không merge vào `main` hoặc deploy.
+- Kiểm tra lại bản chuẩn bị commit: `./tools/npm.ps1 run typecheck` và `./tools/npm.ps1 run build` đạt; `VITEST_MAX_WORKERS=2` cùng `./tools/npm.ps1 test` đạt **10 tools + 69 backend + 345 frontend = 424 test**. Ba test UI thất bại ở lượt review trước đã đạt trong lượt chạy mới. Build còn cảnh báo chunk trên 500 kB.
+- Đã rà diff, remote, tác giả, danh sách file và ignore: không đưa env thật, runtime, dependency, mailbox hoặc artifact build vào commit. Dùng push thường lên nhánh feature, không force push.
+- Không chạy lại integration/E2E trong lượt Git này; kết quả của lượt triển khai được ghi riêng phía dưới. CI của commit mới và nghiệm thu của người dùng chưa có kết quả tại thời điểm chuẩn bị push.
+
+## Ngày 31/10/2026 — M4.3.1: sửa 7 lỗi sau review
+
+**Phạm vi được duyệt:** người dùng duyệt sửa 7 lỗi review trên nhánh `feat/m4.3.1-cod-checkout` (không đổi nghiệp vụ/dependency/schema; giữ nguyên thay đổi có sẵn; không commit/push). **Đã sửa đủ 7/7, agent đã kiểm tra local; chờ người dùng review/chạy thử, chưa nghiệm thu.**
+
+### Từng lỗi và cách sửa
+
+| # | Lỗi | Sửa | File |
+|---|---|---|---|
+| 1 | P1 — `SELECT now()` trả thời điểm bắt đầu transaction: quote hết hạn trong lúc chờ advisory/inventory lock vẫn tạo đơn | Đổi `clock_timestamp()` cho cả lượt kiểm chính và **re-check sau reserve** (hết hạn lúc đó → QUOTE_CHANGED, rollback toàn bộ gồm reserve); replay vẫn được nhận trước mọi re-check nên đơn đã commit vẫn replay được dù quote hết hạn | `order-creation.service.ts` |
+| 2 | P1 — Giá/phí ghép từ hai thời điểm (RC đọc rời rạc) | Khóa `shop_settings FOR SHARE` + `variants FOR UPDATE` (theo variantId tăng dần, khớp thứ tự khóa của reserve) trước khi đọc — admin đổi phí/giá phải chờ order commit; retry hữu hạn 40001/P2034 giữ nguyên | `order-creation.service.ts` |
+| 3 | P2 — Thiếu/null/sai kiểu contact/address → 500 | `@IsDefined()` + `@ValidateNested()` trên cả hai object → 400 VALIDATION_ERROR với fieldErrors trước khi vào canonicalizer | `dto/create-order.dto.ts` |
+| 4 | P1 — Unknown mất nút Gửi lại (UI retry nằm trong gate quoteAccepted) | Unknown block tách thành early-return độc lập trên CheckoutPage: vượt quote hết hạn, giỏ rỗng/đổi, route change; trong unknown ẩn nút Lấy báo giá/Cập nhật (không tạo quote mới); test harness chuyển provider lên trên Routes đúng như App thật | `pages/CheckoutPage.tsx`, `pages/CheckoutPage.test.tsx` |
+| 5 | P1 — Retry gặp 429 bị coi là thất bại chắc chắn | `run` nhận cờ `isRetry`: 429 RATE_LIMITED trong retry giữ unknown + command cũ (lần đầu có thể đã commit); 429 lần đầu vẫn failed; các lỗi nghiệp vụ xác định khác không đổi | `OrderSubmissionProvider.tsx` |
+| 6 | P2 — Tiếp tục mua sắm giữ kết quả cũ + ref page reset có thể xóa giỏ mới | `dismiss()` chặn pending/unknown; `markCartHandled()` ghi nhận dọn giỏ once-per-command trong provider state (thay ref page); cả hai nút confirmation gọi `onContinue` kết thúc intent | `OrderSubmissionProvider.tsx`, `components/OrderConfirmation.tsx`, `pages/CheckoutPage.tsx` |
+| 7 | P2 — Parser thiếu kiểm tra tiền/số lượng/khớp command | `parseOrderConfirmation`: quantity 1..99, variantId không trùng, đơn giá ≤100tr, không âm, lineTotal = đơn giá × SL, subtotal = tổng lineTotal, total = subtotal + phí ≤1 tỷ, **items khớp command gửi lên**; lệch → INVALID_RESPONSE giữ unknown/key cũ | `api/orders.api.ts`, `api/orders.api.test.ts` (mới, 4 test) |
+
+### File đã đổi trong phiên sửa này
+
+Backend: `order-creation.service.ts`, `dto/create-order.dto.ts`, `order-creation.service.spec.ts` (+3 test), `test/order-creation.integration.spec.ts` (+2 test). Frontend: `api/orders.api.ts`, `api/orders.api.test.ts` (mới), `OrderSubmissionProvider.tsx`, `hooks/useCreateOrder.ts` (cartMatchesQuote nhận danh sách dòng chung), `components/ContactAddressForm.tsx` (submit button trong form, bỏ form attribute ngoài), `components/OrderConfirmation.tsx`, `pages/CheckoutPage.tsx`, `pages/CheckoutPage.test.tsx` (harness provider-above-routes + 4 test mới + dọn probe debug).
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Unit orders RED→GREEN | 2 test mới RED (clock_timestamp/FOR UPDATE chưa có; re-check sau reserve chưa có) → **24/24** |
+| Integration RED→GREEN | 2 test mới RED (expiry-during-lock-wait trả 500 vì transaction timeout 5s; missing contact/address trả 500) → sửa `timeout: 15000, maxWait: 5000` cho `$transaction` của create + IsDefined → **12/12**; full suite **93/93** |
+| Parser unit (mới) | **4/4**: khớp command, trùng variant, qty 100, phí âm, tổng sai, dòng lệch command |
+| UI checkout | **16/16** sau khi sửa assertion theo thiết kế mới (unknown thay form; harness provider-above-routes; test thêm-giỏ-mới tái dùng A/B) |
+| `typecheck` | các vòng fix TS (Prisma.join import, exactOptionalPropertyTypes, Throttle import, arg typing) → cuối **0 lỗi** |
+| `build` | đạt |
+| `test` (root) | backend 69/69; frontend **345/345** (lượt trước 1 timeout flake App.test — pass riêng) |
+| `test:integration` | **93/93** (11 file); 1 lượt settings.integration flake giữa các full-run, pass 14/14 khi chạy riêng và full-run sau đạt |
+| `test:e2e:implemented` | **44/44** |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+### Giới hạn
+
+- expiry-during-lock-wait test dùng holder transaction giữ advisory lock 6s — nếu máy chậm hơn 15s timeout của create, test có thể flake; chưa thấy trong các lượt chạy hiện có.
+- Scenario trộn phí/giá trong review (đ phí40k rồi giá về200k) được chặn bằng khóa FOR SHARE/FOR UPDATE — không tái hiện được deterministic qua HTTP nên kiểm chứng bằng unit assert các lock statement + cơ chế khóa DB.
+- 429 lần đầu vẫn failed (throttler chặn trước controller → chắc chắn không commit); chỉ 429 trong retry mới giữ unknown — đúng ngữ cảnh theo review.
+
+**Dừng để người dùng review/chạy thử. Không commit/push/merge/deploy.**
+
+
+## Ngày 31/10/2026 — M4.3.1: đặt đơn COD không cần tài khoản
+
+**Phạm vi được duyệt:** kế hoạch M4.3.1 gửi trong chat (POST `/orders` guest + Idempotency-Key + quote re-check + giữ kho + token tra cứu lưu hash; FE form nhận hàng, mất-response "Gửi lại", màn xác nhận; không BANK/payment/tra cứu/email). **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### Phân biệt phần có sẵn và phần mới
+
+- **M4.2.2 có sẵn (đã merge main `899b52c`):** CheckoutService/quote, OrdersModule khung, `features/checkout` (api quote, hook, QuoteSummary, CheckoutPage). TTL quote hiện hành **15 phút** (đã chỉnh sau review M4.2.2, không phải 30).
+- **M4.3.1 mới trong lượt này:** các file dưới đây.
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/orders/order-command.ts` (mới) | `normalizeVietnamesePhone` (một chuẩn hóa duy nhất 0/+84 cho DTO/hash/quota), `canonicalizeOrderCommand` + hash SHA-256, `generateOrderCode` 12 ký tự bảng chữ không nhập nhằng, `generateLookupToken` 192-bit base64url + `lookupTokenHash` |
+| `apps/backend/src/modules/orders/dto/create-order.dto.ts` (mới) | DTO create: quoteId/items/contact/address/note, whitelist chặn giá/tổng/status/userId client gửi; SĐT chuẩn hóa ngay ở DTO; BANK bị từ chối |
+| `apps/backend/src/modules/orders/order-creation.service.ts` (mới) | Transaction điều phối: advisory lock theo SĐT (câu lệnh đầu để snapshot không stale) → replay trước mọi re-check → quote còn hạn/COD/khớp giỏ → re-verify giá/phí/settings/tồn → quota 3 PENDING/SĐT → tạo Order+items+history (GUEST, actorId null) → `InventoryOperationsService.reserve` → IdempotencyRecord (response an toàn không token/PII) commit cùng nhau; retry hữu hạn 40001/P2034 và collision mã đơn; READ COMMITTED (RR làm snapshot stale khi tranh chuỗi lock — đã đổi có lý do) |
+| `apps/backend/src/modules/orders/orders.controller.ts` (mới) + `orders.module.ts` (sửa) | POST `/orders` guest qua CSRF + `@Throttle` ip 5/phút riêng cho endpoint; identity idempotency = `guest:<sessionID>` do server cấp |
+| `apps/backend/src/modules/orders/order-creation.service.spec.ts` (mới) | 13 unit: chuẩn hóa SĐT, snapshot 730.000, replay trước quote-hết-hạn, hash khác nội dung → 409, QUOTE_CHANGED các loại, ITEM_UNAVAILABLE/OUT_OF_STOCK, quota 429, rollback khi reserve lỗi, retry mã đơn trùng, key sai |
+| `apps/backend/test/order-creation.integration.spec.ts` (mới) | 10 ca PostgreSQL thật (isolated DB, TRUST_PROXY + XFF cho IP test): atomic commit, replay sau quote hết hạn, key khác nội dung, concurrent same-key 1 đơn, tranh chiếc cuối, rollback thiếu SKU, whitelist, quota tuần tự + đồng thời, rate 429, CSRF |
+| `apps/frontend/src/features/checkout/api/orders.api.ts` (mới) | createOrder với Idempotency-Key; `parseOrderConfirmation` kiểm tra runtime; `isDefiniteOrderError` phân biệt lỗi chắc chắn vs chưa rõ kết quả |
+| `apps/frontend/src/features/checkout/OrderSubmissionProvider.tsx` (mới) | Máy trạng thái idle/pending/unknown/confirmed/failed giữ command (key+body) trên vòng đời App; retry đúng command cũ; beforeunload cảnh báo khi pending/unknown; fieldErrors từ API |
+| `apps/frontend/src/features/checkout/hooks/useCreateOrder.ts` (mới) | Body từ quote (server-owned items), `cartMatchesQuote` chặn đặt khi giỏ drift |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.tsx` (mới) | Form controlled 8 trường theo rule backend (SĐT plausible, email, 2..120…), draft do page giữ |
+| `apps/frontend/src/features/checkout/components/OrderConfirmation.tsx` (mới) | Mã đơn + sao chép, Chờ xác nhận, chưa thu tiền, items/tổng server, không link sang trang chưa có |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.tsx` (sửa) | Tích hợp form + submit + confirmed/unknown/failed; chặn đặt khi quote chưa accepted/giỏ drift; sau QUOTE_CHANGED hiện lại nút lấy quote, draft giữ |
+| `apps/frontend/src/features/cart/cart-store.ts`, `CartProvider.tsx` (+test) | `clearCart`/`clear()` để dọn giỏ sau đặt thành công khi giỏ vẫn khớp đơn |
+| `apps/frontend/src/app/App.tsx` | Bọc `OrderSubmissionProvider` ở cấp App (command sống qua route change) |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` (sửa) | +4 test đặt đơn: thành công dọn giỏ khớp, draft giữ + field lỗi, Gửi lại đúng key (2 POST cùng key), fieldErrors server, không gửi subtotal client |
+| `apps/frontend/e2e/order-creation.spec.ts` (mới) | 3 E2E thật: luồng COD đầy đủ + DB kiểm chứng, mất response sau commit (route.fetch + discard 201) → Gửi lại → cùng mã đơn reserved không tăng, OUT_OF_STOCK giữ form không tạo đơn |
+| `package.json`, `.github/workflows/ci.yml` | Thêm order-creation.spec.ts vào implemented; tên bước CI ghi M4.3.1 |
+| `docs/m4-contract.md`, `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md`, `docs/plan.md`, `README.md` | Chốt contract create (response/error/token/quota/SĐT), trạng thái, hướng dẫn thử |
+| `apps/frontend/e2e/checkout-quote.spec.ts` (sửa — **file bổ sung ngoài danh sách duyệt, nêu rõ**) | E2E quote M4.2.2 khớp text trang đã tiến hóa (heading "Đặt hàng — thanh toán khi nhận hàng"); scenario/khẳng định DB giữ nguyên |
+
+### Data flow / key
+
+Khách điền form → bấm "Đặt hàng COD" → provider chụp command (key UUID + body) → POST `/orders` → DTO whitelist → advisory lock theo SĐT → replay check → quote re-verify (hạn 15 phút theo giờ DB, giỏ khớp, giá/phí/settings khớp) → quota 3 PENDING/SĐT → tạo Order/items/history → `reserve` (khóa variantId tăng dần, tăng reserved, giữ onHand) → IdempotencyRecord commit cùng nhau → response code + token (lần đầu) → màn xác nhận; giỏ dọn nếu khớp.
+
+- **Order command**: key UUID do client sinh một lần/ý định; hash chuẩn hóa che khuất thứ tự và SĐT form.
+- **Advisory lock SĐT đầu transaction**: chống vượt quota và trùng command khi đồng thời; kết hợp READ COMMITTED thay RR (đã đổi có lý do: RR chụp snapshot trước lock khiến chuỗi 40001 khi 4 request đồng thời).
+- **lookupToken 192-bit**: chỉ trả lần đầu, DB chỉ lưu SHA-256; replay không phát lại.
+- **Unknown phase**: mất response/5xx/malformed → khóa form, "Gửi lại" đúng key+body cũ; failed chắc chắn (4xx nghiệp vụ) → được tạo intent mới với key mới.
+- **Quota 3 PENDING/SĐT + 5/phút/IP**: DB count sau lock + Throttler override đúng endpoint.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Unit RED → GREEN | thiếu module → sau triển khai orders 22/22 (service 13 + command 9) |
+| Integration RED → GREEN | nhiều vòng fix: model tên `checkoutQuote` trong fake tx, CHECK variant SKU uppercase (fixture Prisma trực tiếp), Decimal→Number, `pg_advisory_xact_lock` trả void cần `IS NOT NULL AS locked`, 40001 serialization phải retry (P2010 wrapper), TDZ `quote` helper, RR snapshot stale → chuyển READ COMMITTED, assert count theo code đơn; sau sửa **10/10** |
+| UI checkout + cart | **79/79** sau khi sửa: MUI required dấu `*` làm getByLabelText exact fail (chuyển required vào htmlInput như form tạo), button enabled khi draft hợp lệ, getAllByText cho tổng trùng, count theo code đơn, đợi localStorage clear; full-run còn 1-2 timeout flake ở App.test/ProductEditPage (pass khi chạy riêng — pattern tải máy đã biết) |
+| E2E | 3 chỉnh (reserved đo theo delta giữa các scenario dùng chung DB, OUT_OF_STOCK hạ onHand về reserved, count đơn theo baseline) → **3/3** |
+| `typecheck` | các vòng fix TS: Prisma InputJsonValue, `Throttle` từ `@nestjs/throttler`, `Matches` import, exactOptionalPropertyTypes cho email/note/token, provider import đường dẫn — cuối **0 lỗi** |
+| `./tools/npm.ps1 test` | backend đạt; frontend 1 timeout flake App.test (pass khi chạy riêng — pattern tải máy đã biết) |
+| `./tools/npm.ps1 run test:e2e:implemented` | 44/44 (41 cũ + 3 mới) — xác nhận ở mục kiểm chứng cuối phiên |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+**Dừng sau M4.3.1 cho người dùng chạy thử; M4.4 tra cứu/hủy và M4.5 admin đơn chưa triển khai.**
+
 ## Ngày 31/10/2026 — M6.2: backup ngoài VPS + diễn tập khôi phục
 
 **Phạm vi đã duyệt:** kế hoạch M6.2 trong chat ("duyệt") — người dùng chuyển phần này từ Người B sang phía A. Backup DB + ảnh hằng ngày trên VPS, bản sao ngoài VPS, diễn tập khôi phục vào DB khác. **Đã làm và xác minh đầy đủ; bản sao ngoài VPS nằm tại máy người dùng `.local/backups/20261031-130938/` (ngoài Git).**

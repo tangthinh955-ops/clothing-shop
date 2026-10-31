@@ -1,7 +1,11 @@
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
-import { Link as RouterLink } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link as RouterLink, useNavigate } from 'react-router';
 import { useCart } from '../../cart/CartProvider';
+import { ContactAddressForm, validateContactDraft } from '../components/ContactAddressForm';
+import { OrderConfirmation } from '../components/OrderConfirmation';
 import { describeQuoteChanges, QuoteSummary } from '../components/QuoteSummary';
+import { cartMatchesQuote, useCreateOrder, type ContactDraft } from '../hooks/useCreateOrder';
 import { useCheckoutQuote } from '../hooks/useCheckoutQuote';
 
 function expiryLine(remainingMs: number | null): string {
@@ -10,11 +14,49 @@ function expiryLine(remainingMs: number | null): string {
   return `Báo giá có hiệu lực khoảng ${minutes} phút nữa.`;
 }
 
+const EMPTY_DRAFT: ContactDraft = { name: '', phone: '', email: '', province: '', district: '', ward: '', addressLine: '', note: '' };
+
 export function CheckoutPage() {
   const cart = useCart();
-  const { phase, quote, pendingQuote, error, remainingMs, fetchQuote, acceptPending } = useCheckoutQuote(cart.items);
+  const navigate = useNavigate();
+  const { phase, quote, pendingQuote, error: quoteError, remainingMs, fetchQuote, acceptPending } = useCheckoutQuote(cart.items);
+  const { phase: submitPhase, result, error: submitError, fieldErrors, body, submit, retry, dismiss, markCartHandled, cartHandled } = useCreateOrder(quote);
+  const [draft, setDraft] = useState<ContactDraft>(EMPTY_DRAFT);
+  const [showDraftErrors, setShowDraftErrors] = useState(false);
 
-  if (cart.items.length === 0) {
+  // On success: clear the cart only when the live cart is still the one that was submitted. The
+  // once-per-command guard lives in the provider (review fix 6) so a page remount cannot re-run it
+  // against a brand-new cart.
+  const confirmed = submitPhase === 'confirmed' && result;
+  const clearedNow = confirmed ? cartMatchesQuote(cart.items, result!.order.items) : false;
+  useEffect(() => {
+    if (submitPhase !== 'confirmed' || !result || cartHandled) return;
+    if (cartMatchesQuote(cart.items, result.order.items)) {
+      cart.clear();
+    }
+    markCartHandled();
+  }, [submitPhase, result, cartHandled, markCartHandled, cart]);
+
+  // An unclear outcome (review fix 4) survives quote expiry, cart edits and an empty cart: the
+  // shopper must resolve it through Gửi lại before anything else happens on this page.
+  if (submitPhase === 'unknown') {
+    return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <title>Đặt hàng COD | Clothing Shop</title>
+      <Typography variant="h4" component="h1">Đặt hàng — thanh toán khi nhận hàng</Typography>
+      <Alert severity="warning">
+        {submitError ?? 'Không nhận được kết quả đặt hàng.'}
+        <Box sx={{ mt: 1 }}>
+          <Button variant="contained" onClick={() => { void retry(); }}>Gửi lại</Button>
+        </Box>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          Đơn có thể đã được tạo từ lần gửi trước — “Gửi lại” dùng đúng nội dung và mã thao tác cũ để
+          kiểm tra an toàn, không tạo trùng đơn và không tạo báo giá mới.
+        </Typography>
+      </Alert>
+    </Box>;
+  }
+
+  if (cart.items.length === 0 && submitPhase !== 'confirmed') {
     return <Stack spacing={2} sx={{ py: 6, textAlign: 'center' }}>
       <Typography variant="h4" component="h1">Giỏ hàng trống</Typography>
       <Typography sx={{ color: 'text.secondary' }}>Hãy chọn một sản phẩm trước khi xem phí và tổng tiền.</Typography>
@@ -22,25 +64,34 @@ export function CheckoutPage() {
     </Stack>;
   }
 
-  const busy = phase === 'pending';
-  const actionLabel = phase === 'expired' ? 'Cập nhật báo giá' : phase === 'error' ? 'Thử lại' : 'Lấy báo giá';
-  const showAction = phase !== 'accepted' && phase !== 'confirm';
+  const quoteBusy = phase === 'pending';
+  const quoteAction = phase === 'expired' ? 'Cập nhật báo giá' : phase === 'error' ? 'Thử lại' : 'Lấy báo giá';
+  // After a definite order failure (e.g. QUOTE_CHANGED) the shopper must be able to re-quote even
+  // though the quote hook still holds the accepted snapshot.
+  const showQuoteAction = (phase !== 'accepted' && phase !== 'confirm') || submitPhase === 'failed';
+  const quoteAccepted = phase === 'accepted' && quote;
+  // 'unknown' never reaches here: the early return above owns that state exclusively.
+  const formLocked = submitPhase === 'pending';
+  const draftErrors = validateContactDraft(draft);
+  const formUsable = quoteAccepted && !formLocked && Object.keys(draftErrors).length === 0;
+  const serverFieldErrors = submitPhase === 'failed' ? fieldErrors : {};
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <title>Xem phí và tổng tiền | Clothing Shop</title>
-    <Typography variant="h4" component="h1">Xem phí và tổng tiền</Typography>
+    <title>Đặt hàng COD | Clothing Shop</title>
+    <Typography variant="h4" component="h1">Đặt hàng — thanh toán khi nhận hàng</Typography>
     <Typography sx={{ color: 'text.secondary' }}>
-      Bước xem báo giá. Phương thức hiện tại: thanh toán khi nhận hàng (COD). Chưa có bước đặt đơn ở đây.
+      Bước xem báo giá và nhập thông tin nhận hàng. Phương thức hiện tại: thanh toán khi nhận hàng (COD).
+      Chưa có bước thanh toán trực tuyến.
     </Typography>
     <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
-      {showAction && <Button variant="contained" disabled={busy} onClick={() => { void fetchQuote(); }}>
-        {busy ? 'Đang lấy báo giá…' : actionLabel}
+      {showQuoteAction && <Button variant="contained" disabled={quoteBusy || formLocked} onClick={() => { void fetchQuote(); }}>
+        {quoteBusy ? 'Đang lấy báo giá…' : quoteAction}
       </Button>}
-      <Button component={RouterLink} to="/cart" variant="outlined">Quay lại sửa giỏ</Button>
+      <Button component={RouterLink} to="/cart" variant="outlined" disabled={formLocked}>Quay lại sửa giỏ</Button>
     </Stack>
-    {busy && <Typography role="status">Đang lấy báo giá…</Typography>}
+    {quoteBusy && <Typography role="status">Đang lấy báo giá…</Typography>}
     {phase === 'error' && <Alert severity="error">
-      {error ?? 'Chưa lấy được báo giá. Vui lòng thử lại.'}
+      {quoteError ?? 'Chưa lấy được báo giá. Vui lòng thử lại.'}
       {quote && <Typography variant="body2" sx={{ mt: 1 }}>
         Báo giá đã xem trước đó bên dưới chỉ để tham khảo, không còn giá trị áp dụng.
       </Typography>}
@@ -76,5 +127,18 @@ export function CheckoutPage() {
     {phase === 'idle' && <Paper square elevation={0} sx={{ p: 3 }}>
       <Typography>Bấm “Lấy báo giá” để máy chủ tính tiền hàng, phí giao và tổng tiền cho giỏ hiện tại.</Typography>
     </Paper>}
+
+    {quoteAccepted && quote && submitPhase !== 'confirmed' && <>
+      <ContactAddressForm value={draft} disabled={formLocked} serverErrors={serverFieldErrors}
+        onChange={setDraft} onSubmit={(values) => { setDraft(values); void submit(values); }}
+        submitDisabled={!formUsable}
+        submitLabel={submitPhase === 'pending' ? 'Đang đặt hàng…' : 'Đặt hàng COD'}
+        showDraftErrors={showDraftErrors} />
+      {submitPhase === 'failed' && submitError && <Alert severity="error" role="alert">{submitError}</Alert>}
+    </>}
+
+    {confirmed && result &&
+      <OrderConfirmation result={result} cartCleared={clearedNow}
+        onContinue={() => { dismiss(); navigate('/shop'); }} />}
   </Box>;
 }

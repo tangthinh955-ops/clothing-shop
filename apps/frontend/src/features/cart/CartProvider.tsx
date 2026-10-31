@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useReducer, useMemo, useRef, type
 // One cart for every guest surface: this provider owns the cart rows, the drawer state and
 // the transient display signals (highlight/rejection/warning) built on the pure cart-store.
 import {
-  addLine, cartTotalQuantity, loadCart, removeLine, saveCart, updateQuantity,
+  addLine, cartTotalQuantity, clearCart, loadCart, removeLine, saveCart, updateQuantity,
   type CartLine, type CartOperationError, type CartState, type CartStorageWarning,
 } from './cart-store';
 
@@ -18,6 +18,7 @@ export interface CartContextValue {
   addItem(variantId: string, quantity: number): void;
   updateQuantity(variantId: string, quantity: number): void;
   removeItem(variantId: string): void;
+  clear(): void;
   /** Row of the most recent successful add; token lets widgets know a newer add happened. */
   highlight: CartHighlight | null;
   rejection: CartRejection | null;
@@ -37,6 +38,7 @@ type CartAction =
   | { type: 'add'; variantId: string; quantity: number; token: number }
   | { type: 'update'; variantId: string; quantity: number; token: number }
   | { type: 'remove'; variantId: string; token: number }
+  | { type: 'clear' }
   | { type: 'openDrawer' }
   | { type: 'closeDrawer' }
   | { type: 'persist'; ok: boolean };
@@ -68,6 +70,7 @@ function reducer(state: CartUiState, action: CartAction): CartUiState {
       }
       return { ...state, cart: result.next, rejection: null };
     }
+    case 'clear': return { ...state, cart: clearCart(state.cart).next, highlight: null, rejection: null };
     case 'openDrawer': return { ...state, drawerOpen: true };
     case 'closeDrawer': return { ...state, drawerOpen: false };
     case 'persist': {
@@ -112,6 +115,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     addItem: (variantId, quantity) => dispatch({ type: 'add', variantId, quantity, token: token.current++ }),
     updateQuantity: (variantId, quantity) => dispatch({ type: 'update', variantId, quantity, token: token.current++ }),
     removeItem: (variantId) => dispatch({ type: 'remove', variantId, token: token.current++ }),
+    clear: () => dispatch({ type: 'clear' }),
     highlight: state.highlight,
     rejection: state.rejection,
     storageWarning: state.storageWarning,
