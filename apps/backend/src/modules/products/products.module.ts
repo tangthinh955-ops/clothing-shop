@@ -5,10 +5,11 @@ import { CartProductsController } from './cart-products.controller.js';
 import { CartProductsService } from './cart-products.service.js';
 import { CatalogController } from './products.controller.js';
 import { ProductsService } from './products.service.js';
+import { SharePreviewController } from './share-preview.controller.js';
 
 @Module({
   imports: [AuthModule],
   providers: [ProductsService, CartProductsService],
-  controllers: [CatalogController, AdminProductsController, CartProductsController],
+  controllers: [CatalogController, SharePreviewController, CartProductsController, AdminProductsController],
 })
 export class ProductsModule {}
