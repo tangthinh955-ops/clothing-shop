@@ -2,6 +2,14 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M4.3.1: sửa EJSONPARSE sau merge main
+
+- **Nguyên nhân:** commit merge `2a7c07a` để sót dòng `=======` và hai khóa `test:e2e:implemented` trong `package.json`. Đã tái hiện đúng lỗi `JSON.parse` ở dòng 23 trước sửa.
+- **Thay đổi:** gộp thành một script E2E gồm đủ `order-creation.spec.ts` và `share-preview.spec.ts`, không đổi dependency/lockfile. Bỏ dấu conflict trong `progress.md`, giữ nội dung tiến độ của cả hai bên. Local đã fast-forward tới commit merge trước khi sửa.
+- **Kiểm chứng:** parse được cả bốn manifest/lockfile; script E2E chỉ có một khóa, danh sách là hợp của hai parent và đủ 16 spec tồn tại; cấu hình dependency không đổi. `./tools/npm.ps1 ci --dry-run --ignore-scripts --no-fund` đạt (exit 0); `git diff --check` đạt. Đây là kiểm tra cài đặt thử, không chạy lại unit/integration/E2E và chưa có kết quả CI mới.
+- **Giới hạn:** rà toàn bộ file tracked còn thấy `README.md:12` có dấu conflict và hai đoạn trạng thái trùng nhau; chưa sửa vì kế hoạch được duyệt chỉ gồm `package.json` và `progress.md`.
+- **Điểm dừng:** người dùng đã yêu cầu commit/push bản sửa lên `feat/m4.3.1-cod-checkout`; không merge/deploy. Chờ kết quả CI mới và người dùng kiểm tra.
+
 ## Ngày 31/10/2026 — Git M4.3.1: kiểm chứng trước push nhánh
 
 - Người dùng yêu cầu đưa bản hiện tại lên nhánh `feat/m4.3.1-cod-checkout`; phạm vi gồm đặt đơn COD khách và các bản sửa review. Không merge vào `main` hoặc deploy.
@@ -109,7 +117,6 @@ Khách điền form → bấm "Đặt hàng COD" → provider chụp command (ke
 
 **Dừng sau M4.3.1 cho người dùng chạy thử; M4.4 tra cứu/hủy và M4.5 admin đơn chưa triển khai.**
 
-=======
 ## Ngày 31/10/2026 — M6.2: backup ngoài VPS + diễn tập khôi phục
 
 **Phạm vi đã duyệt:** kế hoạch M6.2 trong chat ("duyệt") — người dùng chuyển phần này từ Người B sang phía A. Backup DB + ảnh hằng ngày trên VPS, bản sao ngoài VPS, diễn tập khôi phục vào DB khác. **Đã làm và xác minh đầy đủ; bản sao ngoài VPS nằm tại máy người dùng `.local/backups/20261031-130938/` (ngoài Git).**
