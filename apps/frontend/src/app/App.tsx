@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router';
 import { CartProvider } from '../features/cart/CartProvider';
 import { CartPage } from '../features/cart/pages/CartPage';
 import { CheckoutPage } from '../features/checkout/pages/CheckoutPage';
+import { OrderSubmissionProvider } from '../features/checkout/OrderSubmissionProvider';
 import { StoreLayout } from '../layouts/StoreLayout';
 import { AuthPage } from '../features/auth/pages/AuthPage';
 import { VerifyPage } from '../features/auth/pages/VerifyPage';
@@ -24,6 +25,7 @@ import { PrivateRoute } from './router/PrivateRoute';
 export function App() {
   // CartProvider wraps every store route: the drawer, header badge and /cart share one cart.
   return <CartProvider>
+    <OrderSubmissionProvider>
     <Routes>
       <Route element={<StoreLayout />}>
         <Route index element={<HomePage />} />
@@ -48,5 +50,6 @@ export function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+    </OrderSubmissionProvider>
   </CartProvider>;
 }

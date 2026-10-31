@@ -74,6 +74,12 @@ export function removeLine(state: CartState, variantId: string): CartOperationRe
   return { next: { schemaVersion: CART_SCHEMA_VERSION, items } };
 }
 
+/** Empties the cart; used after a confirmed order consumed exactly these lines. */
+export function clearCart(state: CartState): CartOperationResult {
+  if (state.items.length === 0) return { next: state };
+  return { next: createCart() };
+}
+
 /** Serialized exactly like the agreed shape; prices or identities have no place here. */
 export function serializeCart(state: CartState): string {
   return JSON.stringify({

@@ -39,5 +39,5 @@ jobs:
       - run: npm test
       - run: npm run test:integration
       - run: npm run test:e2e:install -- --with-deps
-      - name: E2E implemented (auth, catalog, admin, inventory, settings, cart M4.2.1, server quote M4.2.2)
+      - name: E2E implemented (auth, catalog, admin, inventory, settings, cart M4.2.1, quote M4.2.2, guest COD order M4.3.1)
         run: npm run test:e2e:implemented
