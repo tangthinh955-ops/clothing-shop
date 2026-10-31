@@ -21,6 +21,21 @@ describe('API boundary', () => {
     expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ body, headers: { 'X-CSRF-Token': 'csrf-token', 'Idempotency-Key': 'operation-123456789' } });
     expect(fetcher.mock.calls[1]?.[1].headers).not.toHaveProperty('Content-Type');
   });
+  it('sends the order access token as a header and never appends it to the URL', async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ order: { code: 'ABCDUVWXYZ2' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const token = 'A'.repeat(32);
+    await request('/orders/ABCDUVWXYZ2', { orderToken: token });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/orders/ABCDUVWXYZ2');
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ headers: { 'X-Order-Token': token } });
+    expect(String(fetcher.mock.calls[0]?.[0])).not.toContain(token);
+  });
+  it('leaves the X-Order-Token header out when the caller does not provide one', async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ items: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    await request('/orders/ABCDUVWXYZ2');
+    expect(Object.keys(fetcher.mock.calls[0]?.[1]?.headers ?? {})).not.toContain('X-Order-Token');
+  });
   it('does not turn a cold-start HTML response into a successful JSON result', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>starting</html>', { status: 503 })));
     await expect(request('/me')).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE', status: 503 });

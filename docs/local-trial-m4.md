@@ -155,7 +155,23 @@ Test riêng: integration `test/order-creation.integration.spec.ts` (trong `./too
 
 ### M4.4.1 — Xem đơn qua link
 
-Mở link riêng được cấp khi tạo đơn trong cửa sổ mới, xem đúng snapshot/timeline/tổng tiền; refresh theo cơ chế đã bàn giao. Sửa token hoặc dùng token đơn khác cho mã hiện tại → lỗi đồng nhất, không trả PII. Kiểm tra token không có trong query HTTP, log hoặc localStorage; không chia sẻ link thật làm bằng chứng.
+**Đã triển khai và agent đã kiểm tra local (31/10/2026): GET `/orders/:code` nhận token qua header `X-Order-Token` (30/phút/IP, 404 đồng nhất); trang `/orders/:code#t=<token>` dùng link xác nhận M4.3.1, giữ fragment qua refresh; token không vào query/storage.**
+
+1. Sau màn xác nhận M4.3.1 (lần tạo đầu có token) bấm **Xem đơn hàng** → tab mới `/orders/<mã>#t=t…` hiển thị: đè "Xem đơn hàng riêng tư", mã đơn, **Chờ xác nhận** · COD — **chưa thu tiền**, danh sách hàng, tổng tiền, người nhận và **Lịch sử đơn**; nút **Sao chép link riêng** cho cả link.
+2. Refresh hoặc mở lại link trong cửa sổ mới (cả cửa sổ riêng tư) → vẫn xem được, fragment vẫn nằm trên thanh địa chỉ.
+3. Sửa token trong fragment, bỏ `#t=…`, hoặc thay token của đơn khác → cùng một thông báo 404, không lộ PII và không thẳng vào đơn khác.
+4. DevTools → Network: request `GET /api/v1/orders/<mã>` không có dấu `?`, token chỉ ở header `X-Order-Token`; Application → Local/Session Storage: không chứa token. Nếu bị giới hạn 30/phút/IP, trang hiện thông báo riêng của lỗi 429 ("Thao tác quá nhanh. Vui lòng thử lại sau.") chứ không dùng thông báo 404, và không tự thử lại cũng không có nút Thử lại.
+5. Chỉ là đọc: mở nhiều lần không đổi trạng thái đơn, không ghi kho (DB không có bản ghi mới).
+
+**Bản sửa sau review (31/10/2026) — thử thêm:**
+
+6. Note dài: tạo đơn COD mới, điền **Ghi chú 500 ký tự** (form cho đúng giới hạn này) → mở **Xem đơn hàng** → dòng "Ghi chú: …" hiện **nguyên văn đủ 500 ký tự** (không rơi vào trang lỗi), thu nhỏ cửa sổ ~390px không tràn ngang; refresh vẫn còn.
+7. Hai đơn A, B: xem link A xong, **trong cùng tab** dán link B → hiện đúng đơn B (không lẫn dữ liệu A); dán lại link A → hiện lại đúng đơn A (cache không nhảy chéo giữa hai token).
+8. Mã đơn lạ: vào `/orders/AB%00CD#t=<token hợp lệ>` hoặc mã dài hơn 24 ký tự → 404 đồng nhất (không lỗi 500).
+
+Giới hạn đã duyệt của phần này: không có tra cứu bằng mã+SĐT (M4.4.2), không hủy đơn, đơn chưa PAID/Bank/VietQR, không có email; link xác nhận chỉ hiện khi response tạo đơn trả token (lần replay mất token xử lý tại M4.4.2).
+
+Test riêng: integration `test/order-access.integration.spec.ts` (trong `./tools/npm.ps1 run test:integration`) và `./tools/npm.ps1 run test:e2e -- order-access.spec.ts`.
 
 ### M4.4.2 — Tra cứu mã đơn +SĐT
 

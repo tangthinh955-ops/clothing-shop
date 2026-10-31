@@ -12,6 +12,8 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   idempotencyKey?: string;
+  /** Guest order access token (M4.4.1): sent as the X-Order-Token header, never a URL query. */
+  orderToken?: string;
 }
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -29,7 +31,8 @@ async function send<T>(path: string, options: RequestOptions, csrfToken?: string
       method: options.method ?? 'GET', credentials: 'same-origin', cache: 'no-store',
       headers: { ...(body !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}),
         ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}) },
+        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
+        ...(options.orderToken ? { 'X-Order-Token': options.orderToken } : {}) },
       ...(body !== undefined ? { body } : {}),
     });
   } catch { throw new ApiError('NETWORK_ERROR', 'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.', 0); }

@@ -3,12 +3,14 @@ import { InventoryModule } from '../inventory/inventory.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { CheckoutController } from './checkout.controller.js';
 import { CheckoutService } from './checkout.service.js';
+import { OrderAccessGuard } from './order-access.guard.js';
+import { OrderAccessService } from './order-access.service.js';
 import { OrdersController } from './orders.controller.js';
 import { OrderCreationService } from './order-creation.service.js';
 
 @Module({
   imports: [SettingsModule, InventoryModule],
-  providers: [CheckoutService, OrderCreationService],
+  providers: [CheckoutService, OrderCreationService, OrderAccessService, OrderAccessGuard],
   controllers: [CheckoutController, OrdersController],
   exports: [CheckoutService, OrderCreationService],
 })

@@ -2,6 +2,120 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — Git M4.4.1: kiểm chứng trước push nhánh
+
+- Người dùng yêu cầu commit/push bản M4.4.1 hiện tại lên nhánh `feat/m4.4.1-order-access`, gồm xem đơn qua link riêng và các bản sửa sau review. Không merge vào `main` hoặc deploy.
+- Kiểm chứng mới trên cây chuẩn bị commit: `./tools/npm.ps1 run typecheck` và `./tools/npm.ps1 run build` đạt; đặt `VITEST_MAX_WORKERS=2` khi chạy `./tools/npm.ps1 test`, kết quả **10 tools + 69 backend + 370 frontend = 449 test** đạt. Frontend có 37 file test; build còn cảnh báo chunk trên 500 kB.
+- Đã rà diff, danh sách 23 file thay đổi/mới, remote và tác giả Git; không phát hiện mẫu credential hoặc dấu conflict trong các file chuẩn bị commit. Env thật, runtime, dependency và build artifact bị ignore; không có file đã tracked nhưng bị ignore.
+- Không chạy lại integration/E2E trong lượt Git này. Kết quả của lượt sửa trước được giữ riêng ở mục bên dưới; không coi là lần chạy mới hoặc CI. Dùng push thường lên nhánh feature, không force push. CI của commit mới và nghiệm thu của người dùng chưa có kết quả tại thời điểm chuẩn bị push.
+
+## Ngày 31/10/2026 — M4.4.1 (bản sửa sau review): token cache SHA-256, parser theo trường, mã đơn lệch dạng
+
+**Phạm vi được duyệt:** kế hoạch sửa 3 lỗi review M4.4.1 gửi trong chat — (1) queryKey cache trang xem đơn dùng FNV 32-bit dễ va chạm → thay bằng SHA-256; (2) parser FE gộp một giới hạn 254 làm từ chối note hợp lệ ≤500 → giới hạn theo từng trường; (3) mã đơn chứa `%00`/ký tự điều khiển làm backend 500 → chặn shape trước khi query, trả 404 đồng nhất. Kèm kiểm tra bổ sung và hồi quy đầy đủ. **Agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### File đã đổi
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/orders/token-tag.ts` (mới) | SHA-256 thuần JS đồng bộ (FIPS 180-4): WebCrypto `subtle` không có sẵn trong jsdom/HTTP thường, bản đồng bộ bảo đảm đổi token luôn rekey trong cùng một lần render |
+| `apps/frontend/src/features/orders/token-tag.test.ts` (mới) | Vector NIST chính thức + đối chiếu khác biệt với `node:crypto` qua các độ dài biên block và UTF-8 |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.tsx` (sửa) | queryKey dùng `sha256Hex(token)` thay FNV — token rõ không vào key; dòng "Ghi chú" thêm `overflowWrap: 'anywhere'` (E2E bắt tràn ngang mobile 390px với note 500 ký tự liền) |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx` (sửa) | +2 test: response của token cũ về muộn không hiện lại dưới token mới; queryKey chứa hash không chứa token rõ và localStorage/sessionStorage không có token (giữ lại test cache-seal, per-token, FNV va chạm, note 500 có sẵn từ lượt sửa trước) |
+| `apps/frontend/src/features/orders/api/orders.api.ts` (sửa) | `nullableText(value, max)` giới hạn theo trường: email 254, note 500, timeline reason 500 |
+| `apps/frontend/src/features/orders/api/orders.api.test.ts` (sửa) | Quét biên note 254/255/500 đạt, 501 chặn; reason 500/501; email 254; null nhận |
+| `apps/backend/src/modules/orders/order-access.service.ts` (sửa) | `INVALID_CODE_SHAPE` chặn mã rỗng/>24 ký tự/ký tự điều khiển (gồm NUL từ `%00`) trước khi tới Prisma → 404 đồng nhất |
+| `apps/backend/test/order-access.integration.spec.ts` (sửa) | +2 test PostgreSQL thật: mã NUL/25 ký tự/xuống dòng → 404 đồng nhất (một test gộp 3 ca); note 500 ký tự đi qua allowlist nguyên vẹn |
+| `apps/frontend/e2e/order-access.spec.ts` (sửa) | Gộp ca note 500 vào test mở link riêng (điền "Ghi chú" 500 ký tự ở form thật → mở trang → assert nguyên văn → refresh vẫn còn); tách helper `trackCreatedOrder`; `checkoutAndOrder` nhận note tùy chọn |
+
+Lưu ý lịch sử: `accessFingerprint` FNV-1a nêu ở mục M4.4.1 bên dưới **đã bị thay** bởi `sha256Hex` — hai dòng mô tả FNV trong mục đó không còn đúng code hiện tại.
+
+### Lý do gộp ca E2E note 500 (không làm test riêng)
+
+Bộ E2E chạy chung một backend và một IP: POST /orders giới hạn 5/phút/IP. Thêm một test đặt đơn mới đẩy tổng POST thật của full run lên 5; một resend tự động (cơ chế chống mất response của màn đặt hàng) trở thành request thứ 6 và nhận 429 — xác nhận qua snapshot trang fail chứa "Thao tác quá nhanh. Vui lòng thử lại sau." làm test hết hàng của `order-creation.spec.ts` fail 2 vòng liên tiếp (pass riêng lẻ). Gộp ca note 500 vào test mở link trả tổng POST thật về 4 như trước, vẫn phủ đủ UI→API→DB→UI cho note 500.
+
+### Data flow / key
+
+- **`sha256Hex(token)`** (`token-tag.ts`, dùng tại queryKey `OrderDetailPage.tsx`): mỗi cache entry gắn đúng một quyền truy cập riêng tư; không gian key 2^256 thay vì 2^32 của FNV; token rõ chỉ nằm trong fragment và header `X-Order-Token`.
+- **`nullableText`** (`orders.api.ts`): giới hạn parser theo schema từng trường (note/reason 500, email 254) — hết khớp 254 chung.
+- **`INVALID_CODE_SHAPE`** (`order-access.service.ts`): mọi mã lệch dạng bị chặn trước query, trả 404 đồng nhất — không còn 500 cho `%00`.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Unit orders (3 file frontend) | **21/21**, gồm 2 test mới; chạy lại đạt sau khi sửa `overflowWrap` |
+| `./tools/npm.ps1 run typecheck` | 0 lỗi (chạy lại trên cây cuối) |
+| `./tools/npm.ps1 run build` | đạt (1.35s, cảnh báo chunk >500 kB như cũ) |
+| `./tools/npm.ps1 test` | một vòng đạt **37/37 file**; các vòng khác cùng ngày flake 1–4 test findBy dưới tải 37 worker (App redirect, Settings, Inventory, Products — từng file chạy riêng đạt; không thuộc file M4.4.1; cùng pattern flake đã ghi nhận từ các mốc trước) |
+| `./tools/npm.ps1 run test:integration` | **104/104** (13 file; order-access tăng 5→7 test) |
+| `./tools/npm.ps1 run test:e2e -- order-access.spec.ts` | **3/3** (gồm note 500 mở trang + refresh + mobile không tràn sau sửa) |
+| `./tools/npm.ps1 run test:e2e:implemented` | **49/49** trên cây cuối; 2 vòng trước đó fail do 429 đụng giới hạn POST /orders (đã xử lý theo mục trên) và flake tải |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+### Giới hạn / còn lại
+
+- Biên dư throttle E2E mỏng: full run có 4 POST /orders thật + dự phòng resend, sát giới hạn 5/phút/IP — nếu thêm spec đặt đơn phải tính chung ngân sách này.
+- Đã sửa thêm một lỗi UI thật ngoài danh sách 3 lỗi review nhưng nằm trong ca kiểm chứng được giao: dòng "Ghi chú" tràn ngang mobile với chuỗi 500 ký tự liền (`overflowWrap`).
+- Chưa có M4.4.2/M4.4.3/M4.4.4, chưa chạy CI. Không commit/push/merge/deploy.
+
+**Dừng sau bản sửa M4.4.1 để người dùng chạy thử. Không làm M4.4.2.**
+
+## Ngày 31/10/2026 — M4.4.1: xem chi tiết đơn qua link riêng
+
+**Phạm vi được duyệt:** kế hoạch M4.4.1 gửi trong chat — khách COD mở/refresh link riêng `/orders/:code#t=<token>` không cần đăng nhập; GET `/orders/:code` + token **chỉ** ở header `X-Order-Token`, 404 đồng nhất mọi sai hụt, rate 30/phút/IP, response chỉ trả trường cho phép (allowlist) từ snapshot đơn, đọc không ghi; FE trang xem đơn + nút "Xem đơn hàng"/"Sao chép link riêng" trên màn xác nhận khi có token; chỉ luồng đọc. **Đã viết, agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### File đã đổi
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/orders/order-access.service.ts` (mới) | `view(code, token)`: so khớp SHA-256 token rồi đọc order theo allowlist (items/timeline/tổng tiền/người nhận từ snapshot, timeline xếp `version asc`, label vai `Cửa hàng`/`Khách đặt hàng`/`Hệ thống`, không tên nhân viên); mỗi sai hụt đều ném 404 đồng nhất `ORDER_ACCESS_NOT_FOUND` |
+| `apps/backend/src/modules/orders/order-access.guard.ts` (mới) | Guard chỉ kiểm envelope token `/^[A-Za-z0-9_-]{32}$/`, đặt `request.orderToken`; token thiếu/sai dạng → 404 đồng nhất; phần đối chiếu hash thuộc service |
+| `apps/backend/src/modules/orders/orders.controller.ts` (sửa) | Thêm `GET :code` với `@Throttle` ip 30/phút và `OrderAccessGuard`; không đổi POST create |
+| `apps/backend/src/modules/orders/orders.module.ts` (sửa) | Đăng ký OrderAccessGuard + OrderAccessService |
+| `apps/backend/test/order-access.integration.spec.ts` (mới) | 5 ca PostgreSQL thật: allowlist + `Cache-Control: no-store`, đọc không ghi, 404 đồng nhất×5, snapshot đứng vững sau khi đổi giá/trạng thái sản phẩm, 429 theo IP |
+| `apps/frontend/src/features/orders/api/orders.api.ts` (mới) | Contract + `parseOrderDetailView` kiểm tra runtime chặt (trả `ApiError('INVALID_RESPONSE')` khi payload lộp); `ordersApi.view` gửi token qua `orderToken` |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.tsx` (mới) | Đọc fragment `#t=` (giữ nguyên trong URL để refresh sống), kiểm tra dạng token, `useQuery` cache tách theo dấu vân FNV phi-hồi (không token trong queryKey), không retry 404/429, đủ loading/error/rỗng, cột mobile không tràn — *dấu vân FNV đã được thay bằng SHA-256 ở bản sửa review, xem mục trên* |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx` (mới) + `api/orders.api.test.ts` (mới) | Unit page + parser: fragment sống qua reload, không request khi thiếu token, message đồng nhất, token chỉ ở header; parser chặn status lạ/timeline lệch/số sai |
+| `apps/frontend/src/shared/api/client.ts` (sửa) | `RequestOptions.orderToken` → gửi header `X-Order-Token` đúng một nơi dùng chung |
+| `apps/frontend/src/features/checkout/components/OrderConfirmation.tsx` (sửa) | Thêm "Xem đơn hàng" (link) + "Sao chép link riêng" chỉ khi response có `lookupToken`; replay không token không hiện link giả |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` (sửa) | +2 test: link hiện đúng `href=…#t=` khi có token; replay không token không có link/nút sao chép riêng |
+| `apps/frontend/src/app/App.tsx` (sửa) | Route công khai `orders/:code` |
+| `apps/frontend/e2e/order-access.spec.ts` (mới) | 3 E2E thật: token từ response → link mở trang riêng, sống qua refresh, không query/token trong URL, token ở header, không vào storage, mobile 390px không tràn; token sai/sai dạng/thiếu/token khác → 404 đồng nhất có control dương mở đúng bằng token chính chủ; replay không token không dựng link |
+| `package.json` (sửa) | Thêm `order-access.spec.ts` vào `test:e2e:implemented` |
+| `docs/m4-contract.md`, `docs/architecture.md`, `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md` | Chốt response/token/rate-limit, cơ chế fragment + cache trang xem đơn, trạng thái M4.4.1, hướng dẫn chạy thử |
+
+Sửa kèm trong phạm vi kiểm chứng: `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx`, `api/orders.api.test.ts` — 2 lỗi kiểu (nullable email/note; mock thiếu kiểu `RequestOptions`) sau khi `typecheck` bắt, không đổi assertion gì.
+
+### Data flow / key
+
+Mở `/orders/<code>#t=<token>` → `OrderDetailPage` đọc fragment, kiểm dạng → `ordersApi.view(code, token)` → `client.ts` đặt header `X-Order-Token` → backend `OrderAccessGuard` kiểm envelope → `OrderAccessService.view` so SHA-256 rồi đọc snapshot theo allowlist → 200 view hoặc 404/429 → trang render snapshot + timeline; cache tách theo token nên data đơn này không lẫn vào truy vấn của token khác.
+
+- **`X-Order-Token` + envelope 32 ký tự** (`order-access.guard.ts`): đường token duy nhất qua HTTP — fragment UI, header server; không tạo cơ chế token thứ hai.
+- **`ORDER_ACCESS_NOT_FOUND`** (`order-access.service.ts`): một thông báo 404 cho mọi sai hụt; guard và service cùng import hằng số này.
+- **`accessFingerprint` (FNV-1a → base36)** (`OrderDetailPage.tsx`): tách query cache theo token mà không đưa token vào key. *(Đã thay bằng `sha256Hex` ở bản sửa review — xem mục trên.)*
+- **Response `OrderDetailResult` allowlist** (`order-access.service.ts`/`orders.api.ts`): snapshot từ `orders`, không join sản phẩm/settings hiện tại; `no-store` toàn cục giữ nguyên.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Integration RED→GREEN | `order-access.integration.spec.ts` **5/5** (RED trước khi có endpoint/guard: 404 thông báo mặc định ≠ thông báo đồng nhất) |
+| Unit frontend RED→GREEN | 4 file `client.test.ts` + `orders.api.test.ts` + `OrderDetailPage.test.tsx` + `CheckoutPage.test.tsx` chạy đích **38/38** |
+| `./tools/npm.ps1 run typecheck` | các vòng fix: nullable email/note, `RequestOptions` của mock — cuối **0 lỗi** |
+| `./tools/npm.ps1 run build` | đạt (`LASTEXITCODE=0`); còn cảnh báo chunk >500 kB như cũ |
+| `./tools/npm.ps1 test` | tools 10/10 + backend 69/69; frontend lượt chạy root có 5 timeout flake (App/Settings/Inventory/ProductEdit) ở tải máy — 4 file lỗi chạy riêng đạt 69/69 và full frontend chạy lại đạt **362/362** (pattern flake đã ghi nhận sẵn) |
+| `./tools/npm.ps1 run test:integration` | **102/102** (13 file) |
+| `./tools/npm.ps1 run test:e2e:implemented` | **49/49** (17 file, gồm 3 test M4.4.1 mới); 1 vòng trước đó fail do regex tìm "Chưa thu tiền" viết hoa khác trang (sửa thành `/chưa thu tiền/i`) và 1 lỗi cú pháp `as` xuống dòng Playwright không parse (đã sửa) |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+### Giới hạn
+
+- Rate limit 30/phút/IP dùng Throttler in-memory: restart làm reset bộ đếm — đúng cơ chế hiện hành, không đo đếm chéo qua hai process.
+- Đơn fixture E2E tạm thời dùng mã `ACCFIXTURE3X` (chứa chữ I ngoài bảng mã đơn server cấp) để khẳng định lookup không phụ thuộc bảng sinh mã; token điều khiển được là token fixture, không phải token thật của khách.
+- Chưa có luồng phục hồi khi mất link/token (M4.4.2), chưa có hủy (M4.4.3/M4.4.4) và chưa có màn hình admin đơn (M4.5); chưa chạy CI.
+
+**Dừng để người dùng chạy thử theo [docs/local-trial-m4.md §M4.4.1](docs/local-trial-m4.md). Không commit/push/merge/deploy.**
+=======
 ## Ngày 31/10/2026 — M4.3.1: ổn định test hết hạn trong lúc chờ khóa
 
 - **Phạm vi đã duyệt:** sửa test CI nhận `201` thay vì `409`, commit và push lại `feat/m4.3.1-cod-checkout`. Làm trong worktree riêng từ `46f239e`; giữ nguyên M4.4.1 đang làm dở ở checkout chính.
