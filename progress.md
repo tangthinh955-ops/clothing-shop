@@ -2,6 +2,30 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M6.2: backup ngoài VPS + diễn tập khôi phục
+
+**Phạm vi đã duyệt:** kế hoạch M6.2 trong chat ("duyệt") — người dùng chuyển phần này từ Người B sang phía A. Backup DB + ảnh hằng ngày trên VPS, bản sao ngoài VPS, diễn tập khôi phục vào DB khác. **Đã làm và xác minh đầy đủ; bản sao ngoài VPS nằm tại máy người dùng `.local/backups/20261031-130938/` (ngoài Git).**
+
+- `deploy/backup.sh` (mới): `pg_dump -Fc` qua container DB + `tar` uploads + `SHA256SUMS` vào `/var/backups/rmg-shop/<stamp>/` (`0700`/`0600`), retention **7 bản**, flock chống chồng, không in dữ liệu. Bản cài ổn định: `/srv/rmg-shop/bin/backup.sh`. Lỗi đầu tiên (mở lock trước khi mkdir) đã sửa trước khi chạy thành công.
+- Cron VPS: `0 3 * * * /srv/rmg-shop/bin/backup.sh` — entry riêng, không đụng backup của website khác trên cùng máy; log `/var/log/rmg-shop-backup.log`.
+- Backup đầu tiên: `20261031-130938` (732K — dump 47K + uploads 691K); pull về máy người dùng, **SHA256 khớp**, `.local/backups/` được gitignore xác nhận.
+- Diễn tập khôi phục: tạo DB `rmg_shop_restore_drill` → `pg_restore` — lần đầu dùng `--no-owner` khiến role ứng dụng mất quyền đọc `_prisma_migrations` (`migrate status` lỗi) → làm lại **không** `--no-owner`: 9 bảng khớp số hàng nguồn (products 5, categories 4, users 2, variants 5, product_images 17, upload_assets 17, inventory 5, movements 5, quotes 4), `_prisma_migrations` 3/3 applied, `migrate status` → **"Database schema is up to date!"**. DB drill đã xóa sạch (0 còn lại). Runbook trong guide ghi rõ cờ đúng.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Backup chạy tay + cron entry | Đạt (log 3 bước, 732K, quyền 0700/0600) |
+| SHA256 sau khi pull về máy | Khớp `SHA256SUMS` |
+| Restore drill: đếm 9 bảng vs nguồn | Khớp toàn bộ |
+| `migrate status` trên DB drill | "Database schema is up to date!" |
+| Dọn DB drill | dropdb thành công, còn lại 0 |
+| Backup lọt Git? | Không — `.local/` gitignore |
+
+**Key:** `pg_dump -Fc` — format nén của PostgreSQL, restore bằng `pg_restore`; `--no-owner` — cờ KHÔNG dùng khi restore về cluster này (ownership phải trả về `rmg_shop`); retention 7 — vòng đời bản backup trên VPS; bản ngoài VPS — pull thủ công về `.local/backups/`, cập nhật theo thông lệ sau các mốc dữ liệu.
+
+**Chạy thử:** người dùng xác nhận file tồn tại tại thư mục `.local/backups/20261031-130938/` trên máy. Muốn bản mới hơn: chạy 3 lệnh pull trong guide.
+
+**Còn lại:** backup tự động hoàn toàn ra ngoài VPS cần lưu trữ đám mây (cần tài khoản người dùng cung cấp); M6.3 (bảo vệ VPS/báo động) còn lại của mốc M6; cron chạy lần đầu tự động 03:00 ngày mai — kiểm log buổi sáng sau.
+
 ## Ngày 31/10/2026 — M6.1.3: diễn tập rollback trên production
 
 **Phạm vi đã duyệt:** bảng kế hoạch M6.1.3 trong chat ("oke"): rollback có chủ đích về release trước rồi roll-forward lại, không thay đổi code. **Đã diễn tập và xác minh đủ 3 pha; M6.1 hoàn tất 3/3 phần.**
