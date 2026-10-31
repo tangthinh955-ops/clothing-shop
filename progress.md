@@ -2,9 +2,23 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 31/10/2026 — M6.1.2: lượt deploy đầu qua GitHub Actions
+
+**Phạm vi đã duyệt:** kế hoạch M6.1.2 (workflow bấm-chạy, gate CI, key riêng cho CI). Người dùng merge PR #22 (workflow + secret `DEPLOY_SSH_KEY` đã set, host key ghim `deploy/ci-known-hosts`) và PR #23 (M7.1.1); CI của `main` `6d35c3d` xanh → chạy workflow **Deploy production** lần đầu (run [41200471146](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41200471146), ref=main). **Đã deploy và agent đã kiểm tra; chờ người dùng thử card Zalo.**
+
+- Tất cả bước workflow đạt: gate mọi check-run của đúng SHA → `git archive` allowlist → SSH bằng key ed25519 riêng cho CI (không dùng key cá nhân) → scp + đối chiếu SHA256 → chạy `deploy-release.sh` trên VPS. `concurrency: production-deploy` chống deploy chồng.
+- Release mới: `/srv/rmg-shop/releases/ci-20261031-1218-6d35c3d` — gồm M4.2 giỏ/quote, 5 sản phẩm thật và M7.1.1 link preview. API/web healthy sau recreate; DB container giữ nguyên. `current` + `RMG_RELEASE` đã trỏ đúng.
+- Kiểm tra công khai sau deploy: health `{"status":"ok"}`; `/shop` 200; products total 5; share preview `…/api/v1/share/products/rmg-black-wash-vtg-horse-tee` trả `og:title`/`og:image` với origin production + refresh đúng slug.
+
+**Key:** gate CI trong workflow — dừng trước khi đụng VPS nếu commit chưa xanh; `DEPLOY_SSH_KEY` — key CI-only, xoá secret hoặc dòng `authorized_keys` là thu hồi quyền deploy.
+
+**Chạy thử:** bấm Run workflow trên GitHub chọn commit bất kỳ đã có CI xanh — deploy tự diễn ra; link share để dán Zalo: `https://rmglabels.duckdns.org/api/v1/share/products/<slug>`.
+
+**Còn lại:** diễn tập rollback có chủ đích (M6.1.3 — kế hoạch riêng); backup ngoài VPS (M6.2) càng cấp vì dữ liệu thật đã trên production.
+
 ## Ngày 31/10/2026 — M7.1.1: link preview sản phẩm cho Zalo/Instagram
 
-**Phạm vi đã duyệt:** bảng kế hoạch M7.1.1 trong chat (người dùng "oke" + "bắt đầu làm M7.1.1 đi"): endpoint public server-render cho link share, thêm thẻ tĩnh `og:site_name`/`twitter:card` vào `index.html`. Làm trên nhánh `feat/m7.1.1-share-preview` từ `main` sau merge PR #22. **Đã viết, agent đã kiểm tra local; chưa vào production — sẽ có ở lượt deploy qua workflow.**
+**Phạm vi đã duyệt:** bảng kế hoạch M7.1.1 trong chat (người dùng "oke" + "bắt đầu làm M7.1.1 đi"): endpoint public server-render cho link share, thêm thẻ tĩnh `og:site_name`/`twitter:card` vào `index.html`. Làm trên nhánh `feat/m7.1.1-share-preview` từ `main` sau merge PR #22. **Đã viết, agent đã kiểm tra local; đã vào production qua workflow (release `ci-20261031-1218-6d35c3d` — xem mục M6.1.2 bên dưới); chờ người dùng dán link share vào Zalo thử card.**
 
 | File thực tế | Thay đổi |
 |---|---|
@@ -28,9 +42,30 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 **Key:** `sharePreview` — trang HTML server-render duy nhất của app, chỉ phục vụ crawler + redirect; hàm `escape` — toàn bộ tên/mô tả/slug đưa vào attribute phải qua escape; `APP_ORIGIN` — gốc URL tuyệt đối cho `og:image`/`og:url` (đã có cho CSRF, tái sử dụng); bộ lọc `visible` — share và detail dùng cùng điều kiện hàng đang bán.
 
-**Chạy thử (local):** mở `http://localhost:5173/api/v1/share/products/<slug>` — trình duyệt nhảy ngay về trang sản phẩm; `curl -s <link> | head -30` thấy og-tags. **Trên production:** sau khi PR này merge và deploy qua workflow, dán link sản phẩm vào Zalo để xem card.
+**Chạy thử (local):** mở `http://localhost:5173/api/v1/share/products/<slug>` — trình duyệt nhảy ngay về trang sản phẩm; `curl -s <link> | head -30` thấy og-tags. **Trên production (đã xác minh bằng curl):** `https://rmglabels.duckdns.org/api/v1/share/products/<slug>` trả og:title/og:image production + refresh đúng — người dùng dán link vào Zalo để xem card.
 
-**Còn lại:** crawler thực (Zalo/IG) chỉ xác minh được sau deploy; E2E mobile 390px (M7.1.2) tiếp theo — gửi kế hoạch riêng; PR #22 đã merge nên workflow deploy sẵn sàng, lượt deploy đầu qua workflow thực hiện sau khi PR M7.1.1 merge (vừa test pipeline vừa đưa tính năng lên).
+**Còn lại:** card thực tế trên Zalo/IG do người dùng dán link thử; E2E mobile 390px (M7.1.2) tiếp theo — gửi kế hoạch riêng.
+## Ngày 31/10/2026 — Nhập dữ liệu thật lên production (admin + 5 sản phẩm)
+
+**Phạm vi:** người dùng yêu cầu "mang dữ liệu lên VPS". Tạo **tài khoản ADMIN production** (email do người dùng cung cấp trực tiếp; mật khẩu sinh ngẫu nhiên 24 ký tự, lưu `/etc/rmg-shop/admin-initial-password` `0600 root:root` trên VPS — không ghi mật khẩu/email vào repo, log hay chat) và nhập **5 sản phẩm thật** từ `data/import` (5 dòng CSV đủ giá/tồn + 17 ảnh RMG; giá 500.000–1.000.000đ) bằng CLI `import-products` chạy trong container API production, trạng thái **PUBLISHED** theo lựa chọn của người dùng. **Đã import và kiểm tra công khai; chờ người dùng đăng nhập, đổi mật khẩu và xem /shop.**
+
+- Chuyển dữ liệu: tar 18 file → `/srv/rmg-shop/import-data` trên VPS (giữ lại để chạy lại an toàn — CLI bỏ qua slug đã có) → bơm vào container qua `docker exec -i` tar vào `/tmp/rmg-import` (container API `read_only`, `/tmp` là tmpfs; `docker cp` bị rootfs chặn). Tmp trong container đã xoá sau import.
+- Admin: `create-admin` với env một lần (mật khẩu không in ra); CLI chỉ tạo mới, không nâng quyền tài khoản có sẵn; email là trường đăng nhập của chủ shop.
+- Import: 5 sản phẩm PUBLISHED — mỗi cái 1 biến thể theo size trong CSV, kho theo cột `stock` kèm movement "Nhập kho lúc import" actor là admin; 4 danh mục tự tạo; SKU tự sinh `RMG<hash>-<size>`; ảnh nén webp 750×1000 vào `/var/lib/rmg-shop/uploads` (persistent volume); 0 dòng bị bỏ qua, 0 slug trùng.
+- Data flow: `products.csv` + ảnh → CLI đọc/validate từng dòng (thiếu file/giá sai thì bỏ qua dòng, không nửa vời) → webp + UploadAsset (owner admin) → Product + Variant + Inventory + Movement + ProductImage trong DB production → `/api/v1/products` và `/shop` hiện ngay.
+
+| Kiểm tra công khai (curl từ máy ngoài) | Kết quả |
+|---|---|
+| `GET /api/v1/products?pageSize=12` | total **5**, đúng tên/giá/danh mục/kho (avail 5/5/10/5/10) |
+| `GET /api/v1/categories` | 4 danh mục: Áo thun, Áo polo, Quần, Áo hoodie |
+| `GET /api/v1/media/<assetId>` | 200 `image/webp`; id lạ → 404 |
+| `/shop` | 200 |
+
+**Key:** `import-products --dir` — nhập CSV thật cho production (khác `seed:demo`), tự tạo danh mục bật, mỗi dòng = 1 sản phẩm nhiều size; `admin:create` — env `ADMIN_EMAIL`/`ADMIN_PASSWORD` một lần, không có mặc định; chuỗi ảnh — file → `UploadAsset` (owner admin) → `ProductImage`, dùng chung cơ chế `/api/v1/media` với upload admin.
+
+**Chạy thử:** mở [/shop](https://rmglabels.duckdns.org/shop) — thấy 5 sản phẩm + ảnh; đăng nhập `/login` bằng email admin và mật khẩu trong file trên VPS (`ssh masoi cat /etc/rmg-shop/admin-initial-password`), vào `/admin` kiểm tra sản phẩm/kho, **đổi mật khẩu ngay** sau lần đăng nhập đầu.
+
+**Còn lại:** đổi mật khẩu admin (khuyến nghị làm ngay); chưa có backup ngoài VPS (M6.2) — dữ liệu thật đã nằm trên production nên backup cần sớm; M6.1.2 chờ merge PR #22 để test workflow; các file docs chưa commit nằm trên nhánh PR.
 
 ## Ngày 31/10/2026 — M6.1.1: deploy qua script `deploy-release.sh`
 
