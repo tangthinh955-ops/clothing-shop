@@ -160,8 +160,44 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
   };
 }
 
+export interface OrderLookupResult {
+  view: OrderDetailResult;
+  /** Plaintext token of this lookup only; it must travel in the navigation fragment, nowhere else. */
+  lookupToken: string;
+}
+
+const LOOKUP_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/; // mirrors the server token envelope
+
+function lookupMalformed(): ApiError {
+  return new ApiError('INVALID_RESPONSE', 'Chưa đọc được kết quả tra cứu. Vui lòng thử lại.', 200);
+}
+
+/** Strict runtime read of the lookup answer: the allowlisted view must echo the requested code and
+ * carry exactly one fresh token — anything else collapses into INVALID_RESPONSE, never navigation. */
+export function parseOrderLookupResult(value: unknown, expectedCode: string): OrderLookupResult {
+  let view: OrderDetailResult;
+  try {
+    view = parseOrderDetailView(value);
+  } catch {
+    throw lookupMalformed(); // one lookup-specific message, whatever part of the payload broke
+  }
+  const token = (value as Record<string, unknown>)['lookupToken'];
+  if (typeof token !== 'string' || !LOOKUP_TOKEN_PATTERN.test(token) || view.order.code !== expectedCode) {
+    throw lookupMalformed();
+  }
+  return { view, lookupToken: token };
+}
+
 export const ordersApi = {
   /** Read-only view; the lookup token rides the X-Order-Token header and never the URL. */
   view: async (code: string, token: string): Promise<OrderDetailResult> =>
     parseOrderDetailView(await request<unknown>(`/orders/${encodeURIComponent(code)}`, { orderToken: token })),
+  /** M4.4.2 lookup: code+phone trade for the allowlisted view plus a fresh 192-bit token. The code
+   * is normalized once here (trim + uppercase — the backend DTO rule) and the answer is bound to
+   * it; the phone passes through untouched for the server's single normalization. */
+  lookup: async (body: { code: string; phone: string }): Promise<OrderLookupResult> => {
+    const code = body.code.trim().toUpperCase();
+    return parseOrderLookupResult(
+      await request<unknown>('/orders/lookup', { method: 'POST', body: { code, phone: body.phone } }), code);
+  },
 };

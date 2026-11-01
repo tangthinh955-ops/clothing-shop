@@ -2,20 +2,25 @@ import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Use
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto.js';
+import { OrderLookupDto } from './dto/order-lookup.dto.js';
 import { OrderAccessGuard } from './order-access.guard.js';
 import { OrderAccessService } from './order-access.service.js';
 import { OrderCreationService } from './order-creation.service.js';
+import { OrderLookupService } from './order-lookup.service.js';
 
 // Guest order creation (m4-contract §5 Create): the CSRF guard, origin check and session middleware
 // apply globally; no session/role guard is added here. The rate limit is the approved 5 requests per
 // minute per client IP, scoped to this endpoint only through the existing Throttler setup.
 // Guest order access (M4.4.1): reads go through OrderAccessGuard first (token envelope) and the
 // rate limit is 30/min/IP; the global Cache-Control: no-store from application.ts still applies.
+// Guest lookup (M4.4.2): POST /orders/lookup trades code+phone for a fresh token — same CSRF pair
+// as creation, its own approved 5/min/IP budget, no session or role required.
 @Controller('orders')
 export class OrdersController {
   constructor(
     @Inject(OrderCreationService) private readonly orders: OrderCreationService,
     @Inject(OrderAccessService) private readonly access: OrderAccessService,
+    @Inject(OrderLookupService) private readonly lookups: OrderLookupService,
   ) {}
 
   @Post()
@@ -25,6 +30,13 @@ export class OrdersController {
     // The session id is the server-issued guest identity for idempotency (m4-contract §6): never the
     // body, never the raw IP, and never an account binding for logged-in shoppers.
     return this.orders.create({ key, sessionId: request.sessionID, dto });
+  }
+
+  @Post('lookup')
+  @HttpCode(200)
+  @Throttle({ ip: { limit: 5, ttl: 60000 } })
+  lookup(@Body() dto: OrderLookupDto) {
+    return this.lookups.lookup(dto);
   }
 
   @Get(':code')

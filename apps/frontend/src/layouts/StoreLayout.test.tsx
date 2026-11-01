@@ -36,6 +36,8 @@ describe('store layout of the real shop', () => {
     for (const name of ['Liên hệ', 'Giao hàng', 'Đổi & trả', 'Thanh toán', 'Bảo mật']) {
       expect(within(policies).getByRole('link', { name })).toBeVisible();
     }
+    // M4.4.2: guests without their private link reach the order lookup from the footer.
+    expect(within(policies).getByRole('link', { name: 'Tra cứu đơn' })).toHaveAttribute('href', '/orders/lookup');
     const header = screen.getByRole('banner');
     expect(within(header).queryByRole('link', { name: 'Đăng nhập' })).not.toBeInTheDocument();
     expect(within(header).queryByRole('link', { name: 'Tài khoản' })).not.toBeInTheDocument();
@@ -75,6 +77,7 @@ describe('store layout of the real shop', () => {
     const menu = await screen.findByRole('navigation', { name: 'Menu cửa hàng' });
     expect(await within(menu).findByRole('link', { name: 'Áo thun' })).toHaveAttribute('href', `/shop?categoryId=${tees.id}`);
     expect(within(menu).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');
+    expect(within(menu).getByRole('link', { name: 'Tra cứu đơn' })).toHaveAttribute('href', '/orders/lookup');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Menu cửa hàng' })).not.toBeInTheDocument());
   });

@@ -8,9 +8,7 @@ Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (qu
 
 Điểm dừng hiện tại: ngày 31/10/2026 workflow GitHub **Deploy production** lần đầu đã deploy `main` `6d35c3d` — release `ci-20261031-1218-6d35c3d` tại [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop): M4.2 giỏ/quote, **5 sản phẩm thật** và **link preview M7.1.1** (`/api/v1/share/products/<slug>`). Gate CI + SSH key riêng cho CI + rollback tự động theo [hướng dẫn deploy](docs/deployment-guide.md). Cả ba dịch vụ healthy; chờ người dùng thử card Zalo bằng link share và nghiệm thu các phần đã làm. Bằng chứng ở [progress.md](progress.md); hướng dẫn M3/M4/tài khoản: [local-trial-m3](docs/local-trial-m3.md), [local-trial-m4](docs/local-trial-m4.md), [local-trial-m2](docs/local-trial-m2.md).
 
-**Chưa mở bán:** giỏ M4.2.1, báo giá M4.2.2 và đặt đơn COD M4.3.1 đã viết trên nhánh phát triển, còn chờ kiểm tra/nghiệm thu; chưa có tra cứu/hủy đơn, admin xử lý đơn, thanh toán, backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại.
-=======
-**Chưa mở bán:** giỏ hàng M4.2.1 và quote M4.2.2 đã lên production nhưng chưa được người dùng chạy thử/nghiệm thu; chưa có đặt hàng (M4.3+), diễn tập rollback (M6.1.3), backup ngoài VPS/khôi phục (M6.2), bảo vệ VPS/báo động (M6.3) và bảo vệ admin (M3.17). Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
+**Chưa mở bán:** giỏ M4.2.1, báo giá M4.2.2, đặt đơn COD M4.3.1, xem đơn qua link riêng M4.4.1 và tra cứu mã đơn+SĐT M4.4.2 đã viết, còn chờ kiểm tra/nghiệm thu; chưa có hủy đơn, admin xử lý đơn, thanh toán, backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
 ## Tài liệu
 

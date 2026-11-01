@@ -1,5 +1,6 @@
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import { ApiError } from '../../../shared/api/client';
@@ -54,27 +55,47 @@ export function OrderDetailPage() {
   const fragment = useLocation().hash;
   const tokenCandidate = new URLSearchParams(fragment.slice(1)).get('t');
   const token = tokenCandidate && TOKEN_PATTERN.test(tokenCandidate) ? tokenCandidate : null;
+  const tokenHash = token ? sha256Hex(token) : 'none';
+
+  // Security gate (M4.4.2 review fix): a cached snapshot may only paint after a successful GET for
+  // the hash CURRENTLY on the page completed within THIS mount. `verifiedHash` records exactly
+  // that — set only by a queryFn that resolved while its hash was still current, cleared before
+  // paint whenever the hash changes. The SHA-256 key keeps entries isolated and gcTime 0 keeps them
+  // short-lived, but neither the GC timer nor the cache itself is ever the permission check: an
+  // immediate remount (before any GC timer fires) still waits for the fresh verification.
+  const [verifiedHash, setVerifiedHash] = useState<string | null>(null);
+  const currentHashRef = useRef(tokenHash);
+  useLayoutEffect(() => {
+    currentHashRef.current = tokenHash;
+    setVerifiedHash(null);
+  }, [tokenHash]);
 
   const query = useQuery({
     // SHA-256 of the token binds every cache entry to exactly one private access: the key space is
     // 2^256 instead of the removed FNV tag's 2^32, the token itself never enters the key or storage,
     // and the synchronous tag means a token change always rekeys in the same render — no stale
     // async tag can serve the old view while a different token is on the page.
-    queryKey: ['orders', 'view', code, token ? sha256Hex(token) : 'none'],
-    queryFn: () => ordersApi.view(code, token!),
+    queryKey: ['orders', 'view', code, tokenHash],
+    queryFn: async () => {
+      const result = await ordersApi.view(code, token!);
+      if (currentHashRef.current === tokenHash) setVerifiedHash(tokenHash);
+      return result;
+    },
     enabled: Boolean(code && token),
     retry: false,
     refetchOnWindowFocus: false,
-    // Ordering data must not hide behind cached money; a fresh view is cheap and consistent.
-    staleTime: 15_000,
+    // Ordering data must not hide behind cached money; every mount re-verifies anyway.
+    staleTime: 0,
+    gcTime: 0,
   });
+  const verified = query.isSuccess && verifiedHash === tokenHash;
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
     <title>Đơn hàng | Clothing Shop</title>
-    {query.isPending && (token ? <Typography role="status">Đang tải đơn hàng…</Typography>
-      : <AccessError message={UNIFORM_ACCESS_ERROR} />)}
-    {query.isError && <AccessError message={safeMessage(query.error)} />}
-    {query.isSuccess && query.data && <>
+    {!token && <AccessError message={UNIFORM_ACCESS_ERROR} />}
+    {token && query.isError && <AccessError message={safeMessage(query.error)} />}
+    {/* Every branch below requires a live token; without one nothing is ever sent. */}
+    {token && verified && query.data && <>
       <Typography variant="overline">Xem đơn hàng riêng tư</Typography>
       <Typography component="h1" variant="h4" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
         {query.data.order.code}
@@ -147,6 +168,8 @@ export function OrderDetailPage() {
         kiểm tra trạng thái.
       </Typography>
     </>}
+    {token && !query.isError && !verified
+      && <Typography role="status">Đang tải đơn hàng…</Typography>}
     {query.isError && isRetryable(query.error)
       && <Box><Button variant="outlined" onClick={() => { void query.refetch(); }}>Thử lại</Button></Box>}
   </Box>;

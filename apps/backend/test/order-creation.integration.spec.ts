@@ -202,15 +202,19 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const variantA = await makeVariant(200000, 2, 'Áo tranh chiếc cuối');
     const winnerQuote = await requestQuote([{ variantId: variantA, quantity: 2 }]);
     const loserQuote = await requestQuote([{ variantId: variantA, quantity: 2 }]);
-    const [winner, loser] = await Promise.allSettled([
+    const [first, second] = await Promise.allSettled([
       create({ key: keyFor('race-w'), ipXff: ip(), body: codBody(winnerQuote, [{ variantId: variantA, quantity: 2 }], testPhone()) }),
       create({ key: keyFor('race-l'), ipXff: ip(), body: codBody(loserQuote, [{ variantId: variantA, quantity: 2 }], testPhone()) }),
     ]);
-    const outcomes = [winner, loser].map((outcome) => outcome.status === 'fulfilled' ? outcome.value.status : 409);
+    const outcomes = [first, second].map((outcome) => outcome.status === 'fulfilled' ? outcome.value.status : 409);
     expect(outcomes.filter((status) => status === 201)).toHaveLength(1);
     expect(outcomes.filter((status) => status === 409)).toHaveLength(1);
     expect((await db.inventory.findUniqueOrThrow({ where: { variantId: variantA } })).reserved).toBe(2);
-    const winnerCode = ((winner as PromiseFulfilledResult<supertest.Response>).value.body as { order?: { code?: string } }).order?.code;
+    // Either guest may take the inventory row lock first — the winner is whoever answered 201,
+    // not whichever promise settled first.
+    const winner = [first, second].find((outcome) =>
+      outcome.status === 'fulfilled' && outcome.value.status === 201) as PromiseFulfilledResult<supertest.Response>;
+    const winnerCode = (winner.value.body as { order?: { code?: string } }).order?.code;
     expect(await db.order.count({ where: { code: winnerCode!, status: 'PENDING' } })).toBe(1);
   });
 
@@ -268,27 +272,39 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const lockPhone = '0900000005';
     const variantC = await makeVariant(100000, 5, 'Mũ hết hạn chờ khóa');
     const quote = await requestQuote([{ variantId: variantC, quantity: 1 }]);
-    const key = keyFor('expiry-lock');
+    const commandKey = keyFor('expiry-lock');
+    const inventoryBefore = await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } });
+    const movementsBefore = await db.inventoryMovement.count({ where: { variantId: variantC } });
     const holder = new Client({ connectionString: process.env.DATABASE_URL });
     let createPromise: Promise<supertest.Response> | undefined;
+    const cleanup = async () => {
+      // Closing this session releases its advisory lock, including on a failed barrier.
+      // Only then drain the HTTP request, so cleanup never waits behind its own lock.
+      await holder.end();
+      await createPromise?.catch(() => undefined);
+    };
+
     try {
       await holder.connect();
-      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const holderBackend = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0];
+      if (!holderBackend) throw new Error('Missing holder backend PID.');
       // Acquire the session lock before dispatching HTTP. It conflicts with the service's
       // transaction lock and stays held until explicitly released or this connection closes.
       await holder.query('SELECT pg_advisory_lock(hashtext($1)::bigint)', [lockPhone]);
-      createPromise = create({ key, ipXff: ip(),
+      createPromise = create({ key: commandKey, ipXff: ip(),
         body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
       // Observe rejection later through the original promise, even if a barrier assertion fails.
       void createPromise.catch(() => undefined);
       await expect.poll(async () => {
         const [row] = await db.$queryRaw<Array<{ waiting: boolean }>>`
           SELECT EXISTS (
-            SELECT 1 FROM pg_stat_activity
-            WHERE datname = current_database()
-              AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
+            SELECT 1 FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database()
+              AND activity.wait_event_type = 'Lock'
+              AND activity.wait_event = 'advisory'
+              AND ${holderBackend.pid}::int = ANY(pg_blocking_pids(activity.pid))
           ) AS waiting`;
-        return row!.waiting;
+        return row?.waiting ?? false;
       }, { timeout: 5000, interval: 10 }).toBe(true);
 
       // The create transaction has started and is blocked. Expire its quote using the real DB
@@ -300,14 +316,14 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
       expect(response.status).toBe(409);
       expect((response.body as { code?: string }).code).toBe('QUOTE_CHANGED');
       expect(await db.order.count({ where: { phone: lockPhone } })).toBe(0);
-      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } }))
-        .toMatchObject({ onHand: 5, reserved: 0 });
-      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(0);
-      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key } })).toBe(0);
-    } finally {
-      await holder.end(); // Also releases the lock when a barrier or assertion fails.
-      await createPromise?.catch(() => undefined);
+      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } })).toEqual(inventoryBefore);
+      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(movementsBefore);
+      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key: commandKey } })).toBe(0);
+    } catch (error) {
+      await cleanup();
+      throw error;
     }
+    await cleanup();
   });
 
   it('rejects a create missing the contact or address objects with 400, never 500', async () => {
