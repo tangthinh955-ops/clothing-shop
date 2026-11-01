@@ -16,7 +16,8 @@ export function AdminPage() {
         : <>
           <Typography sx={{ mb: 2 }}>Chào bạn. Tài khoản quản trị đã sẵn sàng.</Typography>
           <Stack direction="row" useFlexGap sx={{ gap: 2, flexWrap: 'wrap' }}>
-            <Button component={Link} to="/admin/categories" variant="contained">Danh mục</Button>
+            <Button component={Link} to="/admin/orders" variant="contained">Đơn hàng</Button>
+            <Button component={Link} to="/admin/categories" variant="outlined">Danh mục</Button>
             <Button component={Link} to="/admin/products" variant="outlined">Sản phẩm</Button>
             <Button component={Link} to="/admin/inventory" variant="outlined">Kho</Button>
             <Button component={Link} to="/admin/settings" variant="outlined">Cài đặt</Button>

@@ -10,6 +10,7 @@ import { AuthPage } from '../features/auth/pages/AuthPage';
 import { VerifyPage } from '../features/auth/pages/VerifyPage';
 import { AccountPage } from '../features/account/AccountPage';
 import { AdminPage } from '../features/admin/AdminPage';
+import { AdminOrdersPage } from '../features/admin/orders/pages/AdminOrdersPage';
 import { CategoriesPage } from '../features/admin/categories/pages/CategoriesPage';
 import { InventoryPage } from '../features/admin/inventory/pages/InventoryPage';
 import { ProductsPage } from '../features/admin/products/pages/ProductsPage';
@@ -51,6 +52,7 @@ export function App() {
         <Route path="admin/products" element={<PrivateRoute admin>{() => <ProductsPage />}</PrivateRoute>} />
         <Route path="admin/products/new" element={<PrivateRoute admin>{() => <ProductCreatePage />}</PrivateRoute>} />
         <Route path="admin/products/:productId" element={<PrivateRoute admin>{() => <ProductEditPage />}</PrivateRoute>} />
+        <Route path="admin/orders" element={<PrivateRoute admin>{() => <AdminOrdersPage />}</PrivateRoute>} />
         <Route path="admin/settings" element={<PrivateRoute admin>{() => <SettingsPage />}</PrivateRoute>} />
         {policyPages.map((policy) => <Route key={policy.path} path={policy.path} element={<PolicyPage policy={policy} />} />)}
         <Route path="*" element={<NotFoundPage />} />

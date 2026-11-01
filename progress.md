@@ -2,6 +2,30 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — M4.5.1: admin xem danh sách đơn
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.1 ("duyệt"). Nhánh `feat/m4.5.1-admin-orders-list` từ `main` `a421fcb`. Làm trước M4.4.3 vì shop cần thấy đơn trước tiên và phần này chỉ phụ thuộc M4.3.1; lý do đã ghi ở kế hoạch M4. Tài liệu giao M4 cho Người B, đã báo người dùng nên báo Người B tránh trùng việc. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-orders.controller.ts`, `admin-orders.service.ts`, `dto/admin-orders-query.dto.ts` (mới); `orders.module.ts` | `GET /admin/orders` chỉ ADMIN (`SessionGuard` + `RolesGuard`); lọc `status`, tìm `q` theo mã đơn/tên/SĐT (SĐT `+84…` được chuẩn hóa), mới nhất trước, mặc định 20 đơn/trang. Chỉ trả id, mã, trạng thái, nguồn, phương thức, tổng tiền, tên, SĐT, số sản phẩm, thời gian; không có địa chỉ, email, ghi chú, hash token. Chỉ đọc, không migration |
+| `apps/frontend/src/features/admin/orders/api/admin-orders.api.ts`, `pages/AdminOrdersPage.tsx` (mới); `app/App.tsx`; `features/admin/AdminPage.tsx` | Trang `/admin/orders` với lọc/tìm/trang trên URL; đang tải, rỗng (phân biệt chưa có đơn và không khớp lọc), lỗi có "Tải lại đơn hàng", URL sai không gọi API; nút "Đơn hàng" là nút chính ở trang Quản trị |
+| `apps/frontend/src/features/orders/orderStatusLabels.ts` (mới, **ngoài danh sách dự kiến**); `features/orders/pages/OrderDetailPage.tsx` | Nhãn trạng thái dùng chung thay vì chép lại ở trang admin; trang khách không đổi hành vi |
+| Test | Mới `apps/backend/test/admin-orders.integration.spec.ts` (14 ca, gồm đơn thật qua `POST /orders`), `AdminOrdersPage.test.tsx` (12 ca), `apps/frontend/e2e/admin-orders.spec.ts` (2 ca, thêm vào `test:e2e:implemented`) |
+| `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hướng dẫn thử M4.5.1, điểm dừng, lý do đổi thứ tự |
+
+**TDD:** 14 ca API RED (404 vì chưa có route) và 11/12 ca UI RED (chưa có trang; ca CUSTOMER đạt ngay vì route chưa tồn tại nên chưa chứng minh được chặn, sau khi có route vẫn đạt) → GREEN.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 401 frontend |
+| `npm run test:integration` | 128/128, 15 file |
+| `npm run test:e2e:implemented` | 52/52 (1,3 phút) |
+| Ảnh Playwright 390px trong E2E | Không tràn ngang (`scrollWidth <= innerWidth`) |
+
+**Giới hạn:** chưa xem được chi tiết đơn (M4.5.2), chưa có thao tác xử lý đơn (M4.5.3–5.8), chưa có trạng thái thu tiền vì bảng tiền thuộc M4.6. Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.1. **Dừng chờ người dùng thử.**
+
 ## Ngày 01/11/2026 — M4.4.2: cô lập rate limit giữa các spec E2E trên CI
 
 - **Phạm vi được duyệt:** xác minh lỗi đăng nhập trong 6 ca E2E CI, cô lập client của từng spec, cải thiện assertion đăng nhập, cập nhật tiến độ rồi commit/push nhánh hiện tại. Không thay code ứng dụng, guard, giới hạn rate limit, schema hoặc timeout.

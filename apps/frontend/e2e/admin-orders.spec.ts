@@ -1,0 +1,151 @@
+import { expect, test, type Page } from '@playwright/test';
+import { hash } from 'argon2';
+import { randomUUID } from 'node:crypto';
+import { PrismaService } from '../../backend/dist/modules/prisma/prisma.service.js';
+import { readEnvironment } from '../../backend/dist/config/environment.js';
+
+// M4.5.1 admin order list: an order a guest really places through checkout shows up for the admin,
+// who can filter and search it; a customer account stays out. Runs only through tools/test-e2e.mjs.
+
+const tag = randomUUID();
+const SLUG = `admin-orders-${tag}`;
+const NAME = `Áo đơn quản trị ${tag.slice(0, 8)}`;
+const SKU = `ADO-${tag.toUpperCase()}`;
+const PHONE = '0917000555';
+const RECIPIENT = 'Nguyễn Thử Đơn Admin';
+const adminEmail = `${tag}-admin@example.test`;
+const customerEmail = `${tag}-customer@example.test`;
+const password = 'admin-orders-e2e-only-password-123!';
+
+let db: PrismaService;
+let categoryId = '';
+let productId = '';
+
+function assertOwnedDatabase() {
+  const url = new URL(process.env['DATABASE_URL'] ?? '');
+  const database = decodeURIComponent(url.pathname.slice(1));
+  if (process.env['NODE_ENV'] !== 'test' || !['postgres:', 'postgresql:'].includes(url.protocol)
+    || database !== process.env['CLOTHING_TEST_DATABASE'] || !/^clothing_e2e_[0-9a-f]{16}_test$/.test(database)) {
+    throw new Error('Admin orders E2E requires the isolated test runner database.');
+  }
+}
+
+test.beforeAll(async () => {
+  assertOwnedDatabase();
+  db = new PrismaService(readEnvironment(process.env));
+  const passwordHash = await hash(password);
+  await db.user.createMany({ data: [
+    { email: adminEmail, name: 'Admin đơn thử', role: 'ADMIN', passwordHash, emailVerifiedAt: new Date() },
+    { email: customerEmail, name: 'Khách đơn thử', role: 'CUSTOMER', passwordHash, emailVerifiedAt: new Date() },
+  ] });
+  await db.shopSettings.create({ data: { id: 'default', shippingFeeVnd: 30000, bankDeadlineMinutes: 120 } });
+  const category = await db.category.create({ data: { name: 'Danh mục đơn quản trị', slug: `ado-${tag}`, active: true } });
+  categoryId = category.id;
+  const product = await db.product.create({ data: { name: NAME, slug: SLUG, description: '', categoryId,
+    status: 'PUBLISHED', priceFrom: 200000, variants: { create: [
+      { sku: SKU, size: 'M', color: 'Đen', price: 200000, active: true, inventory: { create: { onHand: 5, reserved: 0 } } }] } } });
+  productId = product.id;
+});
+
+test.afterAll(async () => {
+  if (!db) return;
+  assertOwnedDatabase();
+  try {
+    const orders = await db.order.findMany({ where: { items: { some: { sku: SKU } } }, select: { id: true } });
+    for (const { id } of orders) {
+      await db.orderStatusHistory.deleteMany({ where: { orderId: id } });
+      await db.orderItem.deleteMany({ where: { orderId: id } });
+      await db.idempotencyRecord.deleteMany({ where: { resourceId: id } });
+      await db.order.delete({ where: { id } });
+    }
+    await db.inventoryMovement.deleteMany({ where: { variant: { productId } } });
+    await db.inventory.deleteMany({ where: { variant: { productId } } });
+    await db.variant.deleteMany({ where: { productId } });
+    await db.product.deleteMany({ where: { id: productId } });
+    await db.category.deleteMany({ where: { id: categoryId } });
+    await db.shopSettings.deleteMany({ where: { id: 'default' } });
+    await db.user.deleteMany({ where: { email: { in: [adminEmail, customerEmail] } } });
+  } finally { await db.$disconnect(); }
+});
+
+async function placeCodOrder(page: Page): Promise<string> {
+  await page.goto(`/products/${SLUG}`);
+  await page.getByRole('group', { name: 'Chọn màu' }).getByRole('button', { name: 'Đen', exact: true }).click();
+  await page.getByRole('group', { name: 'Chọn size' }).getByRole('button', { name: 'M', exact: true }).click();
+  await page.getByLabel('Số lượng', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Thêm vào giỏ' }).click();
+  await page.getByRole('button', { name: 'Đóng giỏ hàng' }).click();
+  await page.goto('/checkout');
+  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
+  await expect(page.getByText('Thông tin nhận hàng')).toBeVisible();
+  await page.getByLabel('Họ tên', { exact: true }).fill(RECIPIENT);
+  await page.getByLabel('Số điện thoại', { exact: true }).fill(PHONE);
+  await page.getByLabel('Tỉnh/thành', { exact: true }).fill('TP. Hồ Chí Minh');
+  await page.getByLabel('Phường/xã', { exact: true }).fill('Phường Bến Nghé');
+  await page.getByLabel('Địa chỉ cụ thể', { exact: true }).fill('12 Nguyễn Huệ, Quận 1');
+  await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
+  await expect(page.getByText(/Đã tạo đơn hàng COD/)).toBeVisible();
+  const code = await page.getByText(/^[A-HJ-NP-Z2-9]{12}$/).first().textContent();
+  if (!code) throw new Error('The confirmation screen did not show an order code.');
+  return code;
+}
+
+async function login(page: Page, email: string) {
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
+  await Promise.all([
+    page.waitForResponse((answer) => new URL(answer.url()).pathname === '/api/v1/auth/login' && answer.ok()),
+    page.getByRole('button', { name: 'Đăng nhập', exact: true }).click(),
+  ]);
+}
+
+test('a guest order reaches the admin list, which filters and searches it', async ({ page, browser }, info) => {
+  test.setTimeout(60000);
+  const code = await placeCodOrder(page);
+
+  const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
+    extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });
+  const admin = await adminContext.newPage();
+  try {
+    await login(admin, adminEmail);
+    await admin.goto('/admin');
+    await admin.getByRole('link', { name: 'Đơn hàng', exact: true }).click();
+    await expect(admin).toHaveURL(/\/admin\/orders$/);
+
+    const row = admin.getByRole('listitem', { name: code, exact: true });
+    await expect(row).toContainText('Chờ xác nhận');
+    await expect(row).toContainText(RECIPIENT);
+    await expect(row).toContainText(PHONE);
+    await expect(row).toContainText(/430\.000\s*₫/);
+    await expect(row).toContainText('2 sản phẩm');
+    await expect(row).not.toContainText('Nguyễn Huệ');
+
+    // The filter lives on the URL and survives a reload; an order in another state is filtered out.
+    await admin.getByLabel('Trạng thái').selectOption('CANCELLED');
+    await expect(admin).toHaveURL(/status=CANCELLED/);
+    await expect(admin.getByText('Không có đơn phù hợp bộ lọc.')).toBeVisible();
+    await admin.reload();
+    await expect(admin.getByLabel('Trạng thái')).toHaveValue('CANCELLED');
+    await admin.getByRole('button', { name: 'Xóa lọc' }).click();
+    await expect(row).toBeVisible();
+
+    await admin.getByLabel('Tìm theo mã đơn, SĐT hoặc tên').fill(`+84 ${PHONE.slice(1)}`);
+    await admin.keyboard.press('Enter');
+    await expect(admin).toHaveURL(/q=/);
+    await expect(row).toBeVisible();
+
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-orders-mobile.png'), fullPage: true, animations: 'disabled' });
+  } finally {
+    await adminContext.close();
+  }
+});
+
+test('a customer account cannot open the order list', async ({ page }) => {
+  await login(page, customerEmail);
+  await page.goto('/admin/orders');
+  await expect(page.getByRole('heading', { name: 'Đơn hàng', level: 1 })).toHaveCount(0);
+  await expect(page).not.toHaveURL(/\/admin\/orders/);
+});

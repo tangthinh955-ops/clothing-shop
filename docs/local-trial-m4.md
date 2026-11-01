@@ -204,6 +204,20 @@ Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu h�
 
 ADMIN vào `/admin/orders`: thấy đơn thật vừa tạo; filter/page nằm trên URL, refresh giữ; empty/error/retry rõ. Khách/CUSTOMER gọi GET admin bị401/403; thông tin một đơn không lẫn vào dòng khác. Không dùng fixture giả trong UI sản phẩm để báo luồng đã chạy.
 
+Đã triển khai (chờ người dùng thử). Chạy `dev:backend`, `dev:frontend`; đặt một đơn COD ở cửa sổ riêng tư, rồi đăng nhập ADMIN ở cửa sổ khác.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Trang Quản trị → bấm "Đơn hàng" | Sang `/admin/orders`; đơn vừa đặt nằm trên cùng: mã đơn, "Chờ xác nhận", tên · SĐT, tổng tiền, "COD · Website · N sản phẩm · thời gian". Không hiện địa chỉ |
+| Chọn "Trạng thái" = "Đã hủy" | URL có `status=CANCELLED&page=1`; danh sách lọc lại, không có đơn thì báo "Không có đơn phù hợp bộ lọc."; tải lại trang vẫn giữ lọc |
+| Gõ mã đơn (một phần, chữ thường), tên hoặc SĐT (cả dạng `+84 9…`) rồi Enter | Tìm đúng đơn; "Xóa lọc" trả về toàn bộ |
+| Có hơn 20 đơn | Phân trang dưới danh sách, giữ bộ lọc |
+| Mở `/admin/orders?status=PAID` | "Bộ lọc không hợp lệ." và nút "Xóa lọc", không gọi API |
+| Đăng nhập tài khoản CUSTOMER rồi mở `/admin/orders` | Bị chuyển về `/account`, không tải đơn nào |
+| Thu về 390px | Không có thanh cuộn ngang |
+
+Chưa có ở phần này: bấm vào đơn để xem chi tiết (M4.5.2), các thao tác xử lý đơn (M4.5.3–5.8), trạng thái thu tiền (M4.6).
+
 ### M4.5.2 — Chi tiết và ghi chú admin
 
 Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/người nhận snapshot và lịch sử. Thêm ghi chú thử → refresh còn; lỗi mạng/version giữ draft và báo rõ, không ghi đè trường nghiệp vụ. Sau khi có thao tác tiếp theo, kiểm tra lịch sử actor/thời gian/lý do.
