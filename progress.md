@@ -2,6 +2,17 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — M4.4.2: sửa race của integration hết hạn báo giá trên CI
+
+- **Phạm vi được duyệt:** sửa `apps/backend/test/order-creation.integration.spec.ts` và mục tiến độ này, rồi commit/push lại `feat/m4.4.2-order-lookup`; không đổi code ứng dụng, dependency, schema hoặc timeout của suite.
+- **Nguyên nhân:** test cũ gửi HTTP trước khi kết nối holder lấy advisory lock. CI có thể cho request lấy khóa trước, tạo đơn hợp lệ `201` trong khi assertion mong `409`. Test còn phụ thuộc `Date.now() + 3000` và sleep 6 giây, không xác nhận request thực sự đang chờ khóa.
+- **Tái hiện:** bản cũ chạy test đích riêng có thể đạt; thêm tạm độ trễ khởi động holder 250 ms đã tái hiện đúng lỗi CI **expected 201 to be 409**. Độ trễ chẩn đoán đã được loại khỏi bản cuối.
+- **Bản sửa:** holder lấy khóa trước khi bắt đầu HTTP; `expect.poll` xác nhận advisory waiter bị đúng PID holder chặn qua `pg_stat_activity`/`pg_blocking_pids`; cập nhật hạn fixture bằng `clock_timestamp()` trong transaction holder rồi commit để công bố hạn và nhả khóa cùng nhau. Không dùng sleep cố định hoặc đồng hồ máy cho ca này. Cleanup đợi request kết thúc sau khi holder nhả khóa trước khi ngắt kết nối.
+- **Assertion:** giữ `409 QUOTE_CHANGED` và không có đơn; bổ sung kho giữ nguyên, không có movement mới hoặc idempotency record của command bị từ chối. Không bỏ test hoặc nới timeout để che lỗi.
+- **Kiểm tra mới:** test đích đạt **3 lượt liên tiếp** sau sửa (mỗi lượt 1 đạt/11 không thuộc bộ lọc); toàn bộ `./tools/npm.ps1 run test:integration` đạt **114/114, 14 file**; `./tools/npm.ps1 run typecheck` đạt; kiểm tra TypeScript riêng file integration đạt **0 diagnostics** vì tsconfig app không bao gồm test. `git diff --check` đạt; review độc lập không có finding quan trọng.
+- **Môi trường:** đã xác nhận PostgreSQL local, `NODE_ENV=test` và DB hậu tố `_test`; runner tạo/migrate/cleanup DB riêng của từng lượt. Không chạy lại unit/UI/E2E trong lượt này vì code ứng dụng không đổi. Còn cảnh báo pg deprecation có sẵn.
+- **Git/điểm dừng:** người dùng đã yêu cầu push bản sửa; kiểm tra đúng hai file và push thường lên nhánh hiện tại, không merge/deploy. Local đạt không đồng nghĩa CI mới đã xanh; chờ kết quả CI sau push.
+
 ## Ngày 01/11/2026 — Git M4.4.2: kiểm chứng trước push nhánh
 
 - Người dùng yêu cầu commit/push bản M4.4.2 hiện tại lên `feat/m4.4.2-order-lookup`, gồm tra cứu mã đơn + SĐT và 4 bản sửa review. Không merge `main` hoặc deploy.

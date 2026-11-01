@@ -271,24 +271,54 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const lockPhone = '0900000005';
     const variantC = await makeVariant(100000, 5, 'Mũ hết hạn chờ khóa');
     const quote = await requestQuote([{ variantId: variantC, quantity: 1 }]);
-    // The quote expires in ~3 seconds of real PostgreSQL time.
-    await db.checkoutQuote.update({ where: { id: quote.id },
-      data: { expiresAt: new Date(Date.now() + 3000) } });
+    const commandKey = keyFor('expiry-lock');
+    const inventoryBefore = await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } });
+    const movementsBefore = await db.inventoryMovement.count({ where: { variantId: variantC } });
     const holder = new PrismaService(readEnvironment(process.env));
+    let createPromise: Promise<supertest.Response> | undefined;
     try {
-      const createPromise = create({ key: keyFor('expiry-lock'), ipXff: ip(),
-        body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
-      // Hold the same phone's advisory lock past the quote expiry; the create must wait behind it.
-      // Hold past the quote expiry; the timeout override keeps Prisma from aborting the holder.
       await holder.$transaction(async (tx) => {
+        // Acquire the lock before starting HTTP: a cold holder connection must never let create win.
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockPhone})::bigint) IS NOT NULL AS locked`;
-        await new Promise((resolve) => setTimeout(resolve, 6000));
+        const [holderBackend] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        if (!holderBackend) throw new Error('Missing holder backend PID.');
+
+        createPromise = create({ key: commandKey, ipXff: ip(),
+          body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
+
+        // Observe the actual wait, not a guessed delay. Each probe uses its own transaction so
+        // PostgreSQL statistics are fresh, and the holder PID isolates this test's blocker.
+        await expect.poll(async () => {
+          const [state] = await db.$queryRaw<Array<{ waiting: boolean }>>`
+            SELECT EXISTS (
+              SELECT 1 FROM pg_stat_activity AS activity
+              WHERE activity.datname = current_database()
+                AND activity.wait_event_type = 'Lock'
+                AND activity.wait_event = 'advisory'
+                AND ${holderBackend.pid} = ANY(pg_blocking_pids(activity.pid))
+            ) AS waiting`;
+          return state?.waiting ?? false;
+        }, { timeout: 5000, interval: 20 }).toBe(true);
+
+        // Expire only after create began waiting. Commit publishes the DB-clock deadline and
+        // releases the lock together; a stale transaction-start now() would miss this expiry.
+        await tx.$executeRaw`
+          UPDATE checkout_quotes SET "expiresAt" = clock_timestamp() WHERE id = ${quote.id}::uuid`;
       }, { timeout: 15000 });
+      if (!createPromise) throw new Error('Order request was not started.');
       const response = await createPromise;
       expect(response.status).toBe(409);
       expect((response.body as { code?: string }).code).toBe('QUOTE_CHANGED');
       expect(await db.order.count({ where: { phone: lockPhone } })).toBe(0);
-    } finally { await holder.$disconnect(); }
+      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } })).toEqual(inventoryBefore);
+      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(movementsBefore);
+      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key: commandKey } })).toBe(0);
+    } finally {
+      // If observing the wait failed, let the request settle after the holder rolled back before
+      // the suite closes its app and removes its own isolated database.
+      await createPromise?.catch(() => undefined);
+      await holder.$disconnect();
+    }
   });
 
   it('rejects a create missing the contact or address objects with 400, never 500', async () => {
