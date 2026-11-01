@@ -59,12 +59,23 @@ test.afterAll(async () => {
   } finally { await db.$disconnect(); }
 });
 
+async function login(page: import('@playwright/test').Page, email: string) {
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
+  const [response] = await Promise.all([
+    page.waitForResponse((answer) => {
+      const path = new URL(answer.url()).pathname;
+      return path === '/api/v1/auth/login' || (path === '/api/v1/auth/csrf' && !answer.ok());
+    }),
+    page.getByRole('button', { name: 'Đăng nhập', exact: true }).click(),
+  ]);
+  expect(response.status(), `Login API: ${new URL(response.url()).pathname}`).toBe(200);
+}
+
 test('admin creates one-variant drafts, persists through refresh, handles duplicate identifiers and keeps drafts private', async ({ page }, info) => {
   test.setTimeout(60000); // Several create attempts exercise native validation and two unique constraints.
   await page.goto('/login');
-  await page.getByLabel('Email', { exact: true }).fill(adminEmail);
-  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await login(page, adminEmail);
   await expect(page).toHaveURL(/\/admin$/);
   await page.getByRole('link', { name: 'Sản phẩm', exact: true }).click();
   await page.getByRole('link', { name: 'Thêm sản phẩm', exact: true }).click();
@@ -138,9 +149,7 @@ test('anonymous and CUSTOMER cannot list or create admin products', async ({ pag
   expect((await page.request.patch(`/api/v1/admin/products/${randomUUID()}`, { data: patchPayload,
     headers: { Origin: 'http://127.0.0.1:5174', 'X-CSRF-Token': anonymousToken.csrfToken },
   })).status()).toBe(401);
-  await page.getByLabel('Email', { exact: true }).fill(customerEmail);
-  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await login(page, customerEmail);
   await expect(page).toHaveURL(/\/account$/);
   await page.goto('/admin/products');
   await expect(page).toHaveURL(/\/account$/);
@@ -165,9 +174,7 @@ test('admin edits draft variants: keeps ids and stock, adds a variant, turns one
     priceFrom: 100000, variants: { create: { sku: takenSku, size: 'M', color: 'xám', price: 100000, active: true, inventory: { create: {} } } } } });
   const variant = await db.variant.findUniqueOrThrow({ where: { sku: editSku } });
   await page.goto('/login');
-  await page.getByLabel('Email', { exact: true }).fill(adminEmail);
-  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await login(page, adminEmail);
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto('/admin/products');
   await page.getByRole('link', { name: 'Sửa Áo cotton cần sửa thử', exact: true }).click();
@@ -227,9 +234,7 @@ test('two tabs editing the same draft: the stale one is rejected and only rebase
   const draft = await db.product.create({ data: { name: 'Áo hai tab thử', slug: slugs[3], description: '', categoryId,
     priceFrom: 250000, variants: { create: { sku: tabSku, size: 'L', color: 'trắng', price: 300000, active: true, inventory: { create: {} } } } } });
   await page.goto('/login');
-  await page.getByLabel('Email', { exact: true }).fill(adminEmail);
-  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await login(page, adminEmail);
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto(`/admin/products/${draft.id}`);
   const first = page.getByRole('form', { name: 'Sửa sản phẩm nháp', exact: true });
@@ -263,9 +268,7 @@ test('admin edits a published product and the shop shows the change at once', as
     status: 'PUBLISHED', priceFrom: 250000,
     variants: { create: { sku: publishedSku, size: 'M', color: 'xanh', price: 250000, active: true, inventory: { create: {} } } } } });
   await page.goto('/login');
-  await page.getByLabel('Email', { exact: true }).fill(adminEmail);
-  await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await login(page, adminEmail);
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto(`/admin/products/${published.id}`);
   await expect(page.getByRole('heading', { name: 'Sửa sản phẩm đang bán', level: 1 })).toBeVisible();

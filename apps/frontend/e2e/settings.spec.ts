@@ -80,7 +80,14 @@ async function login(page: import('@playwright/test').Page, email: string) {
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  const [response] = await Promise.all([
+    page.waitForResponse((answer) => {
+      const path = new URL(answer.url()).pathname;
+      return path === '/api/v1/auth/login' || (path === '/api/v1/auth/csrf' && !answer.ok());
+    }),
+    page.getByRole('button', { name: 'Đăng nhập', exact: true }).click(),
+  ]);
+  expect(response.status(), `Login API: ${new URL(response.url()).pathname}`).toBe(200);
 }
 
 async function openAdminSettings(page: import('@playwright/test').Page) {
@@ -112,9 +119,7 @@ test('admin opens settings from the dashboard, saves new values and survives ref
   await page.screenshot({ path: info.outputPath('settings-mobile.png'), fullPage: true });
 });
 
-test('two admin tabs: one save wins, the other conflicts and ends with the fresh configuration', async ({ browser }) => {
-  const context = await browser.newContext();
-  const winner = await context.newPage();
+test('two admin tabs: one save wins, the other conflicts and ends with the fresh configuration', async ({ page: winner, context }) => {
   await login(winner, adminEmail);
   // A second tab of the same admin shares the session.
   const loser = await context.newPage();
@@ -139,7 +144,6 @@ test('two admin tabs: one save wins, the other conflicts and ends with the fresh
   await expect(winner.getByLabel('Phí giao hàng')).toHaveValue('60000');
   await expect(winner.getByLabel('Hạn chuyển khoản')).toHaveValue(String(current.bankDeadlineMinutes));
   await expect(winner.getByRole('alert')).toHaveCount(0);
-  await context.close();
 });
 
 test('backend enforces settings access independently of the frontend redirect', async ({ page }) => {
