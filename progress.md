@@ -2,6 +2,16 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — M4.4.2: giải quyết conflict rebase của test chờ khóa
+
+- **Phạm vi được duyệt:** xử lý conflict trong `apps/backend/test/order-creation.integration.spec.ts`, giữ nội dung tiến độ đã staged, cập nhật kết quả và hoàn tất rebase đang dở của `feat/m4.4.2-order-lookup` lên `e2b34bb`; không push/deploy trong lượt này.
+- **RED thực tế:** Vitest dừng ở `PARSE_ERROR` do marker conflict, không chạy test nào; kiểm tra cú pháp có 5 lỗi. TypeScript kiểm riêng còn bắt `holder`/`createPromise` bị shadow và dùng trước khai báo, `$transaction`/`$disconnect` không thuộc `pg.Client`.
+- **Bản sửa:** giữ duy nhất cách lấy session advisory lock bằng `pg.Client` từ phía main, bỏ block Prisma bị ghép trùng; một holder, một request và một `commandKey`. Xác nhận request chờ đúng advisory lock, hết hạn quote bằng giờ PostgreSQL, nhả khóa rồi kiểm `409 QUOTE_CHANGED` và không phát sinh đơn/kho/movement/idempotency.
+- **Cleanup:** dùng một hàm `cleanup` trên cả luồng thành công và lỗi; gọi `holder.end()` để giải phóng khóa trước khi đợi request kết thúc. Không còn shadowing, hai `finally` ghép nối hoặc gọi API Prisma trên `pg.Client`.
+- **Tài liệu:** giữ các mục đã staged; bỏ một dòng `=======` cũ giữa hai mục tiến độ, không xóa nội dung hai bên. Mục sửa parse trước đó được giữ làm lịch sử; cách cleanup hiện tại được mô tả ở mục mới này.
+- **GREEN thực tế:** spec tạo đơn **12/12**; toàn bộ `./tools/npm.ps1 run test:integration` **114/114, 14 file**; `./tools/npm.ps1 run typecheck` đạt; TypeScript riêng file integration **0 diagnostics**, `git diff --check` đạt. Review độc lập không có finding quan trọng. Test dùng PostgreSQL local và database `_test` riêng của runner; còn cảnh báo pg deprecation có sẵn.
+- **Giới hạn:** code ứng dụng/dependency/schema không đổi; không chạy lại E2E trong lượt sửa test này và chưa có kết quả CI mới. Dừng sau khi hoàn tất rebase local để người dùng kiểm tra.
+
 ## Ngày 01/11/2026 — M4.4.2: sửa race của integration hết hạn báo giá trên CI
 
 - **Phạm vi được duyệt:** sửa `apps/backend/test/order-creation.integration.spec.ts` và mục tiến độ này, rồi commit/push lại `feat/m4.4.2-order-lookup`; không đổi code ứng dụng, dependency, schema hoặc timeout của suite.
@@ -21,6 +31,13 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 - Đã rà diff, 27 file thay đổi/mới, ignore, remote và tác giả Git; không phát hiện mẫu credential hoặc dấu conflict trong các file chuẩn bị commit. Env thật, runtime, dependency và build artifact bị ignore; không có file tracked bị ignore. Dùng push thường lên nhánh feature, không force push.
 - CI của commit mới và nghiệm thu của người dùng chưa có kết quả tại thời điểm chuẩn bị push.
 
+## Ngày 01/11/2026 — M4.4.2: sửa lỗi parse integration trên CI
+
+- **Phạm vi:** giữ nguyên kiểm thử nghiệp vụ hết hạn quote khi request chờ advisory lock; chỉ thay cấu trúc cleanup bị Vitest/OXC báo lỗi tại `finally`.
+- **Thay đổi:** gom cleanup vào hàm `cleanup`, gọi từ nhánh `catch` rồi ném lại lỗi gốc, và gọi sau luồng thành công. Request đang chờ vẫn được đợi kết thúc trước khi đóng kết nối holder.
+- **Kiểm tra:** `./tools/npm.ps1 run typecheck` và `./tools/npm.ps1 run build` đạt. Chạy riêng `order-creation.integration.spec.ts`: Vitest nạp/transform được file, không còn PARSE_ERROR; 12 test chưa chạy do sandbox chặn PostgreSQL test (`EACCES` tới localhost:5433). Lệnh toàn bộ integration cũng dừng vì cùng giới hạn kết nối DB. Build còn cảnh báo chunk frontend >500 kB.
+- **Ghi chú CI:** `.env.test not found` trong log là cảnh báo; workflow cấp `DATABASE_URL` bằng env và cấu hình này không làm lệnh thất bại. Hai khối log người dùng gửi đều chỉ cùng lỗi `finally`.
+- **Git/điểm dừng:** commit lên `feat/m4.4.2-order-lookup` theo yêu cầu; chưa push. Cần xem CI mới để xác nhận runner xanh; agent chưa xác nhận test PostgreSQL local.
 ## Ngày 01/11/2026 — M4.4.2 (bản sửa sau review): khóa submit, chặn cache chưa xác thực, bỏ kết quả sau unmount, ràng buộc response
 
 **Phạm vi được duyệt:** người dùng duyệt sửa 4 lỗi review M4.4.2 trong chat — (1) khóa gửi lặp đồng bộ trong OrderLookupPage; (2) chặn hiện snapshot cache trước khi lượt GET xác thực của lần mở hiện tại thành công (không dùng GC làm kiểm quyền); (3) bỏ qua kết quả lookup trả về sau khi khách rời trang; (4) đối chiếu mã đơn response với request (trim+uppercase một lần ở API layer) và encode segment mã khi tạo URL. **Agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
@@ -234,7 +251,7 @@ Mở `/orders/<code>#t=<token>` → `OrderDetailPage` đọc fragment, kiểm d�
 - Chưa có luồng phục hồi khi mất link/token (M4.4.2), chưa có hủy (M4.4.3/M4.4.4) và chưa có màn hình admin đơn (M4.5); chưa chạy CI.
 
 **Dừng để người dùng chạy thử theo [docs/local-trial-m4.md §M4.4.1](docs/local-trial-m4.md). Không commit/push/merge/deploy.**
-=======
+
 ## Ngày 31/10/2026 — M4.3.1: ổn định test hết hạn trong lúc chờ khóa
 
 - **Phạm vi đã duyệt:** sửa test CI nhận `201` thay vì `409`, commit và push lại `feat/m4.3.1-cod-checkout`. Làm trong worktree riêng từ `46f239e`; giữ nguyên M4.4.1 đang làm dở ở checkout chính.

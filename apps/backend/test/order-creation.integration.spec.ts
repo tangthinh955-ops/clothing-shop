@@ -275,60 +275,36 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const commandKey = keyFor('expiry-lock');
     const inventoryBefore = await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } });
     const movementsBefore = await db.inventoryMovement.count({ where: { variantId: variantC } });
-    const holder = new PrismaService(readEnvironment(process.env));
-    let createPromise: Promise<supertest.Response> | undefined;
-    try {
-      await holder.$transaction(async (tx) => {
-        // Acquire the lock before starting HTTP: a cold holder connection must never let create win.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockPhone})::bigint) IS NOT NULL AS locked`;
-        const [holderBackend] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
-        if (!holderBackend) throw new Error('Missing holder backend PID.');
-
-        createPromise = create({ key: commandKey, ipXff: ip(),
-          body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
-
-        // Observe the actual wait, not a guessed delay. Each probe uses its own transaction so
-        // PostgreSQL statistics are fresh, and the holder PID isolates this test's blocker.
-        await expect.poll(async () => {
-          const [state] = await db.$queryRaw<Array<{ waiting: boolean }>>`
-            SELECT EXISTS (
-              SELECT 1 FROM pg_stat_activity AS activity
-              WHERE activity.datname = current_database()
-                AND activity.wait_event_type = 'Lock'
-                AND activity.wait_event = 'advisory'
-                AND ${holderBackend.pid} = ANY(pg_blocking_pids(activity.pid))
-            ) AS waiting`;
-          return state?.waiting ?? false;
-        }, { timeout: 5000, interval: 20 }).toBe(true);
-
-        // Expire only after create began waiting. Commit publishes the DB-clock deadline and
-        // releases the lock together; a stale transaction-start now() would miss this expiry.
-        await tx.$executeRaw`
-          UPDATE checkout_quotes SET "expiresAt" = clock_timestamp() WHERE id = ${quote.id}::uuid`;
-      }, { timeout: 15000 });
-      if (!createPromise) throw new Error('Order request was not started.');
-
-    const key = keyFor('expiry-lock');
     const holder = new Client({ connectionString: process.env.DATABASE_URL });
     let createPromise: Promise<supertest.Response> | undefined;
+    const cleanup = async () => {
+      // Closing this session releases its advisory lock, including on a failed barrier.
+      // Only then drain the HTTP request, so cleanup never waits behind its own lock.
+      await holder.end();
+      await createPromise?.catch(() => undefined);
+    };
+
     try {
       await holder.connect();
-      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const holderBackend = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0];
+      if (!holderBackend) throw new Error('Missing holder backend PID.');
       // Acquire the session lock before dispatching HTTP. It conflicts with the service's
       // transaction lock and stays held until explicitly released or this connection closes.
       await holder.query('SELECT pg_advisory_lock(hashtext($1)::bigint)', [lockPhone]);
-      createPromise = create({ key, ipXff: ip(),
+      createPromise = create({ key: commandKey, ipXff: ip(),
         body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
       // Observe rejection later through the original promise, even if a barrier assertion fails.
       void createPromise.catch(() => undefined);
       await expect.poll(async () => {
         const [row] = await db.$queryRaw<Array<{ waiting: boolean }>>`
           SELECT EXISTS (
-            SELECT 1 FROM pg_stat_activity
-            WHERE datname = current_database()
-              AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
+            SELECT 1 FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database()
+              AND activity.wait_event_type = 'Lock'
+              AND activity.wait_event = 'advisory'
+              AND ${holderBackend.pid}::int = ANY(pg_blocking_pids(activity.pid))
           ) AS waiting`;
-        return row!.waiting;
+        return row?.waiting ?? false;
       }, { timeout: 5000, interval: 10 }).toBe(true);
 
       // The create transaction has started and is blocked. Expire its quote using the real DB
@@ -343,20 +319,11 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
       expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } })).toEqual(inventoryBefore);
       expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(movementsBefore);
       expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key: commandKey } })).toBe(0);
-    } finally {
-      // If observing the wait failed, let the request settle after the holder rolled back before
-      // the suite closes its app and removes its own isolated database.
-      await createPromise?.catch(() => undefined);
-      await holder.$disconnect();
-
-      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } }))
-        .toMatchObject({ onHand: 5, reserved: 0 });
-      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(0);
-      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key } })).toBe(0);
-    } finally {
-      await holder.end(); // Also releases the lock when a barrier or assertion fails.
-      await createPromise?.catch(() => undefined);
+    } catch (error) {
+      await cleanup();
+      throw error;
     }
+    await cleanup();
   });
 
   it('rejects a create missing the contact or address objects with 400, never 500', async () => {
