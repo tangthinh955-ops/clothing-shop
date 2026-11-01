@@ -234,6 +234,16 @@ Mở `/orders/<code>#t=<token>` → `OrderDetailPage` đọc fragment, kiểm d�
 - Chưa có luồng phục hồi khi mất link/token (M4.4.2), chưa có hủy (M4.4.3/M4.4.4) và chưa có màn hình admin đơn (M4.5); chưa chạy CI.
 
 **Dừng để người dùng chạy thử theo [docs/local-trial-m4.md §M4.4.1](docs/local-trial-m4.md). Không commit/push/merge/deploy.**
+=======
+## Ngày 31/10/2026 — M4.3.1: ổn định test hết hạn trong lúc chờ khóa
+
+- **Phạm vi đã duyệt:** sửa test CI nhận `201` thay vì `409`, commit và push lại `feat/m4.3.1-cod-checkout`. Làm trong worktree riêng từ `46f239e`; giữ nguyên M4.4.1 đang làm dở ở checkout chính.
+- **Nguyên nhân:** test gửi request trước khi holder lấy advisory lock; request có thể tạo đơn hợp lệ trước lúc quote hết hạn. Chờ cố định 6 giây không bảo đảm request đã bị khóa.
+- **File sửa:** `apps/backend/test/order-creation.integration.spec.ts` lấy session lock bằng kết nối `pg.Client` trước khi gửi HTTP, chờ `pg_blocking_pids` xác nhận request đang bị chặn, đặt hạn quote theo `clock_timestamp()` của PostgreSQL rồi nhả khóa. Kiểm tra `409 QUOTE_CHANGED`, không có đơn, reservation, movement hoặc idempotency record; `finally` đóng holder và đợi request kết thúc cả khi assertion thất bại. `progress.md` ghi bằng chứng và điểm dừng.
+- **Kiểm chứng regression:** tạm đổi `clock_timestamp()` thành `now()` trong build ignored, test mới thất bại đúng `expected 201 to be 409`; đã khôi phục build và chạy test này đạt **5/5 lượt độc lập**, mỗi lượt có database `_test` riêng.
+- **Kiểm tra toàn bộ:** typecheck và build đạt; `npm test` với `VITEST_MAX_WORKERS=2` đạt **10 tools + 69 backend + 345 frontend = 424 test**. Integration chạy qua npm đạt **97/97, 12 file** trên database `_test` mới của lượt này, đã cleanup. Lượt chạy Vitest trực tiếp trước đó có 1 lỗi ở test CLI import do thiếu `npm_execpath`; chạy lại đúng npm đã đạt, không sửa test CLI. Build còn cảnh báo chunk trên 500 kB; integration còn cảnh báo pg đã có sẵn.
+- **Review/phạm vi:** review độc lập không phát hiện vấn đề cần sửa. Không đổi service production, timeout, dependency, schema, nghiệp vụ quote hay luồng chờ inventory; README còn dấu conflict đã được ghi ở mục trước, ngoài phạm vi lần sửa này. Không sửa file M4.4.1 ở checkout chính.
+- **Điểm dừng:** người dùng đã yêu cầu push bản sửa lên nhánh M4.3.1; chưa có kết quả CI mới, không merge/deploy. Không chạy lại E2E vì chỉ thay test integration và tài liệu. Người dùng có thể chạy `npm run test:integration` với môi trường `_test` theo README.
 
 ## Ngày 31/10/2026 — M4.3.1: sửa EJSONPARSE sau merge main
 

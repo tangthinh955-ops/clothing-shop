@@ -1,6 +1,7 @@
 import { createIsolatedTestDatabase } from '../../../tools/test-database.mjs';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
+import { Client } from 'pg';
 import supertest, { type Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../dist/application.js';
@@ -306,6 +307,35 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
           UPDATE checkout_quotes SET "expiresAt" = clock_timestamp() WHERE id = ${quote.id}::uuid`;
       }, { timeout: 15000 });
       if (!createPromise) throw new Error('Order request was not started.');
+
+    const key = keyFor('expiry-lock');
+    const holder = new Client({ connectionString: process.env.DATABASE_URL });
+    let createPromise: Promise<supertest.Response> | undefined;
+    try {
+      await holder.connect();
+      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      // Acquire the session lock before dispatching HTTP. It conflicts with the service's
+      // transaction lock and stays held until explicitly released or this connection closes.
+      await holder.query('SELECT pg_advisory_lock(hashtext($1)::bigint)', [lockPhone]);
+      createPromise = create({ key, ipXff: ip(),
+        body: codBody(quote, [{ variantId: variantC, quantity: 1 }], lockPhone) });
+      // Observe rejection later through the original promise, even if a barrier assertion fails.
+      void createPromise.catch(() => undefined);
+      await expect.poll(async () => {
+        const [row] = await db.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
+          ) AS waiting`;
+        return row!.waiting;
+      }, { timeout: 5000, interval: 10 }).toBe(true);
+
+      // The create transaction has started and is blocked. Expire its quote using the real DB
+      // clock, then release it: now() would still see the older transaction-start timestamp.
+      await db.$executeRaw`
+        UPDATE checkout_quotes SET "expiresAt" = clock_timestamp() WHERE id = ${quote.id}::uuid`;
+      await holder.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)', [lockPhone]);
       const response = await createPromise;
       expect(response.status).toBe(409);
       expect((response.body as { code?: string }).code).toBe('QUOTE_CHANGED');
@@ -318,6 +348,14 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
       // the suite closes its app and removes its own isolated database.
       await createPromise?.catch(() => undefined);
       await holder.$disconnect();
+
+      expect(await db.inventory.findUniqueOrThrow({ where: { variantId: variantC } }))
+        .toMatchObject({ onHand: 5, reserved: 0 });
+      expect(await db.inventoryMovement.count({ where: { variantId: variantC } })).toBe(0);
+      expect(await db.idempotencyRecord.count({ where: { scope: 'orders.create', key } })).toBe(0);
+    } finally {
+      await holder.end(); // Also releases the lock when a barrier or assertion fails.
+      await createPromise?.catch(() => undefined);
     }
   });
 
