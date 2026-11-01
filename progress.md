@@ -2,6 +2,114 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — Git M4.4.2: kiểm chứng trước push nhánh
+
+- Người dùng yêu cầu commit/push bản M4.4.2 hiện tại lên `feat/m4.4.2-order-lookup`, gồm tra cứu mã đơn + SĐT và 4 bản sửa review. Không merge `main` hoặc deploy.
+- Kiểm chứng mới trên cây chuẩn bị commit: `./tools/npm.ps1 run typecheck` và `./tools/npm.ps1 run build` đạt; đặt `VITEST_MAX_WORKERS=2` khi chạy `./tools/npm.ps1 test`, kết quả **10 tools + 69 backend + 389 frontend = 468 test** đạt (38 file frontend). Build còn cảnh báo chunk trên 500 kB.
+- Xác nhận môi trường PostgreSQL local, `NODE_ENV=test` và DB hậu tố `_test` trước khi chạy 3 spec integration tạo/xem/tra cứu đơn bằng runner dùng DB riêng: **29/29** đạt, gồm bản sửa xác định bên thắng thật trong test tranh chiếc cuối của M4.3.1. Không chạy lại toàn bộ integration hoặc E2E trong lượt Git này; kết quả full ở mục triển khai bên dưới là bằng chứng lượt trước, không phải lần chạy mới.
+- Đã rà diff, 27 file thay đổi/mới, ignore, remote và tác giả Git; không phát hiện mẫu credential hoặc dấu conflict trong các file chuẩn bị commit. Env thật, runtime, dependency và build artifact bị ignore; không có file tracked bị ignore. Dùng push thường lên nhánh feature, không force push.
+- CI của commit mới và nghiệm thu của người dùng chưa có kết quả tại thời điểm chuẩn bị push.
+
+## Ngày 01/11/2026 — M4.4.2 (bản sửa sau review): khóa submit, chặn cache chưa xác thực, bỏ kết quả sau unmount, ràng buộc response
+
+**Phạm vi được duyệt:** người dùng duyệt sửa 4 lỗi review M4.4.2 trong chat — (1) khóa gửi lặp đồng bộ trong OrderLookupPage; (2) chặn hiện snapshot cache trước khi lượt GET xác thực của lần mở hiện tại thành công (không dùng GC làm kiểm quyền); (3) bỏ qua kết quả lookup trả về sau khi khách rời trang; (4) đối chiếu mã đơn response với request (trim+uppercase một lần ở API layer) và encode segment mã khi tạo URL. **Agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### RED đã quan sát trên bản pre-fix
+
+Lượt chạy đầu trên code chưa sửa (test viết trước): **7 test fail** phủ đủ 4 lỗi — api `binds the answer…`, detail `never flashes the cached snapshot on an immediate same-tick remount…`, và 5 test trang lookup (double-submit, drag-back, foreign code, encode, lowercase). Hai test sau đó được hiệu chỉnh cách viết (double-submit: flush microtask trước khi release vì TanStack gọi mutationFn ở microtask sau `mutate`; lowercase: mock trả đúng mã đã chuẩn hóa) — assertion bắt lỗi giữ nguyên (2 POST thay vì 1; body gửi mã chưa chuẩn hóa).
+
+### File đã đổi
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/frontend/src/features/orders/pages/OrderLookupPage.tsx` (sửa) | Khóa đồng bộ `submittingRef` đặt ngay trước `mutate`, nhả trong `onSettled` (kể cả lỗi); `mountedRef` chặn navigate khi khách đã rời trang; `encodeURIComponent(result.view.order.code)` khi tạo link; phối hợp với `isPending` không mâu thuẫn |
+| `apps/frontend/src/features/orders/api/orders.api.ts` (sửa) | `parseOrderLookupResult(value, expectedCode)`: answer phải echo đúng mã (kể cả mã chưa trim) → không khớp là `INVALID_RESPONSE`; `ordersApi.lookup` chuẩn hóa mã trim+uppercase một lần (cùng rule DTO backend), SĐT passessthrough cho server chuẩn hóa |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.tsx` (sửa) | Gate `verifiedHash`: chỉ render snapshot khi một GET thành công cho hash SHA-256 token hiện tại của lần mở này hoàn tất (đặt trong queryFn, kiểm `currentHashRef` khi response về muộn, `useLayoutEffect` xóa trước khi paint khi đổi token); giữ `staleTime: 0` + `gcTime: 0` nhưng GC/cache không còn là cơ chế kiểm quyền |
+| `apps/frontend/src/features/orders/api/orders.api.test.ts` (sửa) | `parseOrderLookupResult` nhận expectedCode; +1 test ràng buộc (mã khác, mã chứa `?x=1`, echo chưa trim) |
+| `apps/frontend/src/features/orders/pages/OrderLookupPage.test.tsx` (sửa) | Thay test double-click bằng hai `fireEvent.submit` cùng nhịp (+đếm POST trước và sau khi resolve); +4 test: rời trang khi pending không bị kéo lại, response mã khác giữ form, mã `A?X=1` encode thành `%3F` không thành query, mã lowercase gửi body chuẩn hóa |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx` (sửa) | +1 test remount ngay trong cùng tick KHÔNG chờ GC, GET mới pending rồi 404: không hiện snapshot dù thoáng qua |
+| `apps/backend/test/order-creation.integration.spec.ts` (sửa — ngoài 4 lỗi, phục hồi kiểm tra bắt buộc) | Test "hai khách tranh chiếc cuối" giỏ định promise allSettled đầu tiên là bên thắng; thực tế ai thắng khóa hàng là ngẫu nhiên — khi request đầu là bên thua 409, `winnerCode` undefined làm count đếm toàn bộ đơn (fail 2 lần liên tiếp, backend không đổi). Sửa: xác định bên thắng từ response 201 thực tế. Không bỏ test, không nới timeout, không đụng nghiệp vụ |
+
+### Data flow / key
+
+- **`submittingRef` + `onSettled`** (`OrderLookupPage.tsx`): hai submit cùng tick đều qua handler nhưng chỉ lần đầu gửi — khóa là đồng bộ, không phụ thuộc rerender.
+- **`mountedRef`** (`OrderLookupPage.tsx`): onSuccess kiểm tra trước `navigate` — response cũ không kéo người dùng về trang đơn, không ghi đè thao tác mới (lần mount mới có ref riêng).
+- **`verifiedHash` + `currentHashRef`** (`OrderDetailPage.tsx`): "đã xác thực cho quyền hiện tại" là điều kiện render; response muộn của hash cũ không gỡ trạng thái đã xác thực của hash mới, đổi token xóa gate trước khi paint nên không flash.
+- **Binding mã trong `parseOrderLookupResult`** (`orders.api.ts`): response không khớp request → `INVALID_RESPONSE`, form giữ nguyên; URL luôn `encodeURIComponent` nên mã chứa `?/#` không biến thành query.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Test đích FE (orders + checkout + layouts) | **72/72** (389 test FE toàn bộ trong vòng `test`) |
+| `./tools/npm.ps1 run typecheck` | 0 lỗi |
+| `./tools/npm.ps1 run build` | đạt (432ms) |
+| `./tools/npm.ps1 test` (VITEST_MAX_WORKERS=2) | **10 tools + 69 backend + 389 frontend = 468 test** đạt |
+| `./tools/npm.ps1 run test:integration` | **114/114 (14 file)**; hai lượt trước fail 1 test tranh-giỏ do lỗi có sẵn của test M4.3.1 (nêu trên), 3 lần chạy riêng spec order-creation đạt liên tiếp sau khi sửa, vòng full đạt 114/114 |
+| `./tools/npm.ps1 run test:e2e:implemented` | **50/50** (3.5 phút) |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+### Giới hạn / còn lại
+
+- Sửa test order-creation là sửa hạ tầng test của M4.3.1 ngoài 4 lỗi review — nêu rõ để review; nghiệp vụ đặt đơn không đổi.
+- RED của hai test đã hiệu chỉnh được suy từ assertion giữ nguyên + RED lượt đầu của chính test đó (chưa chạy lại RED sau hiệu chỉnh trên bản pre-fix vì bản pre-fix chưa commit); các test còn lại RED thực tế trên bản pre-fix.
+- Chưa có M4.4.3/M4.4.4, chưa chạy CI. Không commit/push/merge/deploy.
+
+## Ngày 01/11/2026 — M4.4.2: tra cứu đơn bằng mã đơn + số điện thoại
+
+**Phạm vi được duyệt:** người dùng duyệt kế hoạch M4.4.2 trong chat — POST `/orders/lookup` (code+phone, CSRF, 5/phút/IP, 404 đồng nhất, token mới thay hash cũ trong một transaction), trang `/orders/lookup` + link ở menu/footer/màn xác nhận, trang xem đơn luôn xác thực server trước khi hiện cache. Nhánh `feat/m4.4.2-order-lookup` từ 648ac99. **Agent đã kiểm tra local; chờ người dùng chạy thử, chưa nghiệm thu.**
+
+### File đã đổi
+
+| File | Thay đổi và lý do |
+|---|---|
+| `apps/backend/src/modules/orders/dto/order-lookup.dto.ts` (mới) | DTO `OrderLookupDto`: mã trim/uppercase, chặn shape bằng `INVALID_CODE_SHAPE` dùng lại từ access service (không rule thứ hai) → 400 trước khi tới PostgreSQL; SĐT chuẩn hóa qua `normalizeVietnamesePhone` hiện có |
+| `apps/backend/src/modules/orders/order-lookup.service.ts` (mới) | `OrderLookupService.lookup`: một transaction — đọc phone kiểm tra (sai → 404 đồng nhất, không đổi hash), UPDATE `lookupTokenHash` (khóa hàng, hai lookup đồng thời chỉ còn token thay hash cuối), rồi đọc snapshot qua `OrderAccessService.snapshot` |
+| `apps/backend/src/modules/orders/order-access.service.ts` (sửa) | Tách select/projection dùng chung (`ORDER_DETAIL_SELECT`, `projectOrderDetail`), thêm `snapshot(code, tx)` cho transaction lookup; export `INVALID_CODE_SHAPE`; hành vi `view` không đổi |
+| `apps/backend/src/modules/orders/orders.controller.ts` (sửa) | Route `POST /orders/lookup` với `@Throttle({ ip: 5/phút })`, HttpCode 200, qua CSRF guard toàn cục có sẵn |
+| `apps/backend/src/modules/orders/orders.module.ts` (sửa) | Đăng ký `OrderLookupService` |
+| `apps/backend/test/order-lookup.integration.spec.ts` (mới) | 10 test PostgreSQL thật: 0…/+84…, 404 đồng nhất không lộ PII, không liệt kê đơn cùng SĐT, 400 validation, CSRF, rate limit thật, thất bại không đổi hash, một token còn hiệu lực khi hai lookup đua, không đổi kho/tiền/trạng thái/history/idempotency, token rõ không vào DB |
+| `apps/frontend/src/features/orders/api/orders.api.ts` (sửa) | `parseOrderLookupResult` (parse view + kiểm tra token 32 ký tự base64url, payload lệch → `INVALID_RESPONSE` "Chưa đọc được kết quả tra cứu") và `ordersApi.lookup` |
+| `apps/frontend/src/features/orders/api/orders.api.test.ts` (sửa) | +3 test parser lookup: nhận đúng, chặn token thiếu/sai, payload lệch không điều hướng |
+| `apps/frontend/src/features/orders/pages/OrderLookupPage.tsx` (mới) | Form Mã đơn + SĐT chỉ ở memory; useMutation không retry; lỗi 400 theo field, 404/429/mạng giữ form; thành công chuyển `/orders/:code#t=<token mới>`; chặn gửi lặp khi pending |
+| `apps/frontend/src/features/orders/pages/OrderLookupPage.test.tsx` (mới) | 8 test: một POST đúng body + fragment không query, form rỗng tự chặn, 404 giữ form không tự retry, fieldErrors theo ô, 429, mất mạng chỉ tra cứu lại khi khách bấm, payload malformed, double-click một request |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.tsx` (sửa) | Query xem đơn đặt `staleTime: 0` + `gcTime: 0`: cache vẫn tách theo SHA-256 token nhưng không entry sống qua unmount — mở lại/link cũ đã bị thay token luôn chờ GET xác thực trước khi hiện (staleTime 0 một mình chưa đủ vì cache vẫn render khi refetch) |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx` (sửa) | +2 test: mở lại cùng token vẫn hỏi server trước khi hiện; link đã bị thay token bị 404 khi mở lại, không hiện dữ liệu cache |
+| `apps/frontend/src/features/checkout/components/OrderConfirmation.tsx` (sửa) | Thêm link "Tra cứu bằng mã đơn và số điện thoại" → `/orders/lookup`, hiện cả khi replay không trả token |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` (sửa) | +2 assertion: link tra cứu hiện ở cả màn có token và replay không token |
+| `apps/frontend/src/layouts/store/storeLinks.ts` (sửa) | "Tra cứu đơn" vào `supportLinks` dùng chung footer + menu mobile |
+| `apps/frontend/src/layouts/StoreLayout.test.tsx` (sửa) | +2 assertion: footer và menu mobile có link `/orders/lookup` |
+| `apps/frontend/src/app/App.tsx` (sửa) | Route `orders/lookup` (đứng trước `orders/:code` theo ranking segment tĩnh) |
+| `apps/frontend/e2e/order-lookup.spec.ts` (mới) | E2E: form thật → sai SĐT/sai mã 404 đồng nhất giữ form → đúng mã+SĐT vào link mới (token trong fragment, không `?`) → refresh còn → link cũ chết trong cùng phiên và cửa sổ mới, link mới vẫn mở → mobile 390px không tràn; 4 POST lookup nằm dưới giới hạn 5/phút/IP |
+| `package.json` (sửa) | Thêm `order-lookup.spec.ts` vào `test:e2e:implemented` |
+| `docs/m4-contract.md`, `docs/architecture.md`, `docs/m4-implementation-plan.md`, `docs/local-trial-m4.md`, `docs/plan.md`, `README.md` | Đồng bộ trạng thái M4.4.2 (hàng "Tra cứu", §8 phát hành token, API table, rate limit, FE lookup + cache, hướng dẫn chạy thử, điểm dừng). README: gỡ một dòng `=======` và một đoạn "**Chưa mở bán**" trùng/lệch thời điểm sót từ merge cũ trong HEAD (lỗi có sẵn trước khi làm M4.4.2) |
+
+### Data flow / key
+
+- **`OrderLookupService.lookup`** (`order-lookup.service.ts`): mã+SĐT → transaction đọc phone so với SĐT chuẩn hóa → sai: 404 đồng nhất không đụng hash; đúng: UPDATE `lookupTokenHash` = SHA-256(token 192-bit mới) rồi `OrderAccessService.snapshot` đọc allowlist trong cùng transaction → trả `{order, timeline, lookupToken}`. UPDATE giữ khóa hàng nên hai lookup đồng thời chỉ còn token thay hash cuối.
+- **`snapshot(code, tx)`** (`order-access.service.ts`): phép đọc/projection allowlist dùng chung của M4.4.1, gọi được trong transaction — lookup không sao chép select.
+- **`parseOrderLookupResult`** (`orders.api.ts`): view phải qua parser M4.4.1, thêm kiểm tra token 32 ký tự base64url; payload lệch không bao giờ dẫn tới trang đơn.
+- **`gcTime: 0`** (`OrderDetailPage.tsx`): xóa cache entry ngay khi không còn observer — mở lại link (hoặc link cũ sau khi lookup thay token) luôn GET mới trước khi render; `staleTime: 0` một mình không đủ vì TanStack vẫn render cache khi refetch nền.
+- **`supportLinks`** (`storeLinks.ts`): một entry "Tra cứu đơn" phủ cả footer và menu mobile; màn xác nhận đặt hàng link riêng trong `OrderConfirmation`.
+
+### Kiểm tra thực tế
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `./tools/npm.ps1 run typecheck` | 0 lỗi |
+| `./tools/npm.ps1 run build` | đạt (frontend 624ms; backend tsc đạt) |
+| `./tools/npm.ps1 test` (VITEST_MAX_WORKERS=2) | **10 tools + 69 backend + 383 frontend = 462 test** đạt (38 file FE; +13 test mới so với M4.4.1) |
+| `./tools/npm.ps1 run test:integration` | **114/114 (14 file)**; lượt đầu 113/114 — test nhạy thời gian `refuses with QUOTE_CHANGED… phone lock` (order-creation, 6+ giây chờ khóa SĐT) fail một lần, hai lượt chạy lại đều 114/114; không thuộc file M4.4.2 |
+| `./tools/npm.ps1 run test:e2e:implemented` | **50/50** (49 cũ + 1 `order-lookup.spec.ts`), 3.5 phút |
+| RED→GREEN | Integration lookup: RED "Cannot POST /api/v1/orders/lookup" trước khi code, 10/10 sau; FE parser+trang: RED trước khi triển khai, GREEN sau |
+| CI GitHub | Chưa chạy (chưa commit/push) |
+
+### Giới hạn / còn lại
+
+- Hai lookup đồng thời: cả hai nhận 200 với token riêng, chỉ token thay hash cuối còn mở được đơn — không có cơ chế nào báo cho tab đang giữ link cũ; nội dung đã hiển thị trên tab khác không hứa thu hồi từ xa (đã ghi trong local-trial).
+- Rate limit lookup trong E2E dùng chung IP trình duyệt với cả bộ spec; hiện chỉ `order-lookup.spec.ts` POST `/orders/lookup` (4 lượt) nên còn dư 1 lượt/phút — thêm spec tra cứu khác phải tính lại ngân sách này.
+- Chưa có M4.4.3/M4.4.4 (hủy đơn), chưa chạy CI. Không commit/push/merge/deploy.
+
 ## Ngày 01/11/2026 — Git M4.4.1: kiểm chứng trước push nhánh
 
 - Người dùng yêu cầu commit/push bản M4.4.1 hiện tại lên nhánh `feat/m4.4.1-order-access`, gồm xem đơn qua link riêng và các bản sửa sau review. Không merge vào `main` hoặc deploy.

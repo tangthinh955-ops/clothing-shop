@@ -175,7 +175,22 @@ Test riêng: integration `test/order-access.integration.spec.ts` (trong `./tools
 
 ### M4.4.2 — Tra cứu mã đơn +SĐT
 
-Mở `/orders/lookup`, nhập đúng dữ liệu của đơn thử → vào đúng đơn. Thử mã không tồn tại/SĐT sai cùng thông báo, thử vượt rate limit có lỗi429 dễ hiểu, không lộ số đơn khác của cùng SĐT. Khả năng hủy sau lookup phải theo quyền server, không chỉ bật nút theo dữ liệu form.
+**Đã triển khai và agent đã kiểm tra local (01/11/2026): POST `/orders/lookup` nhận `{code, phone}` qua CSRF (5/phút/IP, 404 đồng nhất); tra cứu thành công cấp token 192-bit mới, thay hash cũ trong một transaction và trả view allowlist như M4.4.1; trang `/orders/lookup` nằm ở menu mobile, footer và màn xác nhận đặt hàng; trang xem đơn luôn chờ GET xác thực trước khi hiện snapshot cache.**
+
+1. Mở `/orders/lookup` từ menu mobile, footer ("Tra cứu đơn") hoặc dòng cuối màn xác nhận đặt hàng ("Tra cứu bằng mã đơn và số điện thoại") → form Mã đơn + Số điện thoại; dữ liệu nhập không bao giờ xuất hiện trên URL.
+2. Lưu link riêng của đơn thử (từ M4.3.1/M4.4.1) rồi nhập đúng mã đơn + SĐT đã đặt, dạng `0…` hoặc `+84…` đều được → vào thẳng trang đơn với link mới `#t=…`; refresh vẫn xem được.
+3. Sau khi tra cứu thành công, mở lại **link cũ** trong cùng tab rồi trong cửa sổ mới → cùng một thông báo 404, không hiện đơn nhờ cache; link mới vẫn mở được ở cả hai nơi.
+4. Sai SĐT hoặc mã không tồn tại → cùng một thông báo 404, form giữ nguyên dữ liệu đã nhập; không bao giờ thấy đơn khác cùng SĐT.
+5. Bấm Tra cứu lặp nhanh tới lần thứ 6 → thông báo 429 ("Thao tác quá nhanh…"), không tự gửi lại; chờ một phút tra cứu lại được (mỗi lần thành công cấp link mới và làm link trước đó hết hiệu lực).
+6. Ngắt mạng (DevTools → Offline) khi bấm Tra cứu → thông báo kết nối, form giữ nguyên; bấm lại khi có mạng là tra cứu lại, không tự retry.
+7. DevTools → Network: POST `/api/v1/orders/lookup` body chỉ có `{code, phone}`; token không nằm ở query string hay localStorage/sessionStorage; DB chỉ có SHA-256 trong `orders.lookupTokenHash`.
+8. Chỉ là tra cứu: trạng thái, tiền, kho và lịch sử đơn không đổi; lookup thất bại không đổi hash — link cũ vẫn dùng được.
+9. Bấm Tra cứu hai lần trong cùng một nhịp (đúp chuột rất nhanh) → Network thấy đúng **một** POST `/orders/lookup`, vào đúng một trang đơn.
+10. Khi đang "Đang tra cứu…", bấm menu sang trang khác rồi kết quả về sau → vẫn ở trang đang xem, không bị kéo về trang đơn; quay lại tra cứu bình thường.
+
+Giới hạn đã duyệt của phần này: chưa hủy đơn (M4.4.3), chưa gửi yêu cầu hủy khi PACKING (M4.4.4); không hứa thu hồi nội dung đơn đã hiển thị sẵn trên tab khác trước khi token bị thay.
+
+Test riêng: integration `test/order-lookup.integration.spec.ts` (trong `./tools/npm.ps1 run test:integration`) và `./tools/npm.ps1 run test:e2e -- order-lookup.spec.ts`.
 
 ### M4.4.3 — Khách hủy trước đóng gói
 

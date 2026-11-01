@@ -201,15 +201,19 @@ describe('POST /orders (M4.3.1 guest COD checkout)', () => {
     const variantA = await makeVariant(200000, 2, 'Áo tranh chiếc cuối');
     const winnerQuote = await requestQuote([{ variantId: variantA, quantity: 2 }]);
     const loserQuote = await requestQuote([{ variantId: variantA, quantity: 2 }]);
-    const [winner, loser] = await Promise.allSettled([
+    const [first, second] = await Promise.allSettled([
       create({ key: keyFor('race-w'), ipXff: ip(), body: codBody(winnerQuote, [{ variantId: variantA, quantity: 2 }], testPhone()) }),
       create({ key: keyFor('race-l'), ipXff: ip(), body: codBody(loserQuote, [{ variantId: variantA, quantity: 2 }], testPhone()) }),
     ]);
-    const outcomes = [winner, loser].map((outcome) => outcome.status === 'fulfilled' ? outcome.value.status : 409);
+    const outcomes = [first, second].map((outcome) => outcome.status === 'fulfilled' ? outcome.value.status : 409);
     expect(outcomes.filter((status) => status === 201)).toHaveLength(1);
     expect(outcomes.filter((status) => status === 409)).toHaveLength(1);
     expect((await db.inventory.findUniqueOrThrow({ where: { variantId: variantA } })).reserved).toBe(2);
-    const winnerCode = ((winner as PromiseFulfilledResult<supertest.Response>).value.body as { order?: { code?: string } }).order?.code;
+    // Either guest may take the inventory row lock first — the winner is whoever answered 201,
+    // not whichever promise settled first.
+    const winner = [first, second].find((outcome) =>
+      outcome.status === 'fulfilled' && outcome.value.status === 201) as PromiseFulfilledResult<supertest.Response>;
+    const winnerCode = (winner.value.body as { order?: { code?: string } }).order?.code;
     expect(await db.order.count({ where: { code: winnerCode!, status: 'PENDING' } })).toBe(1);
   });
 

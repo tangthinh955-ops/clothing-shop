@@ -177,6 +177,76 @@ describe('OrderDetailPage', () => {
     expect(calls()).toBe(1);
   });
 
+  it('re-verifies the same token with the server on every mount before showing anything', async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let calls = 0;
+    let release: ((value: unknown) => void) = () => undefined;
+    vi.spyOn(client, 'request').mockImplementation(async (path: string, options?: RequestOptions) => {
+      expect(path).toBe(`/orders/${CODE}`);
+      calls += 1;
+      if (calls === 1) return view();
+      return new Promise((resolve) => { release = resolve; }); // the reopen stays in flight
+    });
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    expect(await screen.findByText('Áo xem chi tiết')).toBeInTheDocument();
+    first.unmount();
+    // gcTime 0 collects the unused entry on the next tick — a real navigation always leaves this gap.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    // No cached snapshot may paint before the fresh verification answers.
+    expect(screen.queryByText('Áo xem chi tiết')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Đang tải đơn hàng…');
+    await act(async () => { release(view()); });
+    expect(await screen.findByText('Áo xem chi tiết')).toBeInTheDocument();
+    expect(calls).toBe(2);
+  });
+
+  it('never flashes the cached snapshot on an immediate same-tick remount while the GET is pending', async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let calls = 0;
+    let rejectSecond: ((error: unknown) => void) = () => undefined;
+    vi.spyOn(client, 'request').mockImplementation(async (path: string, options?: RequestOptions) => {
+      expect(path).toBe(`/orders/${CODE}`);
+      calls += 1;
+      if (calls === 1) return view();
+      return new Promise((_, reject) => { rejectSecond = reject; }); // the fresh verification hangs
+    });
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    expect(await screen.findByText('Áo xem chi tiết')).toBeInTheDocument();
+    first.unmount();
+    // NO gc-timer wait: remount in the same tick. The GC is never the permission gate — the page
+    // itself must hide every snapshot until the fresh GET for this mount answers.
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    expect(screen.queryByText('Áo xem chi tiết')).not.toBeInTheDocument();
+    expect(screen.queryByText(/12 Nguyễn Huệ/)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Đang tải đơn hàng…');
+    // The pending verification answers 404 (the token was rotated elsewhere): still no snapshot.
+    await act(async () => { rejectSecond(new ApiError('NOT_FOUND', UNIFORM_404, 404)); });
+    expect(await screen.findByText(UNIFORM_404)).toBeInTheDocument();
+    expect(screen.queryByText('Áo xem chi tiết')).not.toBeInTheDocument();
+    expect(calls).toBe(2); // the remount really asked the server again
+  });
+
+  it('refuses a rotated-out link on reopen instead of replaying the cached view', async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { spy } = spyOk([view()]);
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    expect(await screen.findByText('Áo xem chi tiết')).toBeInTheDocument();
+    first.unmount();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // A lookup replaced the hash while the tab was away: the same link now fails server-side.
+    let reopenCalls = 0;
+    spy.mockImplementation(async () => {
+      reopenCalls += 1;
+      throw new ApiError('NOT_FOUND', UNIFORM_404, 404);
+    });
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`, shared);
+    expect(await screen.findByText(UNIFORM_404)).toBeInTheDocument();
+    expect(screen.queryByText('Áo xem chi tiết')).not.toBeInTheDocument();
+    expect(screen.queryByText(/12 Nguyễn Huệ/)).not.toBeInTheDocument();
+    expect(reopenCalls).toBe(1); // the reopen really asked the server again
+  });
+
   it('serves each access on the same page instance with its own data, even for FNV-identical tokens', async () => {
     const spy = spyPerToken();
     renderDetail(`/orders/${CODE}#t=${FNV_COLLIDING_A}`);

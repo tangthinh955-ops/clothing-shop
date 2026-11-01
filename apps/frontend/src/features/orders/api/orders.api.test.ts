@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseOrderDetailView, type OrderDetailResult } from './orders.api';
+import { parseOrderDetailView, parseOrderLookupResult, type OrderDetailResult } from './orders.api';
 
 // M4.4.1 runtime contract: the guest order view is untrusted until parsed; anything malformed or
 // out of bounds never renders as an order view.
@@ -97,5 +97,35 @@ describe('parseOrderDetailView', () => {
       .order.recipient.email).toHaveLength(254);
     expect(() => parseOrderDetailView({ ...view(),
       order: { ...view().order, recipient: { ...view().order.recipient, email: 'e'.repeat(255) } } })).toThrow();
+  });
+});
+
+describe('parseOrderLookupResult (M4.4.2)', () => {
+  const CODE = 'ABCDUVWXYZ2';
+  const wire = () => ({ ...view(), lookupToken: 'T'.repeat(32) }); // 192-bit base64url token
+
+  it('keeps the allowlisted view and the fresh token of a well-formed lookup answer', () => {
+    const parsed = parseOrderLookupResult(wire(), CODE);
+    expect(parsed.view).toEqual(view());
+    expect(parsed.lookupToken).toBe('T'.repeat(32));
+  });
+
+  it('refuses to navigate on a missing, short or non-string token', () => {
+    expect(() => parseOrderLookupResult(view(), CODE)).toThrow(); // token missing entirely
+    expect(() => parseOrderLookupResult({ ...view(), lookupToken: 'short' }, CODE)).toThrow();
+    expect(() => parseOrderLookupResult({ ...view(), lookupToken: 42 }, CODE)).toThrow();
+  });
+
+  it('binds the answer to the requested order code, foreign or punctuated alike', () => {
+    expect(() => parseOrderLookupResult(wire(), 'MNPQRSTUV34')).toThrow(); // a different order's code
+    expect(() => parseOrderLookupResult({ ...wire(), order: { ...view().order, code: 'A?x=1' } }, CODE))
+      .toThrow(); // query-string-looking code must never pass the binding
+    expect(() => parseOrderLookupResult({ ...wire(), order: { ...view().order, code: 'ABCDUVWXYZ2 ' } }, CODE))
+      .toThrow(); // untrimmed echo does not match the normalized request
+  });
+
+  it('collapses a malformed view part into the error state instead of an order view', () => {
+    expect(() => parseOrderLookupResult({ unexpected: 'shape' }, CODE)).toThrow();
+    expect(() => parseOrderLookupResult({ ...view(), order: { ...view().order, total: 1 } }, CODE)).toThrow();
   });
 });

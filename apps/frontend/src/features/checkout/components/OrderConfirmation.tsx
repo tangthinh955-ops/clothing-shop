@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import type { CreateOrderResult } from '../api/orders.api';
@@ -80,7 +80,10 @@ export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
         </Stack>
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-        Hãy lưu lại mã đơn để tra cứu sau. {!cartCleared && 'Giỏ hàng của bạn vừa thay đổi nên vẫn được giữ nguyên.'}
+        Hãy lưu lại mã đơn để tra cứu sau. Mất link riêng?{' '}
+        {/* The lookup is the way back even when this answer was a replay without a fresh token. */}
+        <Link component={RouterLink} to="/orders/lookup">Tra cứu bằng mã đơn và số điện thoại</Link>.
+        {!cartCleared && ' Giỏ hàng của bạn vừa thay đổi nên vẫn được giữ nguyên.'}
       </Typography>
       <Stack direction="row" spacing={2} useFlexGap sx={{ mt: 2, flexWrap: 'wrap' }}>
         {/* Both actions end the confirmed intent first (m4.3.1 review fix 6): leaving it confirmed

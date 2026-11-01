@@ -1,5 +1,6 @@
 // Customer-service pages listed in both the footer and the mobile menu.
 export const supportLinks = [
+  { to: '/orders/lookup', label: 'Tra cứu đơn' },
   { to: '/size-guide', label: 'Bảng size' },
   { to: '/contact', label: 'Liên hệ' },
   { to: '/shipping', label: 'Giao hàng' },

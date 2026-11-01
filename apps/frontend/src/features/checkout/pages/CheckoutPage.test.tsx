@@ -145,6 +145,9 @@ describe('checkout quote page', () => {
     // M4.4.1: the confirmation exposes the private link exactly once, through buttons only.
     expect(screen.getByRole('link', { name: 'Xem đơn hàng' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sao chép link riêng' })).toBeVisible();
+    // M4.4.2: the recovery path is announced on the confirmation as well.
+    expect(screen.getByRole('link', { name: 'Tra cứu bằng mã đơn và số điện thoại' }))
+      .toHaveAttribute('href', '/orders/lookup');
     await userEvent.click(screen.getByRole('link', { name: 'Xem đơn hàng' }));
     // The fragment token travels in the address; the path query stays free of it.
     expect(await screen.findByText(/Trang đơn chi tiết \/orders\/AB23456789CD/)).toBeVisible();
@@ -161,6 +164,9 @@ describe('checkout quote page', () => {
     expect(await screen.findByText('EF23456789GH')).toBeVisible();
     expect(screen.queryByRole('link', { name: 'Xem đơn hàng' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sao chép link riêng' })).not.toBeInTheDocument();
+    // M4.4.2: a replay without a token still leaves the customer the lookup path.
+    expect(screen.getByRole('link', { name: 'Tra cứu bằng mã đơn và số điện thoại' }))
+      .toHaveAttribute('href', '/orders/lookup');
   });
 
   it('keeps the draft and shows the server reason on a definite failure, then allows a new intent', async () => {
