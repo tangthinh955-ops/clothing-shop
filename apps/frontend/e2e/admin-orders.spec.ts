@@ -77,7 +77,7 @@ async function placeCodOrder(page: Page): Promise<string> {
   await page.getByRole('button', { name: 'Đóng giỏ hàng' }).click();
   await page.goto('/checkout');
   await page.getByRole('button', { name: 'Lấy báo giá' }).click();
-  await expect(page.getByText('Thông tin nhận hàng')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await page.getByLabel('Họ tên', { exact: true }).fill(RECIPIENT);
   await page.getByLabel('Số điện thoại', { exact: true }).fill(PHONE);
   await page.getByLabel('Tỉnh/thành', { exact: true }).fill('TP. Hồ Chí Minh');
