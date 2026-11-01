@@ -51,6 +51,26 @@ describe('admin order list', () => {
     expect(document.title).toBe('Đơn hàng | Quản trị | RMG Labels');
   });
 
+  it('opens an order from its code and comes back to the same filtered list', async () => {
+    const user = userEvent.setup();
+    const detail = { ...order, currency: 'VND', version: 0, bankDeadlineAt: null, trackingNumber: null, deliveredAt: null, cancelledAt: null,
+      cancelReason: null, recipient: { name: 'Nguyễn Thử', phone: '0901234567', email: null },
+      address: { province: 'Hà Nội', district: '', ward: 'Phường A', addressLine: '1 Phố B' }, customerNote: null,
+      subtotalVnd: 700000, shippingFeeVnd: 30000, items: [], history: [], notes: [] };
+    vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
+    vi.spyOn(authApi, 'me').mockResolvedValue(admin);
+    vi.spyOn(client, 'request').mockImplementation((url: string) =>
+      Promise.resolve(url === `/admin/orders/${order.id}` ? detail : page([order])));
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={['/admin/orders?status=PENDING']}><CurrentUrl /><App /></MemoryRouter>
+    </QueryClientProvider>);
+    await user.click(await screen.findByRole('link', { name: order.code }));
+    expect(await screen.findByRole('heading', { name: order.code, level: 1 })).toBeVisible();
+    await user.click(screen.getByRole('link', { name: 'Về danh sách đơn' }));
+    expect(await screen.findByRole('listitem', { name: order.code })).toBeVisible();
+    expect(screen.getByTestId('url')).toHaveTextContent('?status=PENDING');
+  });
+
   it('is reachable from the admin home page', async () => {
     renderPage('/admin', () => Promise.resolve(page([])));
     expect(await screen.findByRole('link', { name: 'Đơn hàng' })).toHaveAttribute('href', '/admin/orders');

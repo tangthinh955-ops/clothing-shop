@@ -138,6 +138,33 @@ test('a guest order reaches the admin list, which filters and searches it', asyn
     await admin.setViewportSize({ width: 390, height: 844 });
     expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await admin.screenshot({ path: info.outputPath('admin-orders-mobile.png'), fullPage: true, animations: 'disabled' });
+
+    // M4.5.2: the code opens the full snapshot; a note survives a reload and the way back keeps the search.
+    await admin.setViewportSize({ width: 1280, height: 720 });
+    await admin.getByRole('link', { name: code, exact: true }).click();
+    await expect(admin.getByRole('heading', { name: code, level: 1 })).toBeVisible();
+    const recipient = admin.getByRole('region', { name: 'Người nhận' });
+    await expect(recipient).toContainText(RECIPIENT);
+    await expect(recipient).toContainText('12 Nguyễn Huệ, Quận 1, Phường Bến Nghé, TP. Hồ Chí Minh');
+    await expect(admin.getByRole('region', { name: 'Sản phẩm' })).toContainText(`${SKU} · M · Đen`);
+    await expect(admin.getByRole('region', { name: 'Lịch sử trạng thái' })).toContainText('Khách đặt hàng');
+
+    const note = `Ghi chú thử ${tag.slice(0, 8)}`;
+    await admin.getByLabel('Thêm ghi chú').fill(note);
+    await admin.getByRole('button', { name: 'Lưu ghi chú' }).click();
+    const notes = admin.getByRole('region', { name: 'Ghi chú nội bộ' });
+    await expect(notes.getByText(note, { exact: true })).toBeVisible();
+    await expect(admin.getByLabel('Thêm ghi chú')).toHaveValue('');
+    await admin.reload();
+    await expect(notes.getByText(note, { exact: true })).toBeVisible();
+    await expect(notes).toContainText('Admin đơn thử');
+
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-order-detail-mobile.png'), fullPage: true, animations: 'disabled' });
+
+    await admin.getByRole('link', { name: 'Về danh sách đơn' }).click();
+    await expect(admin).toHaveURL(/\/admin\/orders\?.*q=/);
   } finally {
     await adminContext.close();
   }

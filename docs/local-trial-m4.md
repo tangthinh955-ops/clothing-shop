@@ -220,7 +220,20 @@ Chưa có ở phần này: bấm vào đơn để xem chi tiết (M4.5.2), các 
 
 ### M4.5.2 — Chi tiết và ghi chú admin
 
-Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/người nhận snapshot và lịch sử. Thêm ghi chú thử → refresh còn; lỗi mạng/version giữ draft và báo rõ, không ghi đè trường nghiệp vụ. Sau khi có thao tác tiếp theo, kiểm tra lịch sử actor/thời gian/lý do.
+Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/người nhận snapshot và lịch sử. Thêm ghi chú thử → refresh còn; lỗi mạng giữ draft, khóa nội dung và cho gửi lại đúng ghi chú đó, không ghi đè trường nghiệp vụ. Ghi chú chỉ thêm, không sửa/xóa, nên không có lỗi version. Sau khi có thao tác tiếp theo, kiểm tra lịch sử actor/thời gian/lý do.
+
+Đã triển khai (chờ người dùng thử). Có migration mới: chạy `./tools/npm.ps1 run db:migrate` từ root rồi khởi động lại `dev:backend`, `dev:frontend`.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Ở `/admin/orders`, lọc rồi bấm mã một đơn | Mở `/admin/orders/<id>`: mã đơn, trạng thái, phương thức, nguồn, thời gian; Người nhận (SĐT bấm gọi được, địa chỉ đầy đủ, ghi chú của khách); Sản phẩm, tạm tính, phí giao, tổng; Lịch sử trạng thái |
+| Đối chiếu với lúc đặt, sửa giá sản phẩm rồi tải lại | Đơn vẫn giữ giá và tên lúc đặt |
+| Bấm "Về danh sách đơn" | Về đúng danh sách đang lọc |
+| Bấm "Lưu ghi chú" khi ô trống | Báo "Nhập nội dung ghi chú.", không gửi |
+| Nhập ghi chú rồi lưu, tải lại trang | Ghi chú còn, có tên người viết và thời gian; ô nhập trống lại |
+| DevTools → Network → Offline, lưu ghi chú | Báo lỗi kết nối, nội dung bị khóa, có nút "Gửi lại"; bật mạng rồi bấm thì chỉ có một ghi chú |
+| Mở link xem đơn của khách (`/orders/<mã>#t=…`) | Không thấy ghi chú nội bộ |
+| Mở `/admin/orders/khong-co` | "Không tìm thấy đơn hàng." và nút về danh sách |
 
 ### M4.5.3 — Xác nhận COD
 

@@ -2,6 +2,31 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 01/11/2026 — M4.5.2: chi tiết đơn và ghi chú nội bộ cho admin
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.2 ("duyệt"), gồm ghi chú chỉ thêm không sửa/xóa và làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng nói "tiếp tục" sau M4.5.1, chưa xác nhận đã chạy thử M4.5.1.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `prisma/migrations/202611010001_m4_order_notes/migration.sql` | **Migration chỉ thêm bảng** `order_notes` (đơn, người viết, nội dung ≤1000, thời gian); xóa đơn thì xóa ghi chú, không xóa được user đã viết ghi chú. Chưa áp dụng vào DB local `clothing_local` và production; DB test tự áp dụng |
+| `apps/backend/src/modules/orders/admin-orders.service.ts`, `admin-orders.controller.ts`, `orders.module.ts` | `GET /admin/orders/:id`: snapshot, lịch sử (tên người thao tác), ghi chú; không có hash token; id sai dạng 400, không có đơn 404 |
+| `admin-order-notes.service.ts`, `dto/admin-order-note.dto.ts` (mới) | `POST /admin/orders/:id/notes` qua CSRF + `Idempotency-Key`: ghi chú và bản ghi chống trùng trong một transaction; gửi lại trả đúng ghi chú cũ, cùng key khác nội dung/khác đơn 409, hai request đua chỉ tạo một ghi chú. Không đổi `Order.version`/trạng thái/tiền |
+| `apps/frontend/src/features/admin/orders/pages/AdminOrderDetailPage.tsx`, `components/OrderNotes.tsx`, `orderLabels.ts` (mới, `orderLabels.ts` **ngoài danh sách dự kiến** để list và chi tiết dùng chung nhãn); `api/admin-orders.api.ts`; `pages/AdminOrdersPage.tsx`; `app/App.tsx` | Mã đơn trong danh sách là link; quay lại giữ bộ lọc; trang chi tiết có Người nhận (SĐT bấm gọi được), Sản phẩm + tiền, Lịch sử, Ghi chú nội bộ. Lỗi mạng khóa nội dung và cho "Gửi lại" cùng key; server từ chối (4xx) thì giữ draft để sửa, dùng key mới |
+| Test | `admin-orders.integration.spec.ts` +12; mới `AdminOrderDetailPage.test.tsx` (12); `AdminOrdersPage.test.tsx` +1; `e2e/admin-orders.spec.ts` thêm mở đơn, ghi chú, tải lại, quay lại giữ bộ lọc |
+| `docs/m4-contract.md`, `docs/architecture.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Chốt API ghi chú; bỏ yêu cầu lỗi version của ghi chú; hướng dẫn thử |
+
+**TDD:** 12 ca API và 12 ca UI RED (chưa có route/trang) → GREEN. Bản đầu của phần gửi lại ép kiểu mù JSON đã lưu; đã đổi sang đọc lại đúng ghi chú từ DB trước khi chạy kiểm tra cuối.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 414 frontend |
+| `npm run test:integration` | 140/140, 15 file; gồm ghi chú không xuất hiện trong view của khách |
+| `npm run test:e2e:implemented` | 52/52 (1,5 phút) |
+| Ảnh Playwright 390px danh sách và chi tiết | Không tràn ngang; bản máy tính chỉ qua E2E, chưa xem ảnh |
+
+**Giới hạn:** chưa có nút xử lý đơn (M4.5.3–5.8), chưa có trạng thái thu tiền (M4.6). Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** cần `./tools/npm.ps1 run db:migrate` trước; xem [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.2. **Dừng chờ người dùng thử.**
+
 ## Ngày 01/11/2026 — M4.5.1: admin xem danh sách đơn
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.1 ("duyệt"). Nhánh `feat/m4.5.1-admin-orders-list` từ `main` `a421fcb`. Làm trước M4.4.3 vì shop cần thấy đơn trước tiên và phần này chỉ phụ thuộc M4.3.1; lý do đã ghi ở kế hoạch M4. Tài liệu giao M4 cho Người B, đã báo người dùng nên báo Người B tránh trùng việc. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.**

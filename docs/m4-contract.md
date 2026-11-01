@@ -110,4 +110,4 @@ Lịch sử kho và lịch sử đơn lưu `actorType` + `actorId` nullable; res
 - Chính sách hoàn khi giao thất bại (tiền hàng/phí giao) — chủ shop xác nhận trong kế hoạch M4.9.2 trước khi code.
 - ~~Cách nhập/quản lý tài khoản ngân hàng ở Cài đặt~~ — **đã chốt (M4.1.2):** nhập tay 4 trường, dùng đủ hoặc trống toàn bộ; không thêm dataset ngân hàng.
 - Nội dung chi tiết VietQR khi thanh toán một phần/quá hạn/đã hủy — chốt ở M4.6.1.
-- Endpoint ghi chú admin — chốt trước M4.5.2.
+- ~~Endpoint ghi chú admin~~ — **đã chốt (M4.5.2):** `POST /admin/orders/:id/notes`, header `Idempotency-Key`, body `{body}` 1–1000 ký tự sau trim → 201 `{id, body, authorName, createdAt}`; 401/403/404; trùng key khác nội dung hoặc khác đơn 409. Ghi chú chỉ thêm, không sửa/xóa, lưu ở `order_notes` riêng, không đổi `Order.version`/trạng thái/tiền nên không cần `expectedVersion`; không có trong view của khách. `GET /admin/orders/:id` trả snapshot, lịch sử và ghi chú, không có hash token.

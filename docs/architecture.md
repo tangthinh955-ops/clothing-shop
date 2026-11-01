@@ -152,6 +152,7 @@ Mutation nghiệp vụ cần `Idempotency-Key`, update cần expectedVersion. Re
 | Admin Inventory | GET /admin/inventory, /movements | filters → stock/ledger |
 | Admin Inventory | POST /admin/inventory/adjustments | variant/delta/reason → stock/effect; 400/409 |
 | Admin Orders | GET /admin/orders[/:id] | filters → list/detail |
+| Admin Orders | POST /admin/orders/:id/notes | body + Idempotency-Key → append-only internal note; 400/404/409 |
 | Admin Orders | POST /admin/orders/instagram | recipient/items/method → nullable-owner order; 400/409 |
 | Admin Orders | POST /admin/orders/:id/confirm, /pack, /ship, /deliver | version/tracking/actual time → state; 409 |
 | Admin Orders | POST /admin/orders/:id/cancel, /cancellation-decisions | reason/decision/version → result; 409 |

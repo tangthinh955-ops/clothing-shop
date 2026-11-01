@@ -6,6 +6,7 @@ import supertest, { type Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../dist/application.js';
 import { readEnvironment } from '../dist/config/environment.js';
+import { lookupTokenHash } from '../dist/modules/orders/order-command.js';
 import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
 
 // M4.5.1 admin order list: GET /admin/orders is ADMIN-only, reads real orders newest first, filters
@@ -24,6 +25,13 @@ let customer: Agent;
 let guest: Agent;
 let variantId = '';
 let sku = '';
+let detailId = '';
+let secondId = '';
+let thirdId = '';
+
+const DETAIL_CODE = 'DDDD5555DDDD';
+const DETAIL_TOKEN = 'D'.repeat(32);
+const noteKey = () => `admin-note-${randomUUID()}`;
 
 interface ListBody {
   items: Array<Record<string, unknown>>;
@@ -57,7 +65,7 @@ beforeAll(async () => {
   db = app.get(PrismaService); server = app.getHttpServer() as Server;
   const passwordHash = await hash(password);
   const prefix = randomUUID();
-  await db.user.create({ data: { email: `${prefix}-admin@example.test`, name: 'Admin đơn thử', role: 'ADMIN', passwordHash, emailVerifiedAt: new Date() } });
+  const adminUser = await db.user.create({ data: { email: `${prefix}-admin@example.test`, name: 'Admin đơn thử', role: 'ADMIN', passwordHash, emailVerifiedAt: new Date() } });
   await db.user.create({ data: { email: `${prefix}-customer@example.test`, name: 'Khách đơn thử', role: 'CUSTOMER', passwordHash, emailVerifiedAt: new Date() } });
   admin = supertest.agent(server);
   customer = supertest.agent(server);
@@ -79,6 +87,22 @@ beforeAll(async () => {
   await seedOrder({ code: 'AAAA2222AAAA', status: 'PENDING', name: 'Nguyễn Văn An', phone: '0901000001', createdAt: '2026-10-01T01:00:00.000Z' });
   await seedOrder({ code: 'BBBB3333BBBB', status: 'CONFIRMED', name: 'Trần Thị Bình', phone: '0901000002', createdAt: '2026-10-02T01:00:00.000Z', quantity: 3 });
   await seedOrder({ code: 'CCCC4444CCCC', status: 'CANCELLED', name: 'Lê Văn Cường', phone: '0901000003', createdAt: '2026-10-03T01:00:00.000Z' });
+  // M4.5.2 fixtures live outside the 0901000… phones searched above.
+  const seedDetail = (code: string, tokenHash: string | null) => db.order.create({ data: {
+    code, status: 'CONFIRMED', source: 'WEB', userId: null, recipientName: 'Phạm Chi Tiết', phone: '0902000001',
+    email: 'detail@example.test', province: 'TP. Hồ Chí Minh', district: 'Quận 1', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ',
+    note: 'Gọi trước khi giao', method: 'COD', currency: 'VND', subtotalVnd: 400000, shippingFeeVnd: 30000, totalVnd: 430000,
+    settingsVersion: 0, version: 1, lookupTokenHash: tokenHash, createdAt: new Date('2026-09-01T01:00:00.000Z'),
+    items: { create: [{ variantId, productName: 'Tên lúc đặt', sku: 'SKU-LUC-DAT', size: 'M', color: 'Đen', unitPriceVnd: 200000,
+      quantity: 2, lineTotalVnd: 400000 }] },
+    history: { create: [
+      { fromStatus: null, toStatus: 'PENDING', actorType: 'GUEST', actorId: null, version: 0, createdAt: new Date('2026-09-01T01:00:00.000Z') },
+      { fromStatus: 'PENDING', toStatus: 'CONFIRMED', actorType: 'ADMIN', actorId: adminUser.id, reason: 'Đã gọi khách', version: 1,
+        createdAt: new Date('2026-09-01T02:00:00.000Z') }] },
+  } });
+  detailId = (await seedDetail(DETAIL_CODE, lookupTokenHash(DETAIL_TOKEN))).id;
+  secondId = (await seedDetail('EEEE6666EEEE', null)).id;
+  thirdId = (await seedDetail('FFFF7777FFFF', null)).id;
 });
 
 afterAll(async () => {
@@ -162,5 +186,117 @@ describe('GET /admin/orders (M4.5.1)', () => {
     ['a search term over 80 characters', { q: 'x'.repeat(81) }],
   ])('rejects %s', async (_label, query) => {
     await list(admin, query).expect(400);
+  });
+});
+
+describe('GET /admin/orders/:id (M4.5.2)', () => {
+  it('refuses anonymous and non-admin callers, and answers 404/400 for unknown or malformed ids', async () => {
+    await guest.get(`/api/v1/admin/orders/${detailId}`).expect(401);
+    await customer.get(`/api/v1/admin/orders/${detailId}`).expect(403);
+    await admin.get(`/api/v1/admin/orders/${randomUUID()}`).expect(404);
+    await admin.get('/api/v1/admin/orders/not-a-uuid').expect(400);
+  });
+
+  it('answers the full snapshot, its history and no token hash', async () => {
+    const response = await admin.get(`/api/v1/admin/orders/${detailId}`).expect(200);
+    expect(response.body).toMatchObject({
+      id: detailId, code: DETAIL_CODE, status: 'CONFIRMED', source: 'WEB', method: 'COD', currency: 'VND', version: 1,
+      recipient: { name: 'Phạm Chi Tiết', phone: '0902000001', email: 'detail@example.test' },
+      address: { province: 'TP. Hồ Chí Minh', district: 'Quận 1', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ' },
+      customerNote: 'Gọi trước khi giao', subtotalVnd: 400000, shippingFeeVnd: 30000, totalVnd: 430000,
+      trackingNumber: null, deliveredAt: null, cancelledAt: null, cancelReason: null,
+      items: [{ variantId, productName: 'Tên lúc đặt', sku: 'SKU-LUC-DAT', size: 'M', color: 'Đen', unitPriceVnd: 200000,
+        quantity: 2, lineTotalVnd: 400000 }],
+      history: [
+        { fromStatus: null, toStatus: 'PENDING', actorName: 'Khách đặt hàng', reason: null, version: 0 },
+        { fromStatus: 'PENDING', toStatus: 'CONFIRMED', actorName: 'Admin đơn thử', reason: 'Đã gọi khách', version: 1 },
+      ],
+    });
+    const raw = JSON.stringify(response.body);
+    expect(raw).not.toContain('lookupTokenHash');
+    expect(raw).not.toContain(lookupTokenHash(DETAIL_TOKEN));
+  });
+
+  it('keeps showing what was ordered after the live product changes', async () => {
+    await db.variant.update({ where: { id: variantId }, data: { price: 999000 } });
+    const response = await admin.get(`/api/v1/admin/orders/${detailId}`).expect(200);
+    expect((response.body as { items: Array<{ unitPriceVnd: number; productName: string }> }).items[0])
+      .toMatchObject({ unitPriceVnd: 200000, productName: 'Tên lúc đặt' });
+    await db.variant.update({ where: { id: variantId }, data: { price: 200000 } });
+  });
+});
+
+describe('POST /admin/orders/:id/notes (M4.5.2)', () => {
+  async function postNote(agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey()) {
+    const csrf = (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    const request = agent.post(`/api/v1/admin/orders/${orderId}/notes`).set('Origin', origin).set('X-CSRF-Token', csrf);
+    return (key === undefined ? request : request.set('Idempotency-Key', key)).send(body as object);
+  }
+  const noteCount = (orderId: string) => db.orderNote.count({ where: { orderId } });
+
+  it('refuses anonymous and non-admin callers, and a request without CSRF', async () => {
+    expect((await postNote(guest, detailId, { body: 'Không được ghi' })).status).toBe(401);
+    expect((await postNote(customer, detailId, { body: 'Không được ghi' })).status).toBe(403);
+    await admin.post(`/api/v1/admin/orders/${detailId}/notes`).set('Origin', origin).set('Idempotency-Key', noteKey())
+      .send({ body: 'Không có CSRF' }).expect(403);
+    expect(await noteCount(detailId)).toBe(0);
+  });
+
+  it.each([
+    ['an empty note', { body: '   ' }],
+    ['a note over 1000 characters', { body: 'x'.repeat(1001) }],
+    ['a missing note', {}],
+  ])('rejects %s', async (_label, body) => {
+    expect((await postNote(admin, detailId, body)).status).toBe(400);
+    expect(await noteCount(detailId)).toBe(0);
+  });
+
+  it('needs a valid Idempotency-Key and an existing order', async () => {
+    const missing = await admin.get('/api/v1/auth/csrf').expect(200);
+    await admin.post(`/api/v1/admin/orders/${detailId}/notes`).set('Origin', origin)
+      .set('X-CSRF-Token', missing.body.csrfToken as string).send({ body: 'Thiếu key' }).expect(400);
+    expect((await postNote(admin, detailId, { body: 'Key ngắn' }, 'short')).status).toBe(400);
+    expect((await postNote(admin, randomUUID(), { body: 'Không có đơn' })).status).toBe(404);
+  });
+
+  it('stores a trimmed note by the signed-in admin and shows it on the order, without touching the order', async () => {
+    const before = await db.order.findUniqueOrThrow({ where: { id: detailId } });
+    const created = await postNote(admin, detailId, { body: '  Khách hẹn giao sau 18h  ' });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ body: 'Khách hẹn giao sau 18h', authorName: 'Admin đơn thử' });
+    const detail = await admin.get(`/api/v1/admin/orders/${detailId}`).expect(200);
+    expect((detail.body as { notes: Array<Record<string, unknown>> }).notes.at(-1))
+      .toMatchObject({ id: created.body.id, body: 'Khách hẹn giao sau 18h', authorName: 'Admin đơn thử' });
+    const after = await db.order.findUniqueOrThrow({ where: { id: detailId } });
+    expect({ version: after.version, status: after.status, totalVnd: Number(after.totalVnd), updatedAt: after.updatedAt })
+      .toEqual({ version: before.version, status: before.status, totalVnd: Number(before.totalVnd), updatedAt: before.updatedAt });
+  });
+
+  it('replays the same key to the same note and refuses that key with different content', async () => {
+    const key = noteKey();
+    const first = await postNote(admin, secondId, { body: 'Ghi chú một lần' }, key);
+    expect(first.status).toBe(201);
+    const replay = await postNote(admin, secondId, { body: 'Ghi chú một lần' }, key);
+    expect(replay.status).toBe(201);
+    expect(replay.body.id).toBe(first.body.id);
+    expect(await noteCount(secondId)).toBe(1);
+    expect((await postNote(admin, secondId, { body: 'Nội dung khác' }, key)).status).toBe(409);
+    expect((await postNote(admin, detailId, { body: 'Ghi chú một lần' }, key)).status).toBe(409);
+    expect(await noteCount(secondId)).toBe(1);
+  });
+
+  it('creates one note when the same key races', async () => {
+    const key = noteKey();
+    const results = await Promise.all([postNote(admin, thirdId, { body: 'Đua' }, key), postNote(admin, thirdId, { body: 'Đua' }, key)]);
+    expect(results.map((result) => result.status)).toEqual([201, 201]);
+    expect(results[0]!.body.id).toBe(results[1]!.body.id);
+    expect(await noteCount(thirdId)).toBe(1);
+  });
+
+  it('never reaches the guest view of the order', async () => {
+    const secret = `Nội bộ ${randomUUID()}`;
+    expect((await postNote(admin, detailId, { body: secret })).status).toBe(201);
+    const view = await guest.get(`/api/v1/orders/${DETAIL_CODE}`).set('X-Order-Token', DETAIL_TOKEN).expect(200);
+    expect(JSON.stringify(view.body)).not.toContain(secret);
   });
 });
