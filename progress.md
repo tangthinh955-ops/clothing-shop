@@ -2,6 +2,28 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.5.3: admin xác nhận đơn COD
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.3 ("duyệt"), gồm đơn chuyển khoản chưa xác nhận được tới M4.6. Làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1, M4.5.2.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts`, `dto/admin-order-transition.dto.ts` (mới); `admin-orders.controller.ts`, `orders.module.ts` | `POST /admin/orders/:id/confirm` (200, CSRF, `Idempotency-Key`, `{expectedVersion}`). Một transaction: kiểm tra key, khóa dòng đơn, kiểm tra version, trạng thái `PENDING` và COD, cập nhật đơn (version +1), ghi `order_status_history` có actor, ghi bản ghi chống trùng scope `orders.transition:confirm`. Không đổi kho hay tiền. Các phần M4.5.4–5.7 thêm một rule mới vào service này. Không migration |
+| `apps/frontend/src/features/admin/orders/components/OrderActions.tsx` (mới); `api/admin-orders.api.ts`; `pages/AdminOrderDetailPage.tsx` | Nút "Xác nhận đơn" chỉ hiện với đơn PENDING + COD; hộp thoại hỏi lại; 4xx báo lỗi + "Tải lại đơn"; lỗi mạng "Gửi lại" cùng key và version; rời hộp thoại sau kết quả không rõ thì tải lại đơn |
+| Test | `admin-orders.integration.spec.ts` +11; `AdminOrderDetailPage.test.tsx` +8; `e2e/admin-orders.spec.ts` thêm bước xác nhận (kiểm tra kho không đổi, tải lại vẫn đúng) |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Chốt response/mã lỗi của confirm; hướng dẫn thử; điểm dừng |
+
+**TDD:** 11 ca API RED (chưa có route) và 6/8 ca UI RED (2 ca "không hiện nút" đạt sẵn vì trang chưa có nút; vẫn giữ làm test hồi quy) → GREEN.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 422 frontend |
+| `npm run test:integration` | 151/151, 15 file; gồm hai admin đua khác key đúng một thắng, cùng key chỉ áp dụng một lần, kho không đổi, khách không thấy tên admin |
+| `npm run test:e2e:implemented` | 52/52 |
+
+**Giới hạn:** chưa có đóng gói, bàn giao, giao xong, hủy (M4.5.4–5.7). Đơn đã xác nhận vẫn giữ hàng và chưa có cách nhả. Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.3. **Dừng chờ người dùng thử.**
+
 ## Ngày 01/11/2026 — M4.5.2: chi tiết đơn và ghi chú nội bộ cho admin
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.2 ("duyệt"), gồm ghi chú chỉ thêm không sửa/xóa và làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng nói "tiếp tục" sau M4.5.1, chưa xác nhận đã chạy thử M4.5.1.

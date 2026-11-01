@@ -239,6 +239,17 @@ Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/ng
 
 Đơn PENDING → Xác nhận → CONFIRMED; tồn giữ nguyên, chưa thu COD. Lưu bằng tab snapshot cũ hoặc trạng thái sai →409. Bấm đúp không tạo hai history/effect. Bank chỉ thử sau6.2: thiếu tiền không confirm, đủ trước hạn mới hợp lệ.
 
+Đã triển khai (chờ người dùng thử). Cần migration của M4.5.2 nếu chưa chạy.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở một đơn "Chờ xác nhận", bấm "Xác nhận đơn" | Hộp thoại hỏi lại; bấm "Để sau" thì không có gì đổi |
+| Bấm "Xác nhận" | Trạng thái thành "Đã xác nhận", nút biến mất, Lịch sử thêm "Chờ xác nhận → Đã xác nhận" với tên admin; tải lại trang vẫn đúng |
+| Xem trang Kho của SKU đó | Tồn thực có và Đang giữ không đổi |
+| Mở đơn ở hai tab, xác nhận ở tab 1, rồi xác nhận ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; Lịch sử chỉ có một dòng xác nhận |
+| DevTools → Offline, bấm "Xác nhận" | Báo lỗi kết nối và có "Gửi lại"; bật mạng rồi bấm thì đơn được xác nhận đúng một lần |
+| Mở link xem đơn của khách | Thấy "Đã xác nhận", người thao tác hiện "Cửa hàng", không có tên admin |
+
 ### M4.5.4 — Đóng gói
 
 CONFIRMED → Đóng gói → PACKING. Khách giờ chỉ gửi yêu cầu hủy; nút/API hủy trực tiếp không được. Thử transition sai, stale version và double-click, số kho/tiền không bị đổi ngoài hiệu ứng được thiết kế.

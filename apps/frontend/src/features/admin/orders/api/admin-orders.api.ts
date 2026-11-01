@@ -80,6 +80,13 @@ export interface AdminOrderDetail {
   notes: AdminOrderNote[];
 }
 
+export interface AdminOrderTransition {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  version: number;
+}
+
 export const ADMIN_ORDERS_PAGE_SIZE = 20;
 export const adminOrdersKey = ['admin-orders'] as const;
 
@@ -96,6 +103,11 @@ export const adminOrdersApi = {
   // GET /api/v1/admin/orders/:id — snapshot, status history and internal notes of one order.
   detail(id: string) {
     return request<AdminOrderDetail>(`/admin/orders/${encodeURIComponent(id)}`);
+  },
+  // POST /api/v1/admin/orders/:id/confirm — PENDING to CONFIRMED; a stale version or wrong status answers 409.
+  confirm(id: string, expectedVersion: number, idempotencyKey: string) {
+    return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/confirm`,
+      { method: 'POST', body: { expectedVersion }, idempotencyKey });
   },
   // POST /api/v1/admin/orders/:id/notes — append-only internal note; the key makes a resend safe.
   addNote(id: string, body: string, idempotencyKey: string) {

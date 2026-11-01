@@ -134,7 +134,7 @@ Mỗi phần một nhánh và PR, người còn lại review. Chỉ một PR có
 
 ### M4 — Bán hàng
 
-**Người B phụ trách toàn bộ; M4.0.1–M4.0.3, M4.1, M4.2, M4.3.1 (đặt đơn COD không cần tài khoản), M4.4.1 (xem đơn qua link riêng), M4.4.2 (tra cứu mã đơn+SĐT), M4.5.1 (admin xem danh sách đơn) và M4.5.2 (chi tiết đơn + ghi chú nội bộ) đã được triển khai theo từng phạm vi duyệt — chưa có hủy đơn, admin xử lý đơn, thanh toán; đang chờ người dùng chạy thử/nghiệm thu.** Kết quả kiểm tra mới nhất và giới hạn ở [progress.md](../progress.md). Phần tiếp theo đề xuất là M4.5.3 admin xác nhận đơn COD, cần kế hoạch và duyệt riêng.
+**Người B phụ trách toàn bộ; M4.0.1–M4.0.3, M4.1, M4.2, M4.3.1 (đặt đơn COD không cần tài khoản), M4.4.1 (xem đơn qua link riêng), M4.4.2 (tra cứu mã đơn+SĐT), M4.5.1 (admin xem danh sách đơn), M4.5.2 (chi tiết đơn + ghi chú nội bộ) và M4.5.3 (xác nhận đơn COD) đã được triển khai theo từng phạm vi duyệt — chưa có hủy đơn, admin xử lý đơn, thanh toán; đang chờ người dùng chạy thử/nghiệm thu.** Kết quả kiểm tra mới nhất và giới hạn ở [progress.md](../progress.md). Phần tiếp theo đề xuất là M4.5.4 admin đóng gói, cần kế hoạch và duyệt riêng.
 
 - [ ] [CREATE] orders/payments/settings và features cart/checkout/order lookup/admin orders/payments; [MODIFY] Mail bổ sung notification của đơn.
 - [ ] [MODIFY] schema/migration; thêm idempotency và lịch sử.

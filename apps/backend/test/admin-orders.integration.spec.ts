@@ -300,3 +300,123 @@ describe('POST /admin/orders/:id/notes (M4.5.2)', () => {
     expect(JSON.stringify(view.body)).not.toContain(secret);
   });
 });
+
+describe('POST /admin/orders/:id/confirm (M4.5.3)', () => {
+  const stock = () => db.inventory.findUniqueOrThrow({ where: { variantId }, select: { onHand: true, reserved: true, version: true } });
+  const historyOf = (orderId: string) => db.orderStatusHistory.findMany({ where: { orderId }, orderBy: { version: 'asc' } });
+  const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  let sequence = 0;
+
+  /** A fresh order per test, so one scenario's confirmation never changes another's starting state. */
+  async function pendingOrder(overrides: { method?: 'COD' | 'BANK_TRANSFER'; status?: 'PENDING' | 'CONFIRMED' | 'CANCELLED'; token?: string } = {}) {
+    sequence += 1;
+    const code = `GGGGGGGGGGG${CODE_LETTERS[sequence]!}`;
+    const order = await db.order.create({ data: {
+      code, status: overrides.status ?? 'PENDING', source: 'WEB', userId: null, recipientName: 'Khách Xác Nhận', phone: '0903000001', email: null,
+      province: 'Hà Nội', district: '', ward: 'Phường A', addressLine: '1 Phố B', note: null, method: overrides.method ?? 'COD', currency: 'VND',
+      subtotalVnd: 200000, shippingFeeVnd: 30000, totalVnd: 230000, settingsVersion: 0, version: 0,
+      lookupTokenHash: overrides.token ? lookupTokenHash(overrides.token) : null,
+      bankDeadlineAt: overrides.method === 'BANK_TRANSFER' ? new Date(Date.now() + 3600000) : null,
+      items: { create: [{ variantId, productName: 'Áo danh sách đơn', sku, size: 'M', color: 'Đen', unitPriceVnd: 200000, quantity: 1, lineTotalVnd: 200000 }] },
+      history: { create: [{ fromStatus: null, toStatus: overrides.status ?? 'PENDING', actorType: 'GUEST', actorId: null, version: 0 }] },
+    } });
+    return { id: order.id, code };
+  }
+
+  async function confirm(agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey(), withCsrf = true) {
+    const csrf = withCsrf ? (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string : undefined;
+    const request = agent.post(`/api/v1/admin/orders/${orderId}/confirm`).set('Origin', origin);
+    if (csrf) request.set('X-CSRF-Token', csrf);
+    if (key !== undefined) request.set('Idempotency-Key', key);
+    return request.send(body as object);
+  }
+
+  it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
+    const { id } = await pendingOrder();
+    expect((await confirm(guest, id, { expectedVersion: 0 })).status).toBe(401);
+    expect((await confirm(customer, id, { expectedVersion: 0 })).status).toBe(403);
+    expect((await confirm(admin, id, { expectedVersion: 0 }, noteKey(), false)).status).toBe(403);
+    expect((await confirm(admin, randomUUID(), { expectedVersion: 0 })).status).toBe(404);
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).status).toBe('PENDING');
+  });
+
+  it('needs a valid key and an expected version', async () => {
+    const { id } = await pendingOrder();
+    expect((await confirm(admin, id, { expectedVersion: 0 }, 'short')).status).toBe(400);
+    const csrf = (await admin.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    await admin.post(`/api/v1/admin/orders/${id}/confirm`).set('Origin', origin).set('X-CSRF-Token', csrf)
+      .send({ expectedVersion: 0 }).expect(400);
+    expect((await confirm(admin, id, {})).status).toBe(400);
+    expect((await confirm(admin, id, { expectedVersion: -1 })).status).toBe(400);
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).status).toBe('PENDING');
+  });
+
+  it('moves a COD order to CONFIRMED with a history entry, leaving stock untouched', async () => {
+    const { id, code } = await pendingOrder();
+    const before = await stock();
+    const response = await confirm(admin, id, { expectedVersion: 0 });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ id, code, status: 'CONFIRMED', version: 1 });
+    const history = await historyOf(id);
+    expect(history).toHaveLength(2);
+    expect(history[1]).toMatchObject({ fromStatus: 'PENDING', toStatus: 'CONFIRMED', actorType: 'ADMIN', version: 1 });
+    expect(await stock()).toEqual(before);
+    const detail = await admin.get(`/api/v1/admin/orders/${id}`).expect(200);
+    expect((detail.body as { history: Array<{ actorName: string }> }).history[1]).toMatchObject({ actorName: 'Admin đơn thử' });
+  });
+
+  it('refuses a stale version without changing the order', async () => {
+    const { id } = await pendingOrder();
+    expect((await confirm(admin, id, { expectedVersion: 7 })).status).toBe(409);
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: 'PENDING', version: 0 });
+    expect(await historyOf(id)).toHaveLength(1);
+  });
+
+  it.each(['CONFIRMED', 'CANCELLED'] as const)('refuses an order that is already %s', async (status) => {
+    const { id } = await pendingOrder({ status });
+    expect((await confirm(admin, id, { expectedVersion: 0 })).status).toBe(409);
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status, version: 0 });
+  });
+
+  it('refuses a bank transfer order, which needs full payment first', async () => {
+    const { id } = await pendingOrder({ method: 'BANK_TRANSFER' });
+    expect((await confirm(admin, id, { expectedVersion: 0 })).status).toBe(409);
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: 'PENDING', version: 0 });
+  });
+
+  it('replays the same key to the same result and refuses that key with another version', async () => {
+    const { id, code } = await pendingOrder();
+    const key = noteKey();
+    expect((await confirm(admin, id, { expectedVersion: 0 }, key)).status).toBe(200);
+    const replay = await confirm(admin, id, { expectedVersion: 0 }, key);
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ id, code, status: 'CONFIRMED', version: 1 });
+    expect(await historyOf(id)).toHaveLength(2);
+    expect((await confirm(admin, id, { expectedVersion: 1 }, key)).status).toBe(409);
+  });
+
+  it('lets exactly one of two racing admins win when their keys differ', async () => {
+    const { id } = await pendingOrder();
+    const results = await Promise.all([confirm(admin, id, { expectedVersion: 0 }), confirm(admin, id, { expectedVersion: 0 })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(await historyOf(id)).toHaveLength(2);
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: 'CONFIRMED', version: 1 });
+  });
+
+  it('applies once when the same key races', async () => {
+    const { id } = await pendingOrder();
+    const key = noteKey();
+    const results = await Promise.all([confirm(admin, id, { expectedVersion: 0 }, key), confirm(admin, id, { expectedVersion: 0 }, key)]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    expect(await historyOf(id)).toHaveLength(2);
+  });
+
+  it('shows the customer the new status without naming the admin', async () => {
+    const token = 'E'.repeat(32);
+    const { id, code } = await pendingOrder({ token });
+    expect((await confirm(admin, id, { expectedVersion: 0 })).status).toBe(200);
+    const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
+    expect((view.body as { order: { status: string } }).order.status).toBe('CONFIRMED');
+    expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
+  });
+});

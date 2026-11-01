@@ -159,6 +159,19 @@ test('a guest order reaches the admin list, which filters and searches it', asyn
     await expect(notes.getByText(note, { exact: true })).toBeVisible();
     await expect(notes).toContainText('Admin đơn thử');
 
+    // M4.5.3: confirming moves the order on, records who did it, and keeps the same stock on hold.
+    const held = await db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } });
+    await admin.getByRole('button', { name: 'Xác nhận đơn' }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Xác nhận', exact: true }).click();
+    await expect(admin.getByRole('button', { name: 'Xác nhận đơn' })).toHaveCount(0);
+    const history = admin.getByRole('region', { name: 'Lịch sử trạng thái' });
+    await expect(history).toContainText('Chờ xác nhận → Đã xác nhận');
+    await expect(history).toContainText('Admin đơn thử');
+    await admin.reload();
+    await expect(history).toContainText('Chờ xác nhận → Đã xác nhận');
+    await expect(admin.getByRole('button', { name: 'Xác nhận đơn' })).toHaveCount(0);
+    expect(await db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } })).toEqual(held);
+
     await admin.setViewportSize({ width: 390, height: 844 });
     expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await admin.screenshot({ path: info.outputPath('admin-order-detail-mobile.png'), fullPage: true, animations: 'disabled' });

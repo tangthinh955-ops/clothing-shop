@@ -7,6 +7,7 @@ import { pageTitle } from '../../../../shared/shop';
 import { formatMoney } from '../../../catalog/catalogFormat';
 import { ORDER_STATUS_LABELS } from '../../../orders/orderStatusLabels';
 import { adminOrdersApi, adminOrdersKey, type AdminOrderDetail } from '../api/admin-orders.api';
+import { OrderActions } from '../components/OrderActions';
 import { OrderNotes } from '../components/OrderNotes';
 import { formatOrderTime, METHOD_LABELS, SOURCE_LABELS } from '../orderLabels';
 
@@ -24,7 +25,7 @@ function MoneyRow({ label, amount, strong = false }: { label: string; amount: nu
   </Stack>;
 }
 
-function OrderView({ order, onNoteSaved }: { order: AdminOrderDetail; onNoteSaved: () => unknown }) {
+function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: () => unknown }) {
   const { recipient, address } = order;
   const fullAddress = [address.addressLine, address.ward, address.district, address.province].filter(Boolean).join(', ');
   return <Stack spacing={2}>
@@ -39,6 +40,8 @@ function OrderView({ order, onNoteSaved }: { order: AdminOrderDetail; onNoteSave
       {order.trackingNumber && <Typography>Mã vận đơn: {order.trackingNumber}</Typography>}
       {order.cancelReason && <Typography>Lý do hủy: {order.cancelReason}</Typography>}
     </Box>
+    {/* Remounts per version, so a finished action never carries its key or outcome into the next one. */}
+    <OrderActions key={order.version} order={order} onChanged={onChanged} />
     <Section id="order-recipient-title" title="Người nhận">
       <Typography sx={{ fontWeight: 600 }}>{recipient.name}</Typography>
       <Link href={`tel:${recipient.phone}`} underline="always">{recipient.phone}</Link>
@@ -77,7 +80,7 @@ function OrderView({ order, onNoteSaved }: { order: AdminOrderDetail; onNoteSave
       </Stack>
     </Section>
     <Section id="order-notes-title" title="Ghi chú nội bộ">
-      <OrderNotes orderId={order.id} notes={order.notes} onSaved={onNoteSaved} />
+      <OrderNotes orderId={order.id} notes={order.notes} onSaved={onChanged} />
     </Section>
   </Stack>;
 }
@@ -103,6 +106,6 @@ export function AdminOrderDetailPage() {
       </Alert>
       {!notFound && <Button variant="outlined" disabled={order.isFetching} onClick={() => { void order.refetch(); }}>Tải lại đơn hàng</Button>}
     </Stack>}
-    {order.data && <OrderView order={order.data} onNoteSaved={() => order.refetch()} />}
+    {order.data && <OrderView order={order.data} onChanged={() => order.refetch()} />}
   </Box>;
 }

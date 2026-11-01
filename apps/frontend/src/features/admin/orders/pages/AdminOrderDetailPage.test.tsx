@@ -213,3 +213,122 @@ describe('internal notes', () => {
     expect(screen.queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
   });
 });
+
+describe('confirming an order', () => {
+  const pending = { ...order, status: 'PENDING', version: 0, history: [order.history[0]!] };
+  const confirmed = { ...pending, status: 'CONFIRMED', version: 1, history: order.history };
+  const transition = { id: ORDER_ID, code: order.code, status: 'CONFIRMED', version: 1 };
+
+  // A small server: the order stays pending until a confirmation is accepted.
+  function server(onConfirm: () => Promise<unknown> = () => Promise.resolve(transition)): Answer {
+    let current: typeof pending = pending;
+    return async (_url, options) => {
+      if (options?.method !== 'POST') return current;
+      const answer = await onConfirm();
+      current = confirmed;
+      return answer;
+    };
+  }
+  const confirmCalls = (request: ReturnType<typeof renderPage>) => request.mock.calls.filter(([url]) => String(url).endsWith('/confirm'));
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Xác nhận đơn' }));
+    return screen.findByRole('dialog', { name: `Xác nhận đơn ${order.code}?` });
+  }
+
+  it.each([
+    ['already confirmed', order],
+    ['a bank transfer', { ...pending, method: 'BANK_TRANSFER' }],
+  ])('offers no confirmation for an order that is %s', async (_label, shown) => {
+    renderPage(() => Promise.resolve(shown));
+    await screen.findByRole('heading', { name: order.code, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Xác nhận đơn' })).not.toBeInTheDocument();
+  });
+
+  it('asks first, and sends nothing when the admin backs out', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(confirmCalls(request)).toHaveLength(0);
+  });
+
+  it('sends the viewed version with a key, then shows the new status and history', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Xác nhận' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Xác nhận đơn' })).not.toBeInTheDocument());
+    const [call] = confirmCalls(request);
+    expect(call?.[0]).toBe(`/admin/orders/${ORDER_ID}/confirm`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 0 } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    expect(await within(screen.getByRole('region', { name: 'Lịch sử trạng thái' })).findByText(/Chờ xác nhận → Đã xác nhận/)).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('sends once while a confirmation is in flight', async () => {
+    const user = userEvent.setup();
+    let finish: (value: unknown) => void = () => undefined;
+    const request = renderPage(server(() => new Promise((resolve) => { finish = resolve; })));
+    const dialog = await openDialog(user);
+    const send = within(dialog).getByRole('button', { name: 'Xác nhận' });
+    await Promise.all([user.click(send), user.click(send)]);
+    expect(confirmCalls(request)).toHaveLength(1);
+    expect(send).toBeDisabled();
+    finish(transition);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('explains a conflict and reloads the order instead of retrying', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const request = renderPage((_url, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('CONFLICT', 'Đơn đã thay đổi. Hãy tải lại đơn rồi thử lại.', 409));
+      attempts += 1;
+      return Promise.resolve(attempts === 1 ? pending : confirmed);
+    });
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Xác nhận' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Đơn đã thay đổi.');
+    expect(within(dialog).queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await within(screen.getByRole('region', { name: 'Lịch sử trạng thái' })).findByText(/Chờ xác nhận → Đã xác nhận/)).toBeVisible();
+    expect(confirmCalls(request)).toHaveLength(1);
+  });
+
+  it('resends the same key and version after a lost response', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const request = renderPage(server(() => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : Promise.resolve(transition);
+    }));
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Xác nhận' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Xác nhận đơn' })).not.toBeInTheDocument());
+    const [first, second] = confirmCalls(request);
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+
+  it('reloads the order when the admin leaves after a lost response, since it may have gone through', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const request = renderPage((url, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0));
+      attempts += 1;
+      return Promise.resolve(attempts === 1 ? pending : confirmed);
+    });
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Xác nhận' }));
+    await within(dialog).findByRole('alert');
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Xác nhận đơn' })).not.toBeInTheDocument());
+    expect(request.mock.calls.filter(([url]) => url === `/admin/orders/${ORDER_ID}`)).toHaveLength(2);
+  });
+});
