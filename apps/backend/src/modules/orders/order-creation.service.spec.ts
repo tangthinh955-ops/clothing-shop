@@ -6,6 +6,7 @@ import type { SettingsService } from '../settings/settings.service.js';
 import type { InventoryOperationsService, StockEffect } from './inventory-operations.service.js';
 import { canonicalizeOrderCommand, hashOrderCommand } from './order-command.js';
 import { OrderCreationService } from './order-creation.service.js';
+import type { OrderNotificationsService } from './order-notifications.service.js';
 import { normalizeVietnamesePhone } from './order-command.js';
 
 const variantA = '17bfecab-9df4-4de4-bd91-3c11116fca5b';
@@ -98,7 +99,9 @@ function harness(options: {
     idempotencyRecord: { findUnique: vi.fn(async () => null) },
   };
   const ops = { reserve } as unknown as InventoryOperationsService;
-  const service = new OrderCreationService(db as unknown as PrismaService, settings as unknown as SettingsService, ops);
+  const notifications = { enqueueOrderCreated: vi.fn(async () => undefined), dispatchOrderCreated: vi.fn(async () => undefined) };
+  const service = new OrderCreationService(db as unknown as PrismaService, settings as unknown as SettingsService, ops,
+    notifications as unknown as OrderNotificationsService);
   return { service, tx, reserve, settings, isolation, commands: createdOrders };
 }
 

@@ -75,7 +75,8 @@ Tình trạng từng phần xem mục điểm dừng và progress. Cột chạy 
 | M4.8.1 | Admin tạo đơn Instagram | Form recipient/items/method, dùng chung quote/create/stock/payment | Có nguồn Instagram; userId nullable; không gán owner theo số/email, không bypass giá/kho | 3.1, 5.2, 6.1 |
 | M4.9.1 | Admin ghi giao thất bại | SHIPPED →DELIVERY_FAILED | Chưa nhập lại kho, không hủy thẳng đơn đã xuất | 5.5 |
 | M4.9.2 | Admin nhận hàng về shop | Thực nhận/bán lại được/hỏng/thiếu, stock receipt và financial obligation | Chỉ restock phần bán được; nhận lặp không cộng thêm; phần thiếu còn cần xử lý | 9.1, 6.3; chủ shop chốt chính sách hoàn trước code |
-| M4.10.1 | Shop/khách có email nhận thư tạo đơn | NotificationDelivery intent + mail preview ngoài transaction | Không email vẫn đặt được; mail lỗi không rollback; không gửi lại vô hạn/trùng mỗi lần replay | 3.1; rà thêm8.1 |
+| M4.10.1.1 | Shop nhận thư có đơn mới | NotificationDelivery intent + mail preview ngoài transaction, gửi tới admin đang hoạt động, không có dữ liệu khách | Mail lỗi không rollback; replay không gửi trùng; admin bị khóa không nhận | 3.1 |
+| M4.10.1.2 | Khách có email nhận thư tạo đơn | Dùng lại delivery; cần domain gửi thư đã xác minh, chưa làm được với sender thử hiện tại | Không email vẫn đặt được; mail lỗi không rollback; không gửi trùng | 10.1.1; rà thêm8.1 |
 | M4.10.2 | Thư trạng thái và retry | Worker retry có giới hạn, nhận lại sau restart, thông báo trạng thái liên quan | Retry cùng delivery, không tạo lại đơn/kho/thu; không lộ link/token trong log | 10.1, 5.x, 7.x |
 | M4.11.1 | Người dùng thử trọn luồng M4 | Full E2E/integration, quyền, money/stock races, mobile, restart và runbook | Ghi từng ca đã chạy/chưa chạy; dừng nghiệm thu; không tự deploy/open sale | Các phần trước |
 

@@ -64,7 +64,7 @@ Mở địa chỉ Studio được terminal hiển thị; chọn bảng `users` �
 
 ## Tài khoản và thư thử
 
-Đăng ký bằng email giả, ví dụ thuộc `example.test`. Khi MAIL_MODE=preview, thư xác minh/reset nằm trong `.local/mailbox/mail-*.json`: mở file và sao chép URL ở trường `text`. Không công khai thư mục này hoặc gửi token vào chat/log. Thư thử được dọn khi gửi tiếp sau hạn một giờ; token vẫn có hạn và dùng một lần. Preview chỉ local/test, startup production từ chối chế độ này.
+Đăng ký bằng email giả, ví dụ thuộc `example.test`. Khi MAIL_MODE=preview, thư xác minh/reset và thư báo đơn mới gửi tới admin nằm trong `.local/mailbox/mail-*.json`: mở file và sao chép URL ở trường `text`. Không công khai thư mục này hoặc gửi token vào chat/log. Thư thử được dọn khi gửi tiếp sau hạn một giờ; token vẫn có hạn và dùng một lần. Preview chỉ local/test, startup production từ chối chế độ này.
 
 Không có mật khẩu admin mặc định. Để tạo admin, đặt `ADMIN_EMAIL` và `ADMIN_PASSWORD` riêng trong môi trường của terminal hoặc `.env` bị Git bỏ qua, chạy:
 

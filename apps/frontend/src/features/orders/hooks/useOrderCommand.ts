@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ApiError } from '../../../../shared/api/client';
+import { ApiError } from '../../../shared/api/client';
 
 const CONNECTION_MESSAGE = 'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.';
 
@@ -12,7 +12,7 @@ export type OrderCommandOutcome =
 
 type Perform = (idempotencyKey: string) => Promise<unknown>;
 
-// One admin action on an order: blocks a second send while one is in flight, and keeps the key and
+// One action on an order, by an admin or the customer: blocks a second send while one is in flight, and keeps the key and
 // the exact request until the action is finished, so a resend can never apply a different command.
 export function useOrderCommand(onFinished: () => void) {
   const [pending, setPending] = useState(false);

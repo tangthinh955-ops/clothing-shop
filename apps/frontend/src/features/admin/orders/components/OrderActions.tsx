@@ -2,7 +2,7 @@ import { Stack } from '@mui/material';
 import type { OrderStatus } from '../../../orders/api/orders.api';
 import { adminOrdersApi, type AdminOrderDetail } from '../api/admin-orders.api';
 import { deliveryTimeProblem, fromVietnamInput, toVietnamInput } from '../deliveryTime';
-import { OrderInputAction } from './OrderInputAction';
+import { OrderInputAction } from '../../../orders/components/OrderInputAction';
 import { OrderStepAction } from './OrderStepAction';
 
 // Display only: the backend decides every transition again under the order lock.

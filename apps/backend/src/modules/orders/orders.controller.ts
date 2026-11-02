@@ -2,9 +2,11 @@ import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Use
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto.js';
+import { OrderCancelDto } from './dto/order-cancel.dto.js';
 import { OrderLookupDto } from './dto/order-lookup.dto.js';
 import { OrderAccessGuard } from './order-access.guard.js';
 import { OrderAccessService } from './order-access.service.js';
+import { OrderCancellationService } from './order-cancellation.service.js';
 import { OrderCreationService } from './order-creation.service.js';
 import { OrderLookupService } from './order-lookup.service.js';
 
@@ -21,6 +23,7 @@ export class OrdersController {
     @Inject(OrderCreationService) private readonly orders: OrderCreationService,
     @Inject(OrderAccessService) private readonly access: OrderAccessService,
     @Inject(OrderLookupService) private readonly lookups: OrderLookupService,
+    @Inject(OrderCancellationService) private readonly cancellations: OrderCancellationService,
   ) {}
 
   @Post()
@@ -46,5 +49,15 @@ export class OrdersController {
     // The guard already normalized X-Order-Token into request.orderToken; the service hashes it
     // against the stored SHA-256 and answers the customer allowlist view.
     return this.access.view(code, request.orderToken!);
+  }
+
+  // Guest cancellation (M4.4.3): same token gate as the view, its own 5/min/IP budget like the lookup.
+  @Post(':code/cancel')
+  @HttpCode(200)
+  @Throttle({ ip: { limit: 5, ttl: 60000 } })
+  @UseGuards(OrderAccessGuard)
+  cancel(@Param('code') code: string, @Headers('idempotency-key') key: string | undefined, @Req() request: Request, @Body() dto: OrderCancelDto) {
+    return this.cancellations.cancel({ code, token: request.orderToken!, sessionId: request.sessionID, key,
+      expectedVersion: dto.expectedVersion, reason: dto.reason });
   }
 }

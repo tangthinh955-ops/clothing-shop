@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { hash } from 'argon2';
 import { randomUUID } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { PrismaService } from '../../backend/dist/modules/prisma/prisma.service.js';
 import { readEnvironment } from '../../backend/dist/config/environment.js';
 
@@ -90,6 +92,18 @@ async function placeCodOrder(page: Page): Promise<string> {
   return code;
 }
 
+async function orderNoticeFor(email: string, code: string): Promise<string | null> {
+  const directory = path.resolve('../../.local/test-mailbox');
+  for (const filename of await readdir(directory).catch(() => [])) {
+    if (!filename.endsWith('.json')) continue;
+    // The backend may still be writing this file while the test polls: the next poll reads it whole.
+    const value: unknown = await readFile(path.join(directory, filename), 'utf8').then((raw) => JSON.parse(raw) as unknown).catch(() => null);
+    if (!value || typeof value !== 'object' || !('to' in value) || value.to !== email) continue;
+    if ('text' in value && typeof value.text === 'string' && value.text.includes(code)) return value.text;
+  }
+  return null;
+}
+
 async function login(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
@@ -103,6 +117,14 @@ async function login(page: Page, email: string) {
 test('a guest order reaches the admin list, which filters and searches it', async ({ page, browser }, info) => {
   test.setTimeout(60000);
   const code = await placeCodOrder(page);
+
+  // M4.10.1.1: the order reaches the shop's mailbox without carrying the customer's details.
+  await expect.poll(() => orderNoticeFor(adminEmail, code), { timeout: 10000 }).not.toBeNull();
+  const notice = await orderNoticeFor(adminEmail, code);
+  expect(notice).toContain('/admin/orders/');
+  expect(notice).toMatch(/430\.000/);
+  for (const secret of [RECIPIENT, PHONE, 'Nguyễn Huệ']) expect(notice).not.toContain(secret);
+  expect(await orderNoticeFor(customerEmail, code)).toBeNull();
 
   const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
     extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });

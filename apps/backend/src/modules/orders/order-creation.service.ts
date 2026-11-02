@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service.js';
 import { CART_LINES_LIMIT, CART_QUANTITY_LIMIT } from '../products/cart-products.service.js';
 import { canonicalizeOrderCommand, generateLookupToken, generateOrderCode, hashOrderCommand,
   lookupTokenHash, type OrderCommand } from './order-command.js';
+import { OrderNotificationsService } from './order-notifications.service.js';
 
 const CREATE_SCOPE = 'orders.create';
 const KEY_PATTERN = /^[A-Za-z0-9_-]{16,120}$/;
@@ -73,6 +74,7 @@ export class OrderCreationService {
     @Inject(PrismaService) private readonly db: PrismaService,
     @Inject(SettingsService) private readonly settings: SettingsService,
     @Inject(InventoryOperationsService) private readonly inventory: InventoryOperationsService,
+    @Inject(OrderNotificationsService) private readonly notifications: OrderNotificationsService,
   ) {}
 
   async create(input: { key: string | undefined; sessionId: string; dto: {
@@ -101,8 +103,11 @@ export class OrderCreationService {
         // same-phone requests, the reserve UPDATE re-evaluates its guard on the locked row, and every
         // read (prices, quota) then sees the latest committed state instead of a stale RR snapshot.
         // The timeout covers legitimate waits on the phone lock and on contended inventory rows.
-        return await this.db.$transaction(async (tx) => this.createInTx(tx, { identity, key: input.key!, requestHash, command }),
+        const result = await this.db.$transaction(async (tx) => this.createInTx(tx, { identity, key: input.key!, requestHash, command }),
           { isolationLevel: 'ReadCommitted', timeout: 15000, maxWait: 5000 });
+        // Only the request that committed the order sends; the customer never waits on the mail.
+        if (!result.replay) void this.notifications.dispatchOrderCreated(result.order.code);
+        return result;
       } catch (error) {
         // A colliding guest-visible code is meaningless randomness: retry with a fresh code. Every
         // other unique violation is the command record race and resolves as a replay or a conflict.
@@ -227,6 +232,8 @@ export class OrderCreationService {
     if (quote.expiresAt.getTime() <= finalClock[0]!.now.getTime()) {
       throw quoteChanged('Báo giá đã hết hạn. Hãy lấy báo giá mới.');
     }
+
+    await this.notifications.enqueueOrderCreated(tx, order.id);
 
     const view: OrderConfirmationView = { code: order.code, status: 'PENDING', method: 'COD', currency: 'VND',
       items: snapshot, subtotal: Number(quote.subtotalVnd), shippingFee: Number(quote.shippingFeeVnd),
