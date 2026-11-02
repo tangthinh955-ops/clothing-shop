@@ -6,7 +6,7 @@ Website bán hàng thật của một shop quần áo, phục vụ khách từ I
 
 Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
-Điểm dừng hiện tại: ngày 31/10/2026 workflow GitHub **Deploy production** lần đầu đã deploy `main` `6d35c3d` — release `ci-20261031-1218-6d35c3d` tại [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop): M4.2 giỏ/quote, **5 sản phẩm thật** và **link preview M7.1.1** (`/api/v1/share/products/<slug>`). Gate CI + SSH key riêng cho CI + rollback tự động theo [hướng dẫn deploy](docs/deployment-guide.md). Cả ba dịch vụ healthy; chờ người dùng thử card Zalo bằng link share và nghiệm thu các phần đã làm. Bằng chứng ở [progress.md](progress.md); hướng dẫn M3/M4/tài khoản: [local-trial-m3](docs/local-trial-m3.md), [local-trial-m4](docs/local-trial-m4.md), [local-trial-m2](docs/local-trial-m2.md).
+Điểm dừng hiện tại: ngày 31/10/2026 workflow GitHub **Deploy production** lần đầu đã deploy `main` `6d35c3d` — release `ci-20261031-1218-6d35c3d` tại [trang chủ](https://adecy.duckdns.org/) và [cửa hàng](https://adecy.duckdns.org/shop): M4.2 giỏ/quote, **5 sản phẩm thật** và **link preview M7.1.1** (`/api/v1/share/products/<slug>`). Gate CI + SSH key riêng cho CI + rollback tự động theo [hướng dẫn deploy](docs/deployment-guide.md). Cả ba dịch vụ healthy; chờ người dùng thử card Zalo bằng link share và nghiệm thu các phần đã làm. Bằng chứng ở [progress.md](progress.md); hướng dẫn M3/M4/tài khoản: [local-trial-m3](docs/local-trial-m3.md), [local-trial-m4](docs/local-trial-m4.md), [local-trial-m2](docs/local-trial-m2.md).
 
 **Chưa mở bán:** giỏ M4.2.1, báo giá M4.2.2, đặt đơn COD M4.3.1, xem đơn qua link riêng M4.4.1 và tra cứu mã đơn+SĐT M4.4.2 đã viết, còn chờ kiểm tra/nghiệm thu; chưa có hủy đơn, admin xử lý đơn, thanh toán, backup ngoài VPS/diễn tập khôi phục (M6.2) và các phần bảo vệ/vận hành còn lại. Local và test chỉ dùng dữ liệu thử; dữ liệu khách thật chỉ nằm trên production.
 
@@ -127,7 +127,7 @@ Backend chạy sau một reverse proxy HTTPS trên VPS. M3.16.1 thực hiện s�
 
 Khi cấu hình sai, backend in rõ tên biến cần sửa (không in giá trị). Ảnh công khai trả `Cache-Control: public, max-age=86400`; mọi phản hồi khác giữ `no-store`. Lệnh `import:products` chạy trên VPS ghi ảnh vào cùng `UPLOADS_DIR`.
 
-Các file triển khai nằm trong `deploy/`: Dockerfile build Linux với OpenSSL cho Prisma, Compose project `rmg-shop`, nginx cho SPA/deep link và virtual host `rmglabels.duckdns.org`. Cổng web/API chỉ bind `127.0.0.1:4180`/`127.0.0.1:4200`; PostgreSQL không publish cổng. File env thật ở `/etc/rmg-shop/backend.env` trên VPS, không nằm trong image/source; tạo database/session secret riêng và không dùng cấu hình local. `MAIL_FROM=onboarding@resend.dev` hiện chỉ dành cho thư thử tới email tài khoản Resend; gửi cho khách cần domain gửi đã xác minh.
+Các file triển khai nằm trong `deploy/`: Dockerfile build Linux với OpenSSL cho Prisma, Compose project `rmg-shop`, nginx cho SPA/deep link và virtual host `adecy.duckdns.org`. Cổng web/API chỉ bind `127.0.0.1:4180`/`127.0.0.1:4200`; PostgreSQL không publish cổng. File env thật ở `/etc/rmg-shop/backend.env` trên VPS, không nằm trong image/source; tạo database/session secret riêng và không dùng cấu hình local. `MAIL_FROM=onboarding@resend.dev` hiện chỉ dành cho thư thử tới email tài khoản Resend; gửi cho khách cần domain gửi đã xác minh.
 
 ## File đưa lên Git
 

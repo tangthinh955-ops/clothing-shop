@@ -44,7 +44,7 @@ ssh masoi 'docker exec rmg-shop-db-1 dropdb -U postgres rmg_shop_restore_drill' 
 
 ## Phạm vi và bố cục
 
-Domain `rmglabels.duckdns.org` trỏ tới VPS Ubuntu 24.04. nginx trên host kết thúc HTTPS, phục vụ thử thách ACME và chuyển `/api/` tới `127.0.0.1:4200`, đường dẫn còn lại tới `127.0.0.1:4180`. Container web phục vụ SPA và deep link; container API chạy Node 24.22.1 bằng user `node`. PostgreSQL 18.6 nằm trên mạng Docker riêng, không publish cổng.
+Domain `adecy.duckdns.org` trỏ tới VPS Ubuntu 24.04. nginx trên host kết thúc HTTPS, phục vụ thử thách ACME và chuyển `/api/` tới `127.0.0.1:4200`, đường dẫn còn lại tới `127.0.0.1:4180`. Container web phục vụ SPA và deep link; container API chạy Node 24.22.1 bằng user `node`. PostgreSQL 18.6 nằm trên mạng Docker riêng, không publish cổng.
 
 Docker Compose project luôn là `rmg-shop`, định nghĩa trong `deploy/compose.production.yml`. Không dùng file `docker-compose.yml` ở root vì đó là cấu hình local. Không chạy lệnh Compose trong project của website khác.
 
@@ -99,7 +99,7 @@ sed '/# HTTPS-BEGIN/,/# HTTPS-END/d' deploy/nginx/rmglabels.conf > /etc/nginx/si
 ln -s /etc/nginx/sites-available/rmglabels /etc/nginx/sites-enabled/rmglabels
 nginx -t
 systemctl reload nginx
-certbot certonly --webroot --webroot-path /var/lib/rmg-shop/acme --domain rmglabels.duckdns.org --non-interactive --agree-tos --register-unsafely-without-email
+certbot certonly --webroot --webroot-path /var/lib/rmg-shop/acme --domain adecy.duckdns.org --non-interactive --agree-tos --register-unsafely-without-email
 install -m 0644 deploy/nginx/rmglabels.conf /etc/nginx/sites-available/rmglabels
 nginx -t
 systemctl reload nginx
@@ -109,7 +109,7 @@ Nếu `nginx -t` lỗi thì phục hồi file vừa thay và không reload. Khô
 
 ## Kiểm tra sau deploy
 
-- `https://rmglabels.duckdns.org/shop` và tải lại deep link trả HTML, chứng chỉ đúng domain; HTTP chuyển sang HTTPS.
+- `https://adecy.duckdns.org/shop` và tải lại deep link trả HTML, chứng chỉ đúng domain; HTTP chuyển sang HTTPS.
 - `/api/v1/health/ready` trả `200 {"status":"ok"}` khi PostgreSQL sẵn sàng; Swagger `/api/docs` không mở ở production.
 - GET `/api/v1/auth/csrf` qua HTTPS tạo cookie `__Host-shop.sid` với `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`. Chỉ kiểm tra các thuộc tính, không in hoặc lưu cookie/CSRF token vào log.
 - API `/api/v1/admin/products` không có phiên phải trả 401; không tắt guard để sửa lỗi deploy.
@@ -120,6 +120,8 @@ Nếu `nginx -t` lỗi thì phục hồi file vừa thay và không reload. Khô
 ## Cập nhật, rollback và giới hạn
 
 Release tiếp theo build image với tag mới, chạy migration đã review, đổi `RMG_RELEASE` trong file riêng và khởi động API/web từ release mới. Chỉ chuyển `/srv/rmg-shop/current` sau khi các dịch vụ healthy. Nếu lỗi ứng dụng và schema tương thích, chọn lại release/tag cũ và chạy `up -d --wait api web`; giữ nguyên database, ảnh và secret. **Đã diễn tập 31/10/2026 (M6.1.3):** rollback về `m4-2-20261031-1410-899b52c` rồi roll-forward về `ci-20261031-1218-6d35c3d` bằng đúng script — mỗi pha ~35 giây, DB/ảnh/secret không đổi, share endpoint biến mất/khôi phục đúng lúc (bằng chứng ở progress.md). Không tự rollback schema/data; migration không tương thích cần phương án riêng và backup trước khi áp dụng.
+
+**Rollback sau khi đổi domain (M6.4, 02/11/2026):** release tạo trước M6.4 có `PUBLIC_BASE` là domain cũ đã xóa, nên script bên trong release đó sẽ không qua được kiểm tra công khai. Khi cần quay về release cũ, chạy script của release hiện tại và truyền thư mục release cũ: `/srv/rmg-shop/current/deploy/deploy-release.sh /srv/rmg-shop/releases/<release-cũ>`. Domain không nằm trong image; `APP_ORIGIN` lấy từ `/etc/rmg-shop/backend.env`. Hook gia hạn hiện là `/etc/letsencrypt/renewal-hooks/deploy/rmg-adecy-reload-nginx.sh`; hook chỉ reload nginx khi đúng domain trong hook được gia hạn, nên đổi domain phải đổi cả hook.
 
 M3.16.1 chưa bao gồm nhập dữ liệu shop, backup ngoài VPS/diễn tập khôi phục (M6.2), cảnh báo downtime (M6.3), bảo vệ admin M3.17 hoặc luồng đơn hàng M4. Không kết luận sẵn sàng mở bán chỉ từ healthcheck xanh. Cấu hình Resend hiện chỉ hỗ trợ gửi thử; gửi cho khách cần domain gửi được xác minh.
 

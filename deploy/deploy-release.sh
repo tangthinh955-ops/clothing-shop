@@ -8,7 +8,7 @@ set -Eeuo pipefail
 
 SHOP_ROOT="/srv/rmg-shop"
 ENV_FILE="/etc/rmg-shop/backend.env"
-PUBLIC_BASE="https://rmglabels.duckdns.org"
+PUBLIC_BASE="https://adecy.duckdns.org"
 
 log() { printf '[deploy %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 die() {

@@ -73,7 +73,7 @@ jobs:
           cp deploy/ci-known-hosts ~/.ssh/known_hosts
           cat >> ~/.ssh/config <<'CFG'
           Host rmg-vps
-            HostName rmglabels.duckdns.org
+            HostName adecy.duckdns.org
             User root
             IdentityFile ~/.ssh/id_ed25519
             IdentitiesOnly yes
