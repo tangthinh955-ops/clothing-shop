@@ -1,6 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError } from '../../shared/api/client';
 import { isDefiniteOrderError, ordersApi, type CreateOrderBody, type CreateOrderResult } from './api/orders.api';
+import type { ContactDraft } from './hooks/useCreateOrder';
+
+export const EMPTY_CONTACT_DRAFT: ContactDraft = {
+  name: '', phone: '', email: '', province: '', district: '', ward: '', addressLine: '', note: '' };
 
 export type SubmissionPhase = 'idle' | 'pending' | 'unknown' | 'confirmed' | 'failed';
 
@@ -15,6 +19,8 @@ export interface OrderSubmissionState {
   fieldErrors: Record<string, string>;
   /** True once the confirmed order's cart-clear side effect has been applied (exactly once per command). */
   cartHandled: boolean;
+  /** Whether that side effect emptied the cart (false when the cart had changed and was kept). */
+  cartCleared: boolean;
 }
 
 export interface OrderSubmissionContextValue extends OrderSubmissionState {
@@ -27,18 +33,43 @@ export interface OrderSubmissionContextValue extends OrderSubmissionState {
   /** Marks a confirmed submission as consumed by the UI. */
   dismiss(): void;
   /** Records that the confirmed order's cart-clear side effect has run (exactly once per command). */
-  markCartHandled(): void;
+  markCartHandled(cleared: boolean): void;
+  /** The recipient form being typed. It lives here, above the routes, so leaving /checkout to edit
+   *  the cart keeps it; it is memory only (never browser storage) and empties once an order is placed. */
+  draft: ContactDraft;
+  setDraft(draft: ContactDraft): void;
 }
 
 const OrderSubmissionContext = createContext<OrderSubmissionContextValue | undefined>(undefined);
 
 const emptyState: OrderSubmissionState = { phase: 'idle', key: null, body: null, result: null, error: null,
-  fieldErrors: {}, cartHandled: false };
+  fieldErrors: {}, cartHandled: false, cartCleared: false };
+
+const DRAFT_ERROR_FIELDS = [
+  ['contact.name', 'name'], ['contact.phone', 'phone'], ['contact.email', 'email'],
+  ['address.province', 'province'], ['address.district', 'district'], ['address.ward', 'ward'],
+  ['address.addressLine', 'addressLine'], ['note', 'note'],
+] as const;
 
 export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<OrderSubmissionState>(emptyState);
+  const [draft, setDraft] = useState<ContactDraft>(EMPTY_CONTACT_DRAFT);
   const inFlightRef = useRef(false);
   const sequenceRef = useRef(0);
+
+  // Keep corrected server errors cleared across route changes, just like the draft itself.
+  const updateDraft = useCallback((next: ContactDraft) => {
+    setDraft(next);
+    const changedFields = DRAFT_ERROR_FIELDS.filter(([, field]) => draft[field] !== next[field]
+      || (field === 'province' && draft.provinceInput !== next.provinceInput));
+    if (!changedFields.length) return;
+    setState((current) => {
+      if (!changedFields.some(([path]) => current.fieldErrors[path])) return current;
+      const fieldErrors = { ...current.fieldErrors };
+      for (const [path] of changedFields) delete fieldErrors[path];
+      return { ...current, fieldErrors };
+    });
+  }, [draft]);
 
   const run = useCallback(async (key: string, body: CreateOrderBody, sequence: number, isRetry: boolean) => {
     setState((prev) => ({ ...prev, phase: 'pending', key, body, error: null, fieldErrors: {} }));
@@ -46,6 +77,7 @@ export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
       const result = await ordersApi.create(key, body);
       if (sequence !== sequenceRef.current) return;
       setState((prev) => ({ ...prev, phase: 'confirmed', result, error: null }));
+      setDraft(EMPTY_CONTACT_DRAFT);
     } catch (cause) {
       if (sequence !== sequenceRef.current) return;
       if (cause instanceof ApiError && isDefiniteOrderError(cause)) {
@@ -98,8 +130,9 @@ export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
     setState(emptyState);
   }, [state.phase]);
 
-  const markCartHandled = useCallback(() => {
-    setState((prev) => prev.phase === 'confirmed' && !prev.cartHandled ? { ...prev, cartHandled: true } : prev);
+  const markCartHandled = useCallback((cleared: boolean) => {
+    setState((prev) => prev.phase === 'confirmed' && !prev.cartHandled
+      ? { ...prev, cartHandled: true, cartCleared: cleared } : prev);
   }, []);
 
   // An unsettled intent must not die silently on reload/close; the response-loss path explains itself.
@@ -110,8 +143,8 @@ export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', guard);
   }, [state.phase]);
 
-  const value = useMemo(() => ({ ...state, submit, retry, reset, dismiss, markCartHandled }),
-    [state, submit, retry, reset, dismiss, markCartHandled]);
+  const value = useMemo(() => ({ ...state, submit, retry, reset, dismiss, markCartHandled, draft, setDraft: updateDraft }),
+    [state, submit, retry, reset, dismiss, markCartHandled, draft, updateDraft]);
   return <OrderSubmissionContext.Provider value={value}>{children}</OrderSubmissionContext.Provider>;
 }
 

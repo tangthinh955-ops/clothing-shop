@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import type { CreateOrderResult } from '../api/orders.api';
@@ -11,12 +11,26 @@ interface Props {
   onContinue: () => void;
 }
 
+type CopyState = 'idle' | 'copied' | 'failed';
+
+// In-app browsers (Instagram, Facebook) often block the clipboard; a failure must say so instead of
+// leaving the shopper to believe the link was saved.
+async function copyText(text: string): Promise<CopyState> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
+}
+
 /** COD confirmation: order code, server snapshot, the explicit "chưa thu tiền" state and — exactly
  *  once, on the first committed create — the private access link for /orders/:code (M4.4.1). */
 export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
   const navigate = useNavigate();
-  const [codeCopied, setCodeCopied] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
+  const [codeCopy, setCodeCopy] = useState<CopyState>('idle');
+  const [linkCopy, setLinkCopy] = useState<CopyState>('idle');
+  const canShare = typeof navigator.share === 'function';
   // The token is never stored anywhere: it lives in the URL fragment of the private link only.
   const accessLink = result.lookupToken
     ? `${window.location.origin}/orders/${result.order.code}#t=${result.lookupToken}`
@@ -28,13 +42,13 @@ export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap
         sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{result.order.code}</Typography>
-        <Button variant="outlined" size="small" onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(result.order.code);
-            setCodeCopied(true);
-          } catch { /* the code stays visible for manual copying */ }
-        }}>{codeCopied ? 'Đã sao chép' : 'Sao chép mã đơn'}</Button>
+        <Button variant="outlined" size="small" onClick={async () => setCodeCopy(await copyText(result.order.code))}>
+          {codeCopy === 'copied' ? 'Đã sao chép' : 'Sao chép mã đơn'}
+        </Button>
       </Stack>
+      {codeCopy === 'failed' && <Typography variant="body2" role="status" sx={{ mb: 2 }}>
+        Không sao chép được tự động. Hãy ghi lại mã đơn ở trên.
+      </Typography>}
       <Typography sx={{ mb: 2 }}>
         Trạng thái: <strong>Chờ xác nhận</strong> · Thanh toán khi nhận hàng (COD) — <strong>chưa thu tiền</strong>.
       </Typography>
@@ -42,13 +56,19 @@ export function OrderConfirmation({ result, cartCleared, onContinue }: Props) {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
           <Button component={RouterLink} to={`/orders/${result.order.code}#t=${result.lookupToken}`}
             variant="contained">Xem đơn hàng</Button>
-          <Button variant="outlined" onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(accessLink);
-              setLinkCopied(true);
-            } catch { /* the buttons stay usable for manual copying */ }
-          }}>{linkCopied ? 'Đã sao chép link' : 'Sao chép link riêng'}</Button>
+          <Button variant="outlined" onClick={async () => setLinkCopy(await copyText(accessLink))}>
+            {linkCopy === 'copied' ? 'Đã sao chép link' : 'Sao chép link riêng'}
+          </Button>
+          {canShare && <Button variant="outlined" onClick={() => {
+            // A dismissed share sheet rejects; the link stays on screen either way.
+            navigator.share({ title: `Đơn hàng ${result.order.code}`, url: accessLink }).catch(() => undefined);
+          }}>Chia sẻ link</Button>}
         </Stack>
+        <TextField label="Link riêng của đơn" value={accessLink} size="small" fullWidth sx={{ mb: 1 }}
+          slotProps={{ htmlInput: { readOnly: true, onFocus: (event: React.FocusEvent<HTMLInputElement>) => event.target.select() } }} />
+        {linkCopy === 'failed' && <Typography variant="body2" role="status" sx={{ mb: 1 }}>
+          Không sao chép được tự động. Hãy chạm vào ô link ở trên, chọn toàn bộ rồi sao chép.
+        </Typography>}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Chỉ người có link riêng này mới xem được đơn — lưu lại hoặc gửi cho người nhận. Link giữ được
           giữa các lần mở lại trình duyệt và vẫn xem được sau khi làm mới trang.

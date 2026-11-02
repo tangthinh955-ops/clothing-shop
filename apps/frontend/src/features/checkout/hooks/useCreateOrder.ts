@@ -9,6 +9,8 @@ export interface ContactDraft {
   phone: string;
   email: string;
   province: string;
+  /** Uncommitted picker text, kept in memory with the draft across route changes. */
+  provinceInput?: string;
   district: string;
   ward: string;
   addressLine: string;

@@ -2,6 +2,15 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — Git: ghép R2 và giải conflict nhánh checkout
+
+- **Phạm vi:** người dùng yêu cầu kéo về, fix conflict rồi push lại `feat/checkout-address-validation`. Working tree ban đầu sạch; fast-forward từ `68a0bd3` tới bản remote `78b501a` (đã ghép R1), rồi merge `origin/main` `ef6cd7f` (R2). Không rebase/force push, không merge ngược vào main hoặc deploy.
+- **Conflict:** giải 4 file `ContactAddressForm.tsx`, `CheckoutPage.tsx`, `docs/local-trial-m4.md`, `progress.md`. Giữ picker 34 tỉnh, chặn Enter với tỉnh chưa chọn, lỗi chỉ hiện sau thao tác, quận/huyện nhập tay và xóa khi đổi tỉnh; giữ R2 tự lấy báo giá, bản nháp qua điều hướng, link đơn và màn thành công. Giữ cả hai lịch sử tiến độ, bỏ marker và một dòng phân cách `=======` thừa.
+- **Test ghép:** giữ assertion của cả hai nhánh, chỉ bỏ bước bấm “Lấy báo giá” của 3 ca E2E/1 ca UI mới trên nhánh vì R2 tự lấy báo giá. Giữ tiêu đề form h2 của R2.
+- **Tương tác sau merge (RED → GREEN):** hai regression test mới trong `CheckoutPage.test.tsx` xác nhận chữ tìm tỉnh bị mất và lỗi server đã sửa hiện lại sau khi rời/quay về checkout. Giữ `provinceInput` tùy chọn trong `ContactDraft` ở bộ nhớ, form cập nhật nó qua draft; `OrderSubmissionProvider.updateDraft` xóa đúng lỗi trường đã đổi. Không đổi phase/key/body retry, không lưu PII vào storage; `useCreateOrder` dựng body tường minh nên không gửi metadata tìm tỉnh tới API.
+- **Kiểm tra bản cuối:** 83/83 test checkout + chi tiết đơn; typecheck toàn repo đạt; `./tools/npm.ps1 test` với `VITEST_MAX_WORKERS=4` đạt **10 tools + 74 backend + 540 frontend = 624 test**; `./tools/npm.ps1 run test:e2e:implemented` đạt **59/59 (5,0 phút)**, runner build backend/frontend và dọn DB riêng thành công. Review độc lập sau sửa không còn finding; diff/staged không còn marker conflict hoặc lỗi whitespace, quét mẫu credential trên 14 file merge không có phát hiện. Lượt full trước bổ sung hai regression đạt 10 tools + 74 backend + 538 frontend và 59/59 E2E, chỉ là bằng chứng bản ghép đầu. Còn cảnh báo Vite chunk >500 kB và pg deprecation có sẵn.
+- **Điểm dừng:** sau kiểm chứng tạo merge commit và push thường nhánh feature theo yêu cầu. Không đổi backend/schema/dependency hoặc chạy lại integration; test DB chỉ qua runner tạo và dọn DB local `_test` riêng. CI mới và nghiệm thu người dùng chưa được xác nhận.
+
 ## Ngày 02/11/2026 — Git: push nhánh chỉnh form checkout
 
 - Người dùng yêu cầu push `feat/checkout-address-validation`, gồm M4.3.1 và phần sửa M4.3.1.1 bên dưới. Đã đọc diff và đối chiếu đúng 11 file frontend/test/tài liệu, gồm hai file mới; không sửa thêm code trong lượt Git.
@@ -72,7 +81,26 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 **Giới hạn:** backend vẫn nhận địa chỉ dạng text và không kiểm tra tỉnh thuộc 34 đơn vị — theo phạm vi đã duyệt, chỉ chặn ở FE; đơn cũ không bị ảnh hưởng. Quận/huyện nhập tay, chưa có dataset quận/huyện/phường. Danh mục tĩnh trong FE, không gọi dịch vụ địa chỉ khi đang gõ. Chưa commit/push/deploy.
 
 **Còn lại:** người dùng chạy thử local theo `docs/local-trial-m4.md` M4.3.1 (đặc biệt mục 1–2 mới), phản hồi lỗi/UX rồi mới chốt phần.
-=======
+## Ngày 02/11/2026 — R2: luồng đặt hàng trên điện thoại
+
+**Phạm vi đã duyệt ("duyệt"):** nhánh `feat/r2-mobile-checkout` từ `main` `b803531`. Chỉ frontend; API, DB và luồng chống đặt trùng giữ nguyên. Bản nháp địa chỉ giữ trong bộ nhớ (không lưu vào trình duyệt) theo mặc định đã nêu. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy.**
+
+| File | Thay đổi |
+|---|---|
+| `checkout/pages/CheckoutPage.tsx` | Tự lấy báo giá khi mở trang; nút "Cập nhật báo giá" chỉ hiện khi hết hạn, lỗi, giỏ đổi; đặt xong chỉ còn màn xác nhận; form giữ nguyên khi báo giá hết hạn, chỉ khóa nút đặt |
+| `checkout/components/ContactAddressForm.tsx` | Báo lỗi theo ô đã rời hoặc sau khi bấm đặt; đưa con trỏ tới ô sai đầu tiên; `noValidate` để trình duyệt không chặn trước; tiêu đề `h2` |
+| `checkout/OrderSubmissionProvider.tsx` | Giữ bản nháp trong bộ nhớ, xóa khi đặt thành công; ghi lại giỏ có được xóa không ngay lúc xóa |
+| `checkout/components/OrderConfirmation.tsx` | Ô "Link riêng của đơn", báo khi sao chép thất bại, nút "Chia sẻ link" nếu điện thoại hỗ trợ |
+| `orders/pages/OrderDetailPage.tsx` | Nút tra cứu và dòng hướng dẫn dưới thông báo không tìm thấy đơn |
+| `CheckoutPage.test.tsx`, `OrderDetailPage.test.tsx`, 4 file E2E | Test mới cho từng mục; bỏ bước bấm "Lấy báo giá" |
+| `docs/local-trial-m4.md` | Mục R2 và bước thử mới |
+
+**Khác kế hoạch:**
+- Câu báo lỗi chính của trang đơn ("…đường dẫn đã nhận từ shop") giữ nguyên vì là câu đồng nhất với backend (`ORDER_ACCESS_NOT_FOUND`); chỉ sửa dòng hướng dẫn bên dưới.
+- Sửa thêm lỗi có từ trước trên màn thành công: đơn bình thường vẫn ghi "Giỏ hàng của bạn vừa thay đổi nên vẫn được giữ nguyên" vì so giỏ sau khi đã xóa.
+
+**Kiểm tra (local):** typecheck, build đạt; unit backend 74/74, frontend 529/529; E2E 56/56. Chưa chạy CI. Test mới fail trước khi sửa (21 ca, thêm 1 ca cho lỗi giỏ). Bộ checkout và đơn chạy 3 lần liên tiếp đều 101/101 sau khi sửa một ca canh thời gian. Đã chụp luồng trên mobile 390px: mở trang không có ô đỏ; bấm đặt khi trống thì báo lỗi và con trỏ về Họ tên; bản nháp còn sau khi quay lại sửa giỏ; màn thành công chỉ còn xác nhận, có ô link và dòng báo sao chép thất bại; trang đơn không token có nút tra cứu.
+
 ## Ngày 02/11/2026 — Đánh giá chức năng và R1: sửa nội dung sai/cũ
 
 **Tạm dừng tính năng mới** theo yêu cầu người dùng; M4.6 (thanh toán trước) chờ người dùng chốt chỉ chuyển khoản hay cho chọn cả COD.

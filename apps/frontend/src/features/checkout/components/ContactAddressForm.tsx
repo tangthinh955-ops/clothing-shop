@@ -27,7 +27,7 @@ export const phoneIsPlausible = (raw: string) => /^(\+?84|0)[\d\s.\-()]{8,14}$/.
  * has typed something else over it.
  */
 export function validateContactDraft(draft: ContactDraft,
-  provinceInput: string = draft.province): ContactDraftErrors {
+  provinceInput: string = draft.provinceInput ?? draft.province): ContactDraftErrors {
   const errors: ContactDraftErrors = {};
   if (draft.name.trim().length < 2 || draft.name.trim().length > 120) errors.name = 'Họ tên từ 2 đến 120 ký tự.';
   if (!phoneIsPlausible(draft.phone)) errors.phone = 'Số điện thoại Việt Nam chưa hợp lệ.';
@@ -67,7 +67,7 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
   const id = useId();
   const [touched, setTouched] = useState<Partial<Record<ErrorField, boolean>>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [provinceInput, setProvinceInput] = useState(value.province);
+  const provinceInput = value.provinceInput ?? value.province;
   // A server error stays visible only until the shopper edits the field it belongs to.
   const [editedFields, setEditedFields] = useState<Partial<Record<keyof ContactDraft, boolean>>>({});
   const nameRef = useRef<HTMLInputElement>(null);
@@ -103,19 +103,18 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
    *  one province. The picker also commits the text it displays. */
   const chooseProvince = (province: string | null) => {
     const next = province ?? '';
-    setProvinceInput(next);
     markEdited('province');
     setTouched((current) => ({ ...current, province: true }));
-    if (next === value.province) return;
-    onChange({ ...value, province: next, district: '' });
+    onChange({ ...value, province: next, provinceInput: next,
+      district: next === value.province ? value.district : '' });
   };
 
   const handleProvinceInput = (_event: React.SyntheticEvent, next: string, reason: string) => {
     // On blur MUI restores the last committed option. Keep what the shopper actually typed so the
     // form can explain why submit is blocked instead of silently sending the old province.
     if (reason === 'blur' || reason === 'reset') return;
-    setProvinceInput(next);
     markEdited('province');
+    onChange({ ...value, provinceInput: next });
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -138,7 +137,7 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
     noValidate
     sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
     onSubmit={handleSubmit}>
-    <Typography component="h3" variant="h5">Thông tin nhận hàng</Typography>
+    <Typography component="h2" variant="h5">Thông tin nhận hàng</Typography>
     <TextField id={`${id}-name`} label="Họ tên" value={value.name} disabled={disabled}
       onChange={update('name')} error={Boolean(fieldError('name', 'contact.name'))}
       helperText={fieldError('name', 'contact.name') ?? 'Nhập họ tên người nhận.'}

@@ -100,7 +100,6 @@ async function checkoutAndOrder(page: import('@playwright/test').Page, phone = '
   await addToCart(page);
   await page.goto('/cart');
   await page.getByRole('link', { name: 'Xem phí và tổng tiền' }).click();
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await page.getByLabel('Họ tên', { exact: true }).fill('Nguyễn Thử Link');
   await page.getByLabel('Số điện thoại', { exact: true }).fill(phone);
   await pickProvince(page, 'TP. Hồ Chí Minh');

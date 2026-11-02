@@ -131,7 +131,7 @@ Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ 
 | Thao tác | Kết quả mong đợi |
 |---|---|
 | `/cart` giỏ không rỗng → "Xem phí và tổng tiền" | Vào `/checkout`, thấy dòng "Phương thức hiện tại: COD" |
-| Bấm "Lấy báo giá" | Danh sách dòng đúng giỏ (đơn giá × số lượng), tiền hàng/phí/tổng từ server; "Báo giá chưa giữ hàng"; hết hạn ~15 phút |
+| Mở `/checkout` (từ R2 trang tự lấy báo giá, không còn nút "Lấy báo giá") | Danh sách dòng đúng giỏ (đơn giá × số lượng), tiền hàng/phí/tổng từ server; "Báo giá chưa giữ hàng"; hết hạn ~15 phút |
 | Chỉnh giỏ rồi lấy lại | "Giỏ đã thay đổi…" hoặc quote mới khớp giỏ; giá/phí đổi thì hiện "Dùng báo giá mới" để xác nhận, không tự thay tổng |
 | Chờ hết 15 phút | "Báo giá đã hết hạn" + "Cập nhật báo giá"; không tự lấy mới |
 | Giỏ có hàng ẩn/hết tồn | Bị chặn toàn bộ (409 ITEM_UNAVAILABLE/OUT_OF_STOCK), không có dòng nào được báo giá |
@@ -146,13 +146,15 @@ Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ 
 
 **Cập nhật 02/11/2026 (nhánh `feat/checkout-address-validation`, sửa tiếp M4.3.1.1):** form không báo lỗi trước khi khách chạm vào ô; lỗi hiện sau blur hoặc sau lần bấm "Đặt hàng COD" đầu tiên, tự mất khi sửa đúng. Nút đặt hàng luôn bấm được khi báo giá còn hợp lệ để lộ các ô còn thiếu; nếu form sai, trang focus ô lỗi đầu tiên và **không gửi** request tạo đơn. Tỉnh/thành là picker tìm kiếm không dấu với đúng 34 đơn vị cấp tỉnh; nếu gõ đè lên tỉnh đã chọn rồi Enter, form chặn, báo lỗi và focus ô tỉnh thay vì gửi tỉnh cũ. Quận/huyện là ô nhập tay không bắt buộc cho **mọi** tỉnh/thành. Lỗi trường do server trả biến mất ngay khi sửa đúng ô đó. Chưa đổi backend/API/DB.
 
-1. Cửa sổ riêng tư (không đăng nhập): thêm 2×A + 1×B → `/checkout` → **Lấy báo giá**. Mở form lần đầu không có viền đỏ/thông báo lỗi. Rời một ô trống (blur) → chỉ ô đó báo lỗi; sửa đúng → lỗi mất. Xóa vài ô bắt buộc rồi bấm **Đặt hàng COD** → nút vẫn bấm được, hiện đủ lỗi và focus **Họ tên**; DevTools → Network không có `POST /api/v1/orders`.
+1. Cửa sổ riêng tư (không đăng nhập): thêm 2×A + 1×B → `/checkout` (tự lấy báo giá). Mở form lần đầu không có viền đỏ/thông báo lỗi. Rời một ô trống (blur) → chỉ ô đó báo lỗi; sửa đúng → lỗi mất. Xóa vài ô bắt buộc rồi bấm **Đặt hàng COD** → nút vẫn bấm được, hiện đủ lỗi và focus **Họ tên**; DevTools → Network không có `POST /api/v1/orders`.
 2. Điền họ tên, SĐT (090… hoặc +84…), phường/xã, địa chỉ cụ thể. Ở tỉnh/thành gõ `ho chi minh` (không dấu) → chọn **TP. Hồ Chí Minh**; ô **Quận/huyện (không bắt buộc)** luôn hiện, nhập thử `Quận 1`. Gõ đè `xyz` vào ô tỉnh rồi Enter → hiện `Chọn tỉnh/thành từ danh sách.`, focus lại ô tỉnh, **không có** request tạo đơn. Sau đó gõ `can tho` → Enter: ô quận/huyện vẫn hiện nhưng giá trị cũ đã bị xóa; nhập `Quận Ninh Kiều` → **Đặt hàng COD**.
 3. Màn xác nhận: mã đơn (nút sao chép), trạng thái **Chờ xác nhận**, danh sách hàng và tổng 730.000đ, ghi rõ **chưa thu tiền**; giỏ được dọn nếu vẫn khớp đơn.
 4. DB đối chiếu: `orders` PENDING + snapshot đủ, `order_items`, `order_status_history` (GUEST, actorId null), `inventory` onHand giữ nguyên/reserved +2 và +1, `inventory_movements` có effectKey, `idempotency_records` không chứa token rõ/PII. Đơn tạo với Cần Thơ phải có `district` = `Quận Ninh Kiều` (hoặc rỗng nếu để trống).
 5. Mất response: chặn phản hồi sau khi gửi (DevTools) → cảnh báo "Gửi lại" giữ nguyên command (không cho sửa nội dung/tạo key mới); bỏ chặn bấm Gửi lại → cùng mã đơn, reserved không tăng lần hai. Hard refresh trong lúc chưa rõ kết quả có thể mất command (có cảnh báo beforeunload).
 6. Quote hết hạn/giá đổi giữa chừng → 409 QUOTE_CHANGED, form giữ nguyên, lấy báo giá mới rồi đặt lại bằng key mới; thiếu tồn → 409 OUT_OF_STOCK, không giữ một phần giỏ.
 7. Giới hạn đã duyệt: tối đa 5 lần tạo đơn/phút/IP (429) và 3 đơn PENDING/SĐT.
+
+Sau khi ghép R2: gõ đè tỉnh đã chọn bằng `xyz`, quay lại sửa giỏ rồi mở checkout lần nữa → chữ `xyz` vẫn còn và bấm đặt phải bị chặn cho tới khi chọn tỉnh hợp lệ. Nếu API đã báo lỗi một ô, sửa ô đó rồi rời trang/quay lại → lỗi cũ không xuất hiện lại trên giá trị đã sửa. Bản nháp và chữ tìm tỉnh chỉ ở bộ nhớ, không lưu trình duyệt hoặc đưa chữ chưa chọn vào đơn.
 
 Test riêng: unit `ContactAddressForm.test.tsx` và `CheckoutPage.test.tsx`; integration `test/order-creation.integration.spec.ts` (trong `./tools/npm.ps1 run test:integration`); E2E `./tools/npm.ps1 run test:e2e -- order-creation.spec.ts` (đã có ca submit trống/focus, picker bàn phím, quận/huyện nhập tay cho mọi tỉnh và gõ đè tỉnh rồi Enter không gửi tỉnh cũ).
 
@@ -447,6 +449,20 @@ Chạy các kịch bản độc lập sau trên local/`_test`:
 | Mail/persistence | Email lỗi sau commit không mất đơn; restart giữ đơn/kho/ledger và catch-up đúng |
 
 Chạy các lệnh kiểm tra ở mục4, ghi số ca/kết quả thật và các mục chưa chạy. Sau đó người dùng thao tác theo từng luồng để xác nhận; agent không tự đánh dấu nghiệm thu hay mở bán vì CI xanh.
+
+### R2 — Đặt hàng trên điện thoại
+
+Thu trình duyệt về 390px, cửa sổ riêng tư, thêm một sản phẩm vào giỏ.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Bấm "Xem phí và tổng tiền" | Trang đặt hàng tự hiện tiền hàng, phí, tổng và form; không ô nào đỏ |
+| Chạm vào "Họ tên" rồi chạm ra ngoài mà không gõ | Chỉ ô Họ tên báo lỗi |
+| Bấm "Đặt hàng COD" khi form còn trống | Thông báo "Thông tin nhận hàng chưa hợp lệ", các ô sai báo lỗi, con trỏ nhảy về ô Họ tên; không có đơn nào được tạo |
+| Gõ họ tên và địa chỉ, bấm "Quay lại sửa giỏ", rồi quay lại trang đặt hàng | Họ tên và địa chỉ vẫn còn |
+| Để báo giá hết hạn (khoảng 15 phút) | Form vẫn còn; nút "Đặt hàng COD" khóa; bấm "Cập nhật báo giá" là mở lại |
+| Điền đủ và đặt hàng | Chỉ còn tiêu đề "Đặt hàng thành công" và màn xác nhận; có ô "Link riêng của đơn". Nếu không sao chép được, có dòng hướng dẫn chọn link để tự sao chép |
+| Mở `/orders/<mã đơn>` không kèm `#t=` | Thông báo không tìm thấy đơn và nút "Tra cứu bằng mã đơn và số điện thoại" |
 
 ## 4. Kiểm tra tự động dự kiến
 
