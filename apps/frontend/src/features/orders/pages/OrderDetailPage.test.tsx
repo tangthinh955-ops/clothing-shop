@@ -40,6 +40,7 @@ const view = (name = 'Nguyễn Thử Đơn A', note = 'Giao giờ hành chính')
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo xem chi tiết', sku: 'ACC-A',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
     subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null as string | null, deliveredAt: null as string | null,
+    cancellationRequest: null as { status: string; reason: string; createdAt: string } | null,
     recipient: { name, phone: '0901230001', email: 'viewer-a@example.test', province: 'TP. Hồ Chí Minh',
       district: '', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ', note },
   },
@@ -257,6 +258,146 @@ describe('customer cancellation (M4.4.3)', () => {
     const [first, second] = cancelCalls();
     expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
     expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+});
+
+describe('asking to cancel while packing (M4.4.4)', () => {
+  const REASON = 'Tôi đổi ý rồi';
+  const answer = { status: 'PENDING', reason: REASON, createdAt: '2026-10-31T05:00:00.000Z' };
+  const packing = (cancellationRequest: typeof answer | null = null) => {
+    const current = view();
+    return { ...current, order: { ...current.order, status: 'PACKING', cancellationRequest } };
+  };
+
+  type Answer = (path: string, options?: RequestOptions) => Promise<unknown>;
+
+  function serve(respond: Answer) {
+    const spy = vi.spyOn(client, 'request').mockImplementation((path: string, options?: RequestOptions) => respond(path, options));
+    return () => spy.mock.calls.filter(([path]) => String(path).endsWith('/cancellation-requests'));
+  }
+
+  // A small server: the request shows on the order once accepted.
+  function backend(onSend: () => Promise<unknown> = () => Promise.resolve(answer)): Answer {
+    let current = packing();
+    return async (_path, options) => {
+      if (options?.method !== 'POST') return current;
+      const sent = await onSend();
+      current = packing(answer);
+      return sent;
+    };
+  }
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Xin hủy đơn' }));
+    return screen.findByRole('dialog', { name: `Xin hủy đơn ${CODE}?` });
+  }
+
+  it.each(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'])('offers no request for a %s order', async (status) => {
+    const current = view();
+    serve(() => Promise.resolve({ ...current, order: { ...current.order, status } }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it('says the shop decides, and sends nothing when the customer backs out', async () => {
+    const user = userEvent.setup();
+    const calls = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    expect(within(dialog).getByText(/cần shop đồng ý/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(calls()).toHaveLength(0);
+  });
+
+  it('asks for a real reason', async () => {
+    const user = userEvent.setup();
+    const calls = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Xin hủy đơn' }));
+    expect(await within(dialog).findByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+    expect(calls()).toHaveLength(0);
+  });
+
+  it('sends the trimmed reason with the token and a key, then shows it waiting with no second button', async () => {
+    const user = userEvent.setup();
+    const calls = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do xin hủy/), `  ${REASON}  `);
+    await user.click(within(dialog).getByRole('button', { name: 'Xin hủy đơn' }));
+    expect(await screen.findByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    expect(screen.getByText(new RegExp(REASON))).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument();
+    const [call] = calls();
+    expect(call?.[0]).toBe(`/orders/${CODE}/cancellation-requests`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', orderToken: TOKEN, body: { reason: REASON } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('shows a request already waiting when the page opens', async () => {
+    serve(() => Promise.resolve(packing(answer)));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    expect(await screen.findByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it('sends once while a request is in flight', async () => {
+    const user = userEvent.setup();
+    let finish: (value: unknown) => void = () => undefined;
+    const calls = serve(backend(() => new Promise((resolve) => { finish = resolve; })));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do xin hủy/), REASON);
+    const submit = within(dialog).getByRole('button', { name: 'Xin hủy đơn' });
+    await Promise.all([user.click(submit), user.click(submit)]);
+    expect(calls()).toHaveLength(1);
+    expect(submit).toBeDisabled();
+    finish(answer);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('locks the reason after a lost response and resends the same key and content', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const calls = serve(backend(() => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : Promise.resolve(answer);
+    }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    const field = within(dialog).getByLabelText(/Lý do xin hủy/);
+    await user.type(field, REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Xin hủy đơn' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    expect(field).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    expect(await screen.findByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    const [first, second] = calls();
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+
+  it('explains a refusal and reloads the order', async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    const current = view();
+    const calls = serve((_path, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('CONFLICT', 'Trạng thái đơn không cho phép thao tác này. Hãy tải lại đơn.', 409));
+      reads += 1;
+      return Promise.resolve(reads === 1 ? packing() : { ...current, order: { ...current.order, status: 'SHIPPED' } });
+    });
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do xin hủy/), REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Xin hủy đơn' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Trạng thái đơn không cho phép');
+    await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument());
+    expect(calls()).toHaveLength(1);
   });
 });
 

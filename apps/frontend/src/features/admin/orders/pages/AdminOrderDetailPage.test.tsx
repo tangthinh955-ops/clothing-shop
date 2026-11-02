@@ -24,6 +24,7 @@ const order = {
     { id: 'h2', fromStatus: 'PENDING', toStatus: 'CONFIRMED', actorName: 'Admin Thử', reason: 'Đã gọi khách', version: 1, createdAt: '2026-11-01T03:40:00.000Z' },
   ],
   notes: [] as Array<typeof note>,
+  cancellationRequests: [] as Array<{ id: string; status: string; reason: string; createdAt: string; decidedAt: string | null }>,
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -417,6 +418,48 @@ describe('packing an order', () => {
     const [first, second] = packCalls(request);
     expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
     expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+});
+
+describe('a customer request to cancel (M4.4.4)', () => {
+  const waiting = { id: 'r1', status: 'PENDING', reason: 'Tôi đổi ý rồi', createdAt: '2026-11-01T05:00:00.000Z', decidedAt: null };
+  const packing = { ...order, status: 'PACKING', version: 2, cancellationRequests: [waiting] };
+
+  it('stands out with its reason and what each button means', async () => {
+    renderPage(() => Promise.resolve(packing));
+    const notice = await screen.findByRole('status', { name: 'Khách xin hủy đơn' });
+    expect(notice).toHaveTextContent('Tôi đổi ý rồi');
+    expect(notice).toHaveTextContent(/Đồng ý: bấm “Hủy đơn”/);
+    expect(notice).toHaveTextContent(/Không đồng ý: nhắn khách rồi “Bàn giao”/);
+  });
+
+  it('warns before handing over that this refuses the request', async () => {
+    const user = userEvent.setup();
+    renderPage(() => Promise.resolve(packing));
+    await user.click(await screen.findByRole('button', { name: 'Bàn giao' }));
+    const dialog = await screen.findByRole('dialog', { name: `Bàn giao đơn ${order.code}?` });
+    expect(within(dialog).getByText(/không đồng ý yêu cầu hủy/)).toBeVisible();
+  });
+
+  it('gives no such warning without a waiting request', async () => {
+    const user = userEvent.setup();
+    renderPage(() => Promise.resolve({ ...packing, cancellationRequests: [] }));
+    await user.click(await screen.findByRole('button', { name: 'Bàn giao' }));
+    const dialog = await screen.findByRole('dialog', { name: `Bàn giao đơn ${order.code}?` });
+    expect(within(dialog).queryByText(/không đồng ý yêu cầu hủy/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Khách xin hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['APPROVED', 'Đã đồng ý'],
+    ['REJECTED', 'Không đồng ý'],
+  ])('keeps a closed %s request on record without the notice', async (status, label) => {
+    renderPage(() => Promise.resolve({ ...order, status: status === 'APPROVED' ? 'CANCELLED' : 'SHIPPED', version: 3,
+      cancellationRequests: [{ ...waiting, status, decidedAt: '2026-11-01T06:00:00.000Z' }] }));
+    const record = within(await screen.findByRole('region', { name: 'Yêu cầu hủy của khách' }));
+    expect(record.getByText('Tôi đổi ý rồi')).toBeVisible();
+    expect(record.getByText(new RegExp(label))).toBeVisible();
+    expect(screen.queryByRole('status', { name: 'Khách xin hủy đơn' })).not.toBeInTheDocument();
   });
 });
 

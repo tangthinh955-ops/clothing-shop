@@ -12,6 +12,7 @@ export interface AdminOrderRow {
   phone: string;
   itemCount: number;
   createdAt: string;
+  hasPendingCancellationRequest: boolean;
 }
 
 export interface AdminOrderList {
@@ -55,6 +56,14 @@ export interface AdminOrderNote {
   createdAt: string;
 }
 
+export interface AdminCancellationRequest {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reason: string;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
 export interface AdminOrderDetail {
   id: string;
   code: string;
@@ -78,6 +87,7 @@ export interface AdminOrderDetail {
   items: AdminOrderItem[];
   history: AdminOrderHistoryEntry[];
   notes: AdminOrderNote[];
+  cancellationRequests: AdminCancellationRequest[];
 }
 
 export interface AdminOrderTransition {

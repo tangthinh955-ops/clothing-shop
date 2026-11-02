@@ -48,6 +48,12 @@ enum InventoryEffectSource {
   ORDER_SHIP
 }
 
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum NotificationStatus {
   PENDING
   SENDING
@@ -279,6 +285,7 @@ model Order {
   history OrderStatusHistory[]
   notes OrderNote[]
   notifications NotificationDelivery[]
+  cancellationRequests CancellationRequest[]
   @@index([status, createdAt])
   @@index([phone])
   @@map("orders")
@@ -330,6 +337,22 @@ model OrderNote {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   @@index([orderId, createdAt])
   @@map("order_notes")
+}
+
+// A customer asking to cancel while the order is being packed (M4.4.4). It never changes Order.version or
+// status by itself: the shop answers by cancelling or handing over, which closes it in the same transaction.
+// One PENDING per order is enforced under the order row lock.
+model CancellationRequest {
+  id String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reason String @db.VarChar(500)
+  status CancellationRequestStatus @default(PENDING)
+  decidedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@index([orderId, status])
+  @@index([status, createdAt])
+  @@map("cancellation_requests")
 }
 
 // A mail owed for an order event (M4.10.1.1): written in the order's transaction, sent after commit.

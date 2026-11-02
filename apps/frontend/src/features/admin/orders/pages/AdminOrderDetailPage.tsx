@@ -28,6 +28,8 @@ function MoneyRow({ label, amount, strong = false }: { label: string; amount: nu
 function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: () => unknown }) {
   const { recipient, address } = order;
   const fullAddress = [address.addressLine, address.ward, address.district, address.province].filter(Boolean).join(', ');
+  const waiting = order.cancellationRequests.find((request) => request.status === 'PENDING');
+  const closed = order.cancellationRequests.filter((request) => request.status !== 'PENDING');
   return <Stack spacing={2}>
     <Box>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mb: 1 }}>
@@ -41,6 +43,11 @@ function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: (
       {order.deliveredAt && <Typography>Đã giao lúc: {formatOrderTime(order.deliveredAt)}</Typography>}
       {order.cancelReason && <Typography>Lý do hủy: {order.cancelReason}</Typography>}
     </Box>
+    {waiting && <Alert severity="warning" role="status" aria-label="Khách xin hủy đơn" sx={{ overflowWrap: 'anywhere' }}>
+      <Typography sx={{ fontWeight: 600 }}>Khách xin hủy đơn lúc {formatOrderTime(waiting.createdAt)}</Typography>
+      <Typography sx={{ whiteSpace: 'pre-line' }}>Lý do: {waiting.reason}</Typography>
+      <Typography variant="body2" sx={{ mt: 1 }}>Đồng ý: bấm “Hủy đơn”. Không đồng ý: nhắn khách rồi “Bàn giao”.</Typography>
+    </Alert>}
     {/* Remounts per version, so a finished action never carries its key or outcome into the next one. */}
     <OrderActions key={order.version} order={order} onChanged={onChanged} />
     <Section id="order-recipient-title" title="Người nhận">
@@ -80,6 +87,16 @@ function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: (
         </Box>)}
       </Stack>
     </Section>
+    {closed.length > 0 && <Section id="order-cancel-requests-title" title="Yêu cầu hủy của khách">
+      <Stack component="ul" spacing={1.5} sx={{ m: 0, p: 0, listStyle: 'none' }}>
+        {closed.map((request) => <Box component="li" key={request.id}>
+          <Typography sx={{ whiteSpace: 'pre-line' }}>{request.reason}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {request.status === 'APPROVED' ? 'Đã đồng ý' : 'Không đồng ý'} · Khách gửi {formatOrderTime(request.createdAt)}
+          </Typography>
+        </Box>)}
+      </Stack>
+    </Section>}
     <Section id="order-notes-title" title="Ghi chú nội bộ">
       <OrderNotes orderId={order.id} notes={order.notes} onSaved={onChanged} />
     </Section>

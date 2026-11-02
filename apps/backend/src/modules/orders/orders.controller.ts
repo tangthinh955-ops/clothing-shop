@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { CancellationRequestDto } from './dto/cancellation-request.dto.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { OrderCancelDto } from './dto/order-cancel.dto.js';
 import { OrderLookupDto } from './dto/order-lookup.dto.js';
 import { OrderAccessGuard } from './order-access.guard.js';
 import { OrderAccessService } from './order-access.service.js';
+import { OrderCancellationRequestsService } from './order-cancellation-requests.service.js';
 import { OrderCancellationService } from './order-cancellation.service.js';
 import { OrderCreationService } from './order-creation.service.js';
 import { OrderLookupService } from './order-lookup.service.js';
@@ -24,6 +26,7 @@ export class OrdersController {
     @Inject(OrderAccessService) private readonly access: OrderAccessService,
     @Inject(OrderLookupService) private readonly lookups: OrderLookupService,
     @Inject(OrderCancellationService) private readonly cancellations: OrderCancellationService,
+    @Inject(OrderCancellationRequestsService) private readonly cancellationRequests: OrderCancellationRequestsService,
   ) {}
 
   @Post()
@@ -59,5 +62,13 @@ export class OrdersController {
   cancel(@Param('code') code: string, @Headers('idempotency-key') key: string | undefined, @Req() request: Request, @Body() dto: OrderCancelDto) {
     return this.cancellations.cancel({ code, token: request.orderToken!, sessionId: request.sessionID, key,
       expectedVersion: dto.expectedVersion, reason: dto.reason });
+  }
+
+  // Guest request to cancel while packing (M4.4.4): same token gate and 5/min/IP budget as the cancellation.
+  @Post(':code/cancellation-requests')
+  @Throttle({ ip: { limit: 5, ttl: 60000 } })
+  @UseGuards(OrderAccessGuard)
+  requestCancellation(@Param('code') code: string, @Headers('idempotency-key') key: string | undefined, @Req() request: Request, @Body() dto: CancellationRequestDto) {
+    return this.cancellationRequests.submit({ code, token: request.orderToken!, sessionId: request.sessionID, key, reason: dto.reason });
   }
 }

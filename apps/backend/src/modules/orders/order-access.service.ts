@@ -43,6 +43,7 @@ export interface OrderDetailView {
   code: string; status: CustomerOrderStatus; method: 'COD' | 'BANK_TRANSFER'; currency: 'VND'; createdAt: string;
   items: OrderDetailItemView[]; subtotal: number; shippingFee: number; total: number;
   recipient: OrderDetailRecipientView; trackingNumber: string | null; deliveredAt: string | null;
+  cancellationRequest: { status: 'PENDING'; reason: string; createdAt: string } | null;
 }
 
 export interface OrderDetailTimelineView {
@@ -63,6 +64,8 @@ const ORDER_DETAIL_SELECT = {
     unitPriceVnd: true, quantity: true, lineTotalVnd: true } },
   history: { select: { fromStatus: true, toStatus: true, actorType: true, reason: true, version: true,
     createdAt: true }, orderBy: [{ version: 'asc' }, { createdAt: 'asc' } as const] },
+  // Only a waiting request: once the shop answers, the order's own status tells the customer the outcome.
+  cancellationRequests: { where: { status: 'PENDING' }, select: { reason: true, createdAt: true }, take: 1 },
 } satisfies Prisma.OrderSelect;
 
 type OrderDetailRow = Prisma.OrderGetPayload<{ select: typeof ORDER_DETAIL_SELECT }>;
@@ -70,6 +73,7 @@ type OrderDetailRow = Prisma.OrderGetPayload<{ select: typeof ORDER_DETAIL_SELEC
 /** Explicit allowlist projection (m4-contract §5): item/recipient/money snapshots from the order
  * row, never product names, stock, settings or the internal identifiers. */
 function projectOrderDetail(order: OrderDetailRow): OrderDetailResult {
+  const [waiting] = order.cancellationRequests;
   return {
     order: {
       code: order.code, status: order.status as CustomerOrderStatus,
@@ -82,6 +86,7 @@ function projectOrderDetail(order: OrderDetailRow): OrderDetailResult {
       recipient: { name: order.recipientName, phone: order.phone, email: order.email, province: order.province,
         district: order.district, ward: order.ward, addressLine: order.addressLine, note: order.note },
       trackingNumber: order.trackingNumber, deliveredAt: order.deliveredAt?.toISOString() ?? null,
+      cancellationRequest: waiting ? { status: 'PENDING', reason: waiting.reason, createdAt: waiting.createdAt.toISOString() } : null,
     },
     timeline: order.history.map((row) => ({ fromStatus: row.fromStatus as CustomerOrderStatus | null,
       toStatus: row.toStatus as CustomerOrderStatus, actorLabel: ACTOR_LABELS[row.actorType],

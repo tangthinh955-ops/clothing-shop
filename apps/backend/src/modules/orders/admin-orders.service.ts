@@ -19,7 +19,8 @@ export class AdminOrdersService {
       this.db.order.findMany({
         where,
         select: { id: true, code: true, status: true, source: true, method: true, totalVnd: true, recipientName: true,
-          phone: true, createdAt: true, items: { select: { quantity: true } } },
+          phone: true, createdAt: true, items: { select: { quantity: true } },
+          cancellationRequests: { where: { status: 'PENDING' }, select: { id: true }, take: 1 } },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
@@ -27,10 +28,11 @@ export class AdminOrdersService {
       this.db.order.count({ where }),
     ]);
     return {
-      items: orders.map(({ items, totalVnd, ...order }) => ({
+      items: orders.map(({ items, totalVnd, cancellationRequests, ...order }) => ({
         ...order,
         totalVnd: Number(totalVnd),
         itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+        hasPendingCancellationRequest: cancellationRequests.length > 0,
       })),
       total,
       page: query.page,
@@ -52,6 +54,8 @@ export class AdminOrdersService {
         history: { select: { id: true, fromStatus: true, toStatus: true, actorType: true, reason: true, version: true, createdAt: true,
           actor: { select: { name: true } } }, orderBy: [{ createdAt: 'asc' }, { version: 'asc' }] },
         notes: { select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        cancellationRequests: { select: { id: true, status: true, reason: true, createdAt: true, decidedAt: true },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
       },
     });

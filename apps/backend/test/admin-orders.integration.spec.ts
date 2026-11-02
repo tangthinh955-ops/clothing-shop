@@ -14,7 +14,7 @@ import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
 
 const origin = 'http://localhost:5173';
 const password = 'admin-orders-only-password-123!';
-const ITEM_KEYS = ['code', 'createdAt', 'id', 'itemCount', 'method', 'phone', 'recipientName', 'source', 'status', 'totalVnd'];
+const ITEM_KEYS = ['code', 'createdAt', 'hasPendingCancellationRequest', 'id', 'itemCount', 'method', 'phone', 'recipientName', 'source', 'status', 'totalVnd'];
 
 let app: Awaited<ReturnType<typeof createApplication>>;
 let db: PrismaService;

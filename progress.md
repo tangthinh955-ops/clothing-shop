@@ -2,6 +2,27 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.4.4: khách xin hủy khi đơn đang đóng gói
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.4 ("duyệt"), gồm shop xử lý yêu cầu bằng nút đã có (hủy là đồng ý, bàn giao là không đồng ý) và vẫn cho bàn giao khi có yêu cầu đang chờ, kèm cảnh báo. Nhánh `feat/m4.4.4-cancellation-request` từ `main` `a0f9d1d`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `apps/backend/prisma/migrations/202611020003_m4_cancellation_requests/migration.sql` | Bảng `cancellation_requests` và enum; chỉ thêm, không đổi bảng cũ |
+| `apps/backend/src/modules/orders/order-cancellation-requests.service.ts` (mới), `dto/cancellation-request.dto.ts` (mới), `orders.controller.ts`, `orders.module.ts` | `POST /orders/:code/cancellation-requests`; một yêu cầu đang chờ mỗi đơn, kiểm dưới khóa dòng đơn; không đổi `Order.version` |
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Hủy đơn đóng yêu cầu là `APPROVED`, bàn giao đóng là `REJECTED`, trong cùng transaction |
+| `apps/backend/src/modules/orders/order-access.service.ts`, `admin-orders.service.ts`, `order-notifications.service.ts` | Khách thấy yêu cầu đang chờ; admin thấy danh sách và nhãn; thêm sự kiện `order.cancel-requested.shop` |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `pages/OrderDetailPage.tsx`, `components/OrderCancelRequestAction.tsx` (mới) | Nút xin hủy, trạng thái đang chờ. Khác kế hoạch: giữ thêm dòng nhắn Instagram cho trường hợp gấp, thay vì bỏ hẳn |
+| `apps/frontend/src/features/admin/orders/api/admin-orders.api.ts`, `pages/AdminOrderDetailPage.tsx`, `pages/AdminOrdersPage.tsx`, `components/OrderActions.tsx` | Khung cảnh báo, mục yêu cầu đã đóng, nhãn danh sách, cảnh báo khi bàn giao |
+| `apps/backend/test/order-cancellation-requests.integration.spec.ts` (mới), `admin-orders.integration.spec.ts`, `order-access.integration.spec.ts`, `order-lookup.integration.spec.ts`, các test giao diện trong `apps/frontend/src/features/`, `apps/frontend/e2e/admin-orders.spec.ts` | 29 ca integration, 21 ca UI; nối E2E đóng gói sang xin hủy rồi admin hủy; đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, thu hẹp M4.5.8, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 74 backend + 520 frontend; `npm run test:integration` 320/320; spec mới chạy lặp thêm 3 lần đều 29/29; `npm run test:e2e:implemented` 56/56. Đã xem ảnh trang đơn của admin trên mobile.
+
+**Giới hạn:** chưa có từ chối mà đơn vẫn `PACKING` (M4.5.8); mỗi đơn chỉ gửi được một yêu cầu; khách không nhận thư khi shop xử lý (M4.10.2.2). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.4.4. **Dừng chờ người dùng thử.**
+
+**Trạng thái production và Git:** PR #31 (M4.10.2.1) do `kangha23` merge vào `main` lúc 04:49:08Z, merge commit `a0f9d1d`. **Production chưa deploy bản này**: vẫn chạy `ci-20261102-0302-6e76f87`.
+
 ## Ngày 02/11/2026 — M4.10.2.1: tự gửi lại thư báo shop
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("duyệt"): tách M4.10.2 thành M4.10.2.1 (retry thư báo shop) và M4.10.2.2 (thư trạng thái cho khách, chờ domain); 5 lần gửi với các khoảng chờ 1 phút, 5 phút, 30 phút, 2 giờ; chấp nhận hiếm khi trùng thư để không mất thông báo. Nhánh `feat/m4.10.2.1-notice-retry` từ `main` `339a17e`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chưa từng gửi thư thật qua Resend.**

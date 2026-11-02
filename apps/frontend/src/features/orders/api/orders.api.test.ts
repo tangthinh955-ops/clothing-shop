@@ -18,7 +18,7 @@ const view = (): OrderDetailResult => ({
     createdAt: '2026-10-31T03:30:00.000Z',
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo xem chi tiết', sku: 'ACC-A',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
-    subtotal: 400000, shippingFee: 30000, total: 430000, recipient, trackingNumber: null, deliveredAt: null,
+    subtotal: 400000, shippingFee: 30000, total: 430000, recipient, trackingNumber: null, deliveredAt: null, cancellationRequest: null,
   },
   timeline: [
     { fromStatus: null, toStatus: 'PENDING', actorLabel: 'Khách đặt hàng', reason: null, version: 0,
@@ -32,6 +32,16 @@ describe('parseOrderDetailView', () => {
   it('accepts an exactly-shaped server view and keeps every customer-visible field', () => {
     const parsed = parseOrderDetailView(view());
     expect(parsed).toEqual(view());
+  });
+
+  it('keeps a waiting cancellation request and refuses anything else', () => {
+    const withRequest = (cancellationRequest: unknown) => ({ ...view(), order: { ...view().order, cancellationRequest } });
+    const request = { status: 'PENDING', reason: 'Tôi đổi ý', createdAt: '2026-11-01T03:00:00.000Z' };
+    expect(parseOrderDetailView(withRequest(request)).order.cancellationRequest).toEqual(request);
+    expect(() => parseOrderDetailView(withRequest({ ...request, status: 'APPROVED' }))).toThrow();
+    expect(() => parseOrderDetailView(withRequest({ ...request, reason: 'R'.repeat(501) }))).toThrow();
+    expect(() => parseOrderDetailView(withRequest({ ...request, createdAt: 'hôm qua' }))).toThrow();
+    expect(() => parseOrderDetailView(withRequest(undefined))).toThrow();
   });
 
   it('keeps a real delivery time and refuses anything else', () => {

@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { InventoryOperationsService } from '../inventory/inventory-operations.service.js';
+import { OrderCancellationRequestsService } from './order-cancellation-requests.service.js';
 import { OrderTransitionRunner, type TransitionRequest, type TransitionRule } from './order-transition-runner.service.js';
 
 const MINUTE_MS = 60000;
@@ -47,6 +48,7 @@ export class AdminOrderTransitionsService {
   constructor(
     @Inject(OrderTransitionRunner) private readonly runner: OrderTransitionRunner,
     @Inject(InventoryOperationsService) private readonly inventory: InventoryOperationsService,
+    @Inject(OrderCancellationRequestsService) private readonly cancellationRequests: OrderCancellationRequestsService,
   ) {}
 
   confirm(actorId: string, orderId: string, key: string | undefined, expectedVersion: number) {
@@ -60,6 +62,8 @@ export class AdminOrderTransitionsService {
   ship(actorId: string, orderId: string, key: string | undefined, expectedVersion: number, trackingNumber: string) {
     return this.apply('ship', SHIP, actorId, { orderId, key, expectedVersion, details: [trackingNumber], effect: async (tx, order) => {
       await this.inventory.ship(tx, `order:${orderId}:ship`, await this.runner.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Bàn giao đơn ${order.code}`);
+      // Handing over while a customer waits is the shop's refusal: the goods have left.
+      await this.cancellationRequests.closePending(tx, orderId, 'REJECTED');
       return { trackingNumber };
     } });
   }
@@ -81,6 +85,7 @@ export class AdminOrderTransitionsService {
     return this.apply('cancel', CANCEL, actorId, { orderId, key, expectedVersion, details: [reason], reason, effect: async (tx, order) => {
       // The movement carries a fixed reason: what the admin typed belongs to the order, not the stock log.
       await this.inventory.release(tx, `order:${orderId}:release`, await this.runner.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Hủy đơn ${order.code}`);
+      await this.cancellationRequests.closePending(tx, orderId, 'APPROVED');
       return { cancelledAt: new Date(), cancelReason: reason };
     } });
   }
