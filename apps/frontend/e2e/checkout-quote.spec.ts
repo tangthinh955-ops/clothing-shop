@@ -76,7 +76,6 @@ test('guest quotes 2×A + 1×B from the cart and reads 730.000 from the server',
   await page.getByRole('link', { name: 'Xem phí và tổng tiền' }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(page.getByText(/Phương thức hiện tại: thanh toán khi nhận hàng \(COD\)/)).toBeVisible();
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByText(/730\.000/)).toBeVisible();
   await expect(page.getByText(/700\.000/)).toBeVisible();
   await expect(page.getByText('Báo giá chưa giữ hàng. Giá và tồn sẽ được kiểm tra lại khi đặt đơn.')).toBeVisible();
@@ -85,7 +84,6 @@ test('guest quotes 2×A + 1×B from the cart and reads 730.000 from the server',
   // Deep refresh: the page renders again and the shopper can quote the persisted cart afresh.
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Đặt hàng — thanh toán khi nhận hàng' })).toBeVisible();
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByText(/730\.000/)).toBeVisible();
   const row = await db.checkoutQuote.findFirstOrThrow({ orderBy: { createdAt: 'desc' } });
   expect(Number(row.totalVnd)).toBe(730000);
@@ -113,7 +111,6 @@ test('a changed price or fee is confirmed through Dùng báo giá mới before r
   await page.clock.install({ time: new Date() });
   await addToCart(page, slugA, 'Đen', 'M', '1');
   await page.goto('/checkout');
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByText(/230\.000/)).toBeVisible();
   // The shop changes the unit price while the shopper holds a quote.
   await db.variant.update({ where: { id: variantA }, data: { price: 250000 } });
@@ -134,7 +131,6 @@ test('unavailable or oversold carts are refused whole without writing anything',
   await addToCart(page, slugA, 'Đen', 'M', '1');
   await db.product.update({ where: { id: productAId }, data: { status: 'DRAFT' } });
   await page.goto('/checkout');
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByText(/Một sản phẩm trong giỏ không còn bán/)).toBeVisible();
   const quotesAfterDraft = await db.checkoutQuote.count();
   await db.product.update({ where: { id: productAId }, data: { status: 'PUBLISHED' } });

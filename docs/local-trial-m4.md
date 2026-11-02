@@ -131,7 +131,7 @@ Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ 
 | Thao tác | Kết quả mong đợi |
 |---|---|
 | `/cart` giỏ không rỗng → "Xem phí và tổng tiền" | Vào `/checkout`, thấy dòng "Phương thức hiện tại: COD" |
-| Bấm "Lấy báo giá" | Danh sách dòng đúng giỏ (đơn giá × số lượng), tiền hàng/phí/tổng từ server; "Báo giá chưa giữ hàng"; hết hạn ~15 phút |
+| Mở `/checkout` (từ R2 trang tự lấy báo giá, không còn nút "Lấy báo giá") | Danh sách dòng đúng giỏ (đơn giá × số lượng), tiền hàng/phí/tổng từ server; "Báo giá chưa giữ hàng"; hết hạn ~15 phút |
 | Chỉnh giỏ rồi lấy lại | "Giỏ đã thay đổi…" hoặc quote mới khớp giỏ; giá/phí đổi thì hiện "Dùng báo giá mới" để xác nhận, không tự thay tổng |
 | Chờ hết 15 phút | "Báo giá đã hết hạn" + "Cập nhật báo giá"; không tự lấy mới |
 | Giỏ có hàng ẩn/hết tồn | Bị chặn toàn bộ (409 ITEM_UNAVAILABLE/OUT_OF_STOCK), không có dòng nào được báo giá |
@@ -144,7 +144,7 @@ Giỏ local chỉ lưu variantId/quantity/schemaVersion; giá/tồn đọc từ 
 
 **Đã triển khai và agent đã kiểm tra local (31/10/2026): /checkout có form nhận hàng và nút "Đặt hàng COD"; thành công hiển thị mã đơn 12 ký tự, trạng thái Chờ xác nhận và tổng tiền; giữ kho qua reserved; chưa thu tiền, chưa có tra cứu/hủy.**
 
-1. Cửa sổ riêng tư (không đăng nhập): thêm 2×A + 1×B → `/checkout` → **Lấy báo giá** → điền họ tên, SĐT (090… hoặc +84…), tỉnh/thành, phường/xã, địa chỉ cụ thể → **Đặt hàng COD**.
+1. Cửa sổ riêng tư (không đăng nhập): thêm 2×A + 1×B → `/checkout` (tự lấy báo giá) → điền họ tên, SĐT (090… hoặc +84…), tỉnh/thành, phường/xã, địa chỉ cụ thể → **Đặt hàng COD**.
 2. Màn xác nhận: mã đơn (nút sao chép), trạng thái **Chờ xác nhận**, danh sách hàng và tổng 730.000đ, ghi rõ **chưa thu tiền**; giỏ được dọn nếu vẫn khớp đơn.
 3. DB đối chiếu: `orders` PENDING + snapshot đủ, `order_items`, `order_status_history` (GUEST, actorId null), `inventory` onHand giữ nguyên/reserved +2 và +1, `inventory_movements` có effectKey, `idempotency_records` không chứa token rõ/PII.
 4. Mất response: chặn phản hồi sau khi gửi (DevTools) → cảnh báo "Gửi lại" giữ nguyên command (không cho sửa nội dung/tạo key mới); bỏ chặn bấm Gửi lại → cùng mã đơn, reserved không tăng lần hai. Hard refresh trong lúc chưa rõ kết quả có thể mất command (có cảnh báo beforeunload).
@@ -444,6 +444,20 @@ Chạy các kịch bản độc lập sau trên local/`_test`:
 | Mail/persistence | Email lỗi sau commit không mất đơn; restart giữ đơn/kho/ledger và catch-up đúng |
 
 Chạy các lệnh kiểm tra ở mục4, ghi số ca/kết quả thật và các mục chưa chạy. Sau đó người dùng thao tác theo từng luồng để xác nhận; agent không tự đánh dấu nghiệm thu hay mở bán vì CI xanh.
+
+### R2 — Đặt hàng trên điện thoại
+
+Thu trình duyệt về 390px, cửa sổ riêng tư, thêm một sản phẩm vào giỏ.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Bấm "Xem phí và tổng tiền" | Trang đặt hàng tự hiện tiền hàng, phí, tổng và form; không ô nào đỏ |
+| Chạm vào "Họ tên" rồi chạm ra ngoài mà không gõ | Chỉ ô Họ tên báo lỗi |
+| Bấm "Đặt hàng COD" khi form còn trống | Thông báo "Thông tin nhận hàng chưa hợp lệ", các ô sai báo lỗi, con trỏ nhảy về ô Họ tên; không có đơn nào được tạo |
+| Gõ họ tên và địa chỉ, bấm "Quay lại sửa giỏ", rồi quay lại trang đặt hàng | Họ tên và địa chỉ vẫn còn |
+| Để báo giá hết hạn (khoảng 15 phút) | Form vẫn còn; nút "Đặt hàng COD" khóa; bấm "Cập nhật báo giá" là mở lại |
+| Điền đủ và đặt hàng | Chỉ còn tiêu đề "Đặt hàng thành công" và màn xác nhận; có ô "Link riêng của đơn". Nếu không sao chép được, có dòng hướng dẫn chọn link để tự sao chép |
+| Mở `/orders/<mã đơn>` không kèm `#t=` | Thông báo không tìm thấy đơn và nút "Tra cứu bằng mã đơn và số điện thoại" |
 
 ## 4. Kiểm tra tự động dự kiến
 

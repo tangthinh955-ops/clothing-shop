@@ -91,7 +91,6 @@ test('guest orders COD without an account: confirmation, DB snapshot and reserve
   await addToCart(page, slugB, 'Xanh', 'L', '1');
   await page.goto('/cart');
   await page.getByRole('link', { name: 'Xem phí và tổng tiền' }).click();
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await fillRecipient(page, '0901234567');
   await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
@@ -139,7 +138,6 @@ test('a lost response after commit is recovered by Gửi lại without reserving
   const reservedBefore = (await db.inventory.findUniqueOrThrow({ where: { variantId: variantA } })).reserved;
   await addToCart(page, slugA, 'Đen', 'M', '1');
   await page.goto('/checkout');
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await fillRecipient(page, '0901234567');
   await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
   await expect(page.getByText(/Đơn có thể đã được tạo từ lần gửi trước/)).toBeVisible();
@@ -157,7 +155,6 @@ test('an out-of-stock cart is refused at creation with the form kept', async ({ 
   const reservedB = (await db.inventory.findUniqueOrThrow({ where: { variantId: variantB } })).reserved;
   await addToCart(page, slugB, 'Xanh', 'L', '2');
   await page.goto('/checkout');
-  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await fillRecipient(page, '0901234567');
   // available drops to 0 (onHand == reserved) after the quote but before the create.

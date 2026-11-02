@@ -2,6 +2,26 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — R2: luồng đặt hàng trên điện thoại
+
+**Phạm vi đã duyệt ("duyệt"):** nhánh `feat/r2-mobile-checkout` từ `main` `b803531`. Chỉ frontend; API, DB và luồng chống đặt trùng giữ nguyên. Bản nháp địa chỉ giữ trong bộ nhớ (không lưu vào trình duyệt) theo mặc định đã nêu. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy.**
+
+| File | Thay đổi |
+|---|---|
+| `checkout/pages/CheckoutPage.tsx` | Tự lấy báo giá khi mở trang; nút "Cập nhật báo giá" chỉ hiện khi hết hạn, lỗi, giỏ đổi; đặt xong chỉ còn màn xác nhận; form giữ nguyên khi báo giá hết hạn, chỉ khóa nút đặt |
+| `checkout/components/ContactAddressForm.tsx` | Báo lỗi theo ô đã rời hoặc sau khi bấm đặt; đưa con trỏ tới ô sai đầu tiên; `noValidate` để trình duyệt không chặn trước; tiêu đề `h2` |
+| `checkout/OrderSubmissionProvider.tsx` | Giữ bản nháp trong bộ nhớ, xóa khi đặt thành công; ghi lại giỏ có được xóa không ngay lúc xóa |
+| `checkout/components/OrderConfirmation.tsx` | Ô "Link riêng của đơn", báo khi sao chép thất bại, nút "Chia sẻ link" nếu điện thoại hỗ trợ |
+| `orders/pages/OrderDetailPage.tsx` | Nút tra cứu và dòng hướng dẫn dưới thông báo không tìm thấy đơn |
+| `CheckoutPage.test.tsx`, `OrderDetailPage.test.tsx`, 4 file E2E | Test mới cho từng mục; bỏ bước bấm "Lấy báo giá" |
+| `docs/local-trial-m4.md` | Mục R2 và bước thử mới |
+
+**Khác kế hoạch:**
+- Câu báo lỗi chính của trang đơn ("…đường dẫn đã nhận từ shop") giữ nguyên vì là câu đồng nhất với backend (`ORDER_ACCESS_NOT_FOUND`); chỉ sửa dòng hướng dẫn bên dưới.
+- Sửa thêm lỗi có từ trước trên màn thành công: đơn bình thường vẫn ghi "Giỏ hàng của bạn vừa thay đổi nên vẫn được giữ nguyên" vì so giỏ sau khi đã xóa.
+
+**Kiểm tra (local):** typecheck, build đạt; unit backend 74/74, frontend 529/529; E2E 56/56. Chưa chạy CI. Test mới fail trước khi sửa (21 ca, thêm 1 ca cho lỗi giỏ). Bộ checkout và đơn chạy 3 lần liên tiếp đều 101/101 sau khi sửa một ca canh thời gian. Đã chụp luồng trên mobile 390px: mở trang không có ô đỏ; bấm đặt khi trống thì báo lỗi và con trỏ về Họ tên; bản nháp còn sau khi quay lại sửa giỏ; màn thành công chỉ còn xác nhận, có ô link và dòng báo sao chép thất bại; trang đơn không token có nút tra cứu.
+
 ## Ngày 02/11/2026 — Đánh giá chức năng và R1: sửa nội dung sai/cũ
 
 **Tạm dừng tính năng mới** theo yêu cầu người dùng; M4.6 (thanh toán trước) chờ người dùng chốt chỉ chuyển khoản hay cho chọn cả COD.
