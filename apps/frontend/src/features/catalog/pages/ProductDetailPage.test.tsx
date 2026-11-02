@@ -119,7 +119,7 @@ describe('public product detail page', () => {
     expect(order).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
     expect(order).toHaveAttribute('target', '_blank');
     expect(order).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Hướng dẫn chọn size' })).toHaveAttribute('href', '/size-guide');
   });
 
   it('adds the chosen variant to the cart and opens the drawer with that row', async () => {

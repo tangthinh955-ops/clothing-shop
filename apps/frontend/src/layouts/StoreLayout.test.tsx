@@ -56,6 +56,18 @@ describe('store layout of the real shop', () => {
     expect(document.title).toBe('Giao hàng | ADECY');
   });
 
+  it('names the missing page in the title too', async () => {
+    renderStore('/khong-co-trang-nay', null);
+    await screen.findByRole('heading', { name: 'Không tìm thấy trang', level: 1 });
+    expect(document.title).toBe('Không tìm thấy trang | ADECY');
+  });
+
+  it('tells visitors the sign-in page is for the shop team, not for tracking orders', async () => {
+    renderStore('/login', null);
+    expect(await screen.findByText(/Khu vực dành cho quản trị shop/)).toBeVisible();
+    expect(document.body.textContent).not.toMatch(/theo dõi đơn hàng/);
+  });
+
   it('announces nationwide delivery and its fee above the header', async () => {
     renderStore('/shipping', null);
     const note = await screen.findByRole('note', { name: 'Thông báo cửa hàng' });
@@ -76,7 +88,7 @@ describe('store layout of the real shop', () => {
     await user.click(screen.getByRole('button', { name: 'Mở menu' }));
     const menu = await screen.findByRole('navigation', { name: 'Menu cửa hàng' });
     expect(await within(menu).findByRole('link', { name: 'Áo thun' })).toHaveAttribute('href', `/shop?categoryId=${tees.id}`);
-    expect(within(menu).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');
+    expect(within(menu).getByRole('link', { name: 'Hướng dẫn chọn size' })).toHaveAttribute('href', '/size-guide');
     expect(within(menu).getByRole('link', { name: 'Tra cứu đơn' })).toHaveAttribute('href', '/orders/lookup');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Menu cửa hàng' })).not.toBeInTheDocument());

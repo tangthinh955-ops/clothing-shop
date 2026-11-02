@@ -24,7 +24,7 @@ export function QuoteSummary({ quote, tone = 'active' }: { quote: CheckoutQuote;
         sx={{ justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{item.productName}</Typography>
-          <Typography variant="body2" color="text.secondary">{item.color} · size {item.size} · {item.sku}</Typography>
+          <Typography variant="body2" color="text.secondary">{item.color} · size {item.size}</Typography>
           <Typography variant="body2">{formatMoney(item.unitPriceVnd)} × {item.quantity}</Typography>
         </Box>
         <Typography sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{formatMoney(item.lineTotalVnd)}</Typography>

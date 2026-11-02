@@ -84,6 +84,9 @@ describe('cart page', () => {
     seed([{ variantId: variantA, quantity: 2 }]);
     render(<QueryClientProvider client={queryClient}><MemoryRouter><CartProvider><CartPage /></CartProvider></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText(/^200\.000\s*₫ \/ chiếc$/)).toBeVisible();
+    expect(screen.getByText('Đen · size M')).toBeVisible();
+    expect(screen.queryByText(/CART-A-1/)).not.toBeInTheDocument(); // internal codes stay in admin
+    expect(document.title).toBe('Giỏ hàng | ADECY');
     request.mockRejectedValue(new Error('offline'));
     await queryClient.invalidateQueries({ queryKey: ['shop-cart-resolve'] });
     await screen.findByText(/Chưa đọc được giá và tình trạng/);

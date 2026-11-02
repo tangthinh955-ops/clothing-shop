@@ -33,7 +33,7 @@ export function VariantPicker({ variants, colors, color, size, onColor, onSize }
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
         <Typography sx={{ fontWeight: 600 }}>Size: {size || 'chưa chọn'}</Typography>
-        <Link component={RouterLink} to="/size-guide" variant="body2" underline="always">Bảng size</Link>
+        <Link component={RouterLink} to="/size-guide" variant="body2" underline="always">Hướng dẫn chọn size</Link>
       </Stack>
       <Box role="group" aria-label="Chọn size" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
         {sizes.map((value) => {

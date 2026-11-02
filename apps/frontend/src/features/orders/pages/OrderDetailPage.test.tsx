@@ -159,6 +159,8 @@ describe('customer cancellation (M4.4.3)', () => {
     const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`);
     expect(await screen.findByRole('link', { name: '@adecy.co' })).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
     expect(document.title).toBe('Đơn hàng | ADECY');
+    expect(screen.getByText('Áo xem chi tiết')).toBeVisible();
+    expect(screen.queryByText(/ACC-A/)).not.toBeInTheDocument();
     first.unmount();
     vi.restoreAllMocks();
     serve(() => Promise.resolve(view()));

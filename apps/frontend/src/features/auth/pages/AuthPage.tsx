@@ -9,8 +9,8 @@ import { currentUserKey, useCurrentUser } from '../hooks/useCurrentUser';
 import { useLinkToken } from '../hooks/useLinkToken';
 
 const copy = {
-  login: ['Chào bạn trở lại', 'Đăng nhập để quản lý tài khoản và theo dõi đơn hàng.'],
-  register: ['Tạo tài khoản', 'Lưu lựa chọn của bạn và theo dõi hành trình đơn hàng.'],
+  login: ['Chào bạn trở lại', 'Khu vực dành cho quản trị shop. Khách đặt hàng không cần tài khoản.'],
+  register: ['Tạo tài khoản', 'Khách đặt hàng không cần tài khoản.'],
   forgot: ['Quên mật khẩu?', 'Nhập email tài khoản. Chúng tôi sẽ gửi hướng dẫn đặt lại.'],
   reset: ['Mật khẩu mới', 'Chọn mật khẩu riêng cho tài khoản của bạn.'],
 } as const;
