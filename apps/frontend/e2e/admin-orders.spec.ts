@@ -77,6 +77,13 @@ async function pickProvince(page: Page, name: string) {
   await page.getByRole('option', { name, exact: true }).click();
 }
 
+/** The ward is a searchable picker populated once a province is picked. */
+async function pickWard(page: Page, name: string) {
+  const ward = page.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+  await ward.fill(name);
+  await page.getByRole('option', { name, exact: true }).click();
+}
+
 async function placeCodOrder(page: Page): Promise<string> {
   await page.goto(`/products/${SLUG}`);
   await page.getByRole('group', { name: 'Chọn màu' }).getByRole('button', { name: 'Đen', exact: true }).click();
@@ -89,7 +96,7 @@ async function placeCodOrder(page: Page): Promise<string> {
   await page.getByLabel('Họ tên', { exact: true }).fill(RECIPIENT);
   await page.getByLabel('Số điện thoại', { exact: true }).fill(PHONE);
   await pickProvince(page, 'TP. Hồ Chí Minh');
-  await page.getByLabel('Phường/xã', { exact: true }).fill('Phường Bến Nghé');
+  await pickWard(page, 'Phường Bến Thành');
   await page.getByLabel('Địa chỉ cụ thể', { exact: true }).fill('12 Nguyễn Huệ, Quận 1');
   await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
   await expect(page.getByText(/Đã tạo đơn hàng COD/)).toBeVisible();
@@ -173,7 +180,7 @@ test('a guest order reaches the admin list, which filters and searches it', asyn
     await expect(admin.getByRole('heading', { name: code, level: 1 })).toBeVisible();
     const recipient = admin.getByRole('region', { name: 'Người nhận' });
     await expect(recipient).toContainText(RECIPIENT);
-    await expect(recipient).toContainText('12 Nguyễn Huệ, Quận 1, Phường Bến Nghé, TP. Hồ Chí Minh');
+    await expect(recipient).toContainText('12 Nguyễn Huệ, Quận 1, Phường Bến Thành, TP. Hồ Chí Minh');
     await expect(admin.getByRole('region', { name: 'Sản phẩm' })).toContainText(`${SKU} · M · Đen`);
     await expect(admin.getByRole('region', { name: 'Lịch sử trạng thái' })).toContainText('Khách đặt hàng');
 

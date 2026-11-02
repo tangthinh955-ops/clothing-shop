@@ -95,6 +95,15 @@ async function fillProvince(name: string) {
   return combobox;
 }
 
+async function fillWard(name: string) {
+  const combobox = screen.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+  fireEvent.focus(combobox);
+  fireEvent.change(combobox, { target: { value: name } });
+  fireEvent.keyDown(combobox, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('option', { name }));
+  return combobox;
+}
+
 beforeEach(() => { window.localStorage.clear(); });
 afterEach(() => vi.restoreAllMocks());
 
@@ -111,9 +120,10 @@ describe('checkout quote page', () => {
     expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible(); // quoted on arrival, no extra tap
     for (const [label, value] of [
       ['Họ tên', 'Nguyễn Thử'], ['Số điện thoại', '0901234567'],
-      ['Phường/xã', 'Phường Bến Nghé'], ['Địa chỉ cụ thể', '12 Nguyễn Huệ'],
+      ['Địa chỉ cụ thể', '12 Nguyễn Huệ'],
     ] as const) fireEvent.change(screen.getByLabelText(label), { target: { value } });
     await fillProvince('TP. Hồ Chí Minh');
+    await fillWard('Phường Bến Thành');
     return request;
   }
 
@@ -349,9 +359,10 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(screen.queryByText(/Đã tạo đơn hàng COD/)).not.toBeInTheDocument();
     for (const [label, value] of [
       ['Họ tên', 'Khách mới'], ['Số điện thoại', '0987654321'],
-      ['Phường/xã', 'Phường Đình Bảng'], ['Địa chỉ cụ thể', '99 Đường mới'],
+      ['Địa chỉ cụ thể', '99 Đường mới'],
     ] as const) fireEvent.change(screen.getByLabelText(label), { target: { value } });
     await fillProvince('Hà Nội');
+    await fillWard('Phường Hoàn Kiếm');
     vi.mocked(client.request).mockResolvedValueOnce({ order: { code: 'MN23456789OP', status: 'PENDING', method: 'COD',
       currency: 'VND', items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } });
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
@@ -519,6 +530,7 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     await userEvent.click(submit);
     expect(screen.getByText('Họ tên từ 2 đến 120 ký tự.')).toBeVisible();
     expect(screen.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
+    expect(screen.getByText('Chọn phường/xã/đặc khu từ danh sách.')).toBeVisible();
     expect(screen.getByText(/Thông tin nhận hàng chưa hợp lệ/)).toBeVisible();
     expect(screen.getByLabelText('Họ tên')).toHaveFocus();
     expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(0);
@@ -554,15 +566,31 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(1);
   });
 
-  it('never sends a stale province or district when the search text is not selected', async () => {
+  it('does not resurrect an edited ward server error when returning from cart edits after editing ward search text', async () => {
+    const failure = new client.ApiError('VALIDATION_ERROR', 'Thông tin chưa hợp lệ.', 400,
+      [{ field: 'address.ward', message: 'Phường/xã bị từ chối ở lần gửi trước.' }]);
+    const request = await acceptQuoteAndFillForm([quoteResponse(), failure, quoteResponse()]);
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText('Phường/xã bị từ chối ở lần gửi trước.')).toBeVisible();
+    const ward = screen.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+    fireEvent.change(ward, { target: { value: 'Bến' } });
+    expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'đi-shop' }));
+    await userEvent.click(screen.getByRole('button', { name: 'về-checkout' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' }));
+    expect(await screen.findByRole('combobox', { name: 'Phường/xã/đặc khu' })).toHaveValue('Bến');
+    expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument();
+    expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('never sends a stale province or ward when the search text is not selected', async () => {
     const request = await acceptQuoteAndFillForm([
       quoteResponse(),
       { order: { code: 'CD23456789AB', status: 'PENDING', method: 'COD', currency: 'VND',
         items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } },
     ]);
     const combobox = await fillProvince('Hà Nội');
-    fireEvent.change(screen.getByLabelText('Quận/huyện (không bắt buộc)'),
-      { target: { value: 'Quận Hoàn Kiếm' } });
+    await fillWard('Phường Hoàn Kiếm');
     fireEvent.change(combobox, { target: { value: 'xyz' } }); // no longer the picked province
     fireEvent.submit(screen.getByRole('form', { name: 'Thông tin nhận hàng' }));
     expect(screen.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
@@ -570,16 +598,30 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     const postsBefore = request.mock.calls.filter(([path, options]) =>
       path === '/orders' && options?.method === 'POST');
     expect(postsBefore).toHaveLength(0);
-    // Picking Cần Thơ drops the old district; its new manual value is the one sent.
+    // Picking Cần Thơ drops the old ward; its new selected value is the one sent.
     await fillProvince('Cần Thơ');
-    const district = screen.getByLabelText('Quận/huyện (không bắt buộc)');
-    expect(district).toHaveValue('');
-    fireEvent.change(district, { target: { value: 'Quận Ninh Kiều' } });
+    const ward = screen.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+    expect(ward).toHaveValue('');
+    await fillWard('Phường Ninh Kiều');
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
     expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
     const post = request.mock.calls.find(([path, options]) => path === '/orders' && options?.method === 'POST');
     expect(post?.[1]?.body).toMatchObject({
-      address: { province: 'Cần Thơ', district: 'Quận Ninh Kiều' },
+      address: { province: 'Cần Thơ', ward: 'Phường Ninh Kiều' },
     });
+  });
+
+  it('keeps unselected ward search text when returning from cart edits and blocks an old address', async () => {
+    const request = await acceptQuoteAndFillForm([quoteResponse()]);
+    await fillProvince('Hà Nội');
+    await fillWard('Phường Hoàn Kiếm');
+    const ward = screen.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+    fireEvent.change(ward, { target: { value: 'xyz' } });
+    await userEvent.click(screen.getByRole('button', { name: 'đi-shop' }));
+    await userEvent.click(screen.getByRole('button', { name: 'về-checkout' }));
+    expect(await screen.findByRole('combobox', { name: 'Phường/xã/đặc khu' })).toHaveValue('xyz');
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(screen.getByText('Chọn phường/xã/đặc khu từ danh sách.')).toBeVisible();
+    expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(0);
   });
 });

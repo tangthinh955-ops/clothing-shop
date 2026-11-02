@@ -4,7 +4,7 @@ import { isDefiniteOrderError, ordersApi, type CreateOrderBody, type CreateOrder
 import type { ContactDraft } from './hooks/useCreateOrder';
 
 export const EMPTY_CONTACT_DRAFT: ContactDraft = {
-  name: '', phone: '', email: '', province: '', district: '', ward: '', addressLine: '', note: '' };
+  name: '', phone: '', email: '', province: '', ward: '', addressLine: '', note: '' };
 
 export type SubmissionPhase = 'idle' | 'pending' | 'unknown' | 'confirmed' | 'failed';
 
@@ -61,7 +61,8 @@ export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
   const updateDraft = useCallback((next: ContactDraft) => {
     setDraft(next);
     const changedFields = DRAFT_ERROR_FIELDS.filter(([, field]) => draft[field] !== next[field]
-      || (field === 'province' && draft.provinceInput !== next.provinceInput));
+      || (field === 'province' && draft.provinceInput !== next.provinceInput)
+      || (field === 'ward' && draft.wardInput !== next.wardInput));
     if (!changedFields.length) return;
     setState((current) => {
       if (!changedFields.some(([path]) => current.fieldErrors[path])) return current;

@@ -2,6 +2,101 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.3.2.1: Sửa lỗi P2 theo dõi wardInput khi xóa lỗi server và cập nhật hợp đồng địa chỉ
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("chạy đi"). Tiếp tục trên nhánh `feat/checkout-ward-picker` từ commit `b9152d4`. **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu.** Chỉ frontend + test/tài liệu; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/merge/deploy. Giữ nguyên key/body và cơ chế chống đặt trùng.
+
+**Chi tiết lỗi P2 và bản sửa:**
+- **Nguyên nhân:** trong `OrderSubmissionProvider.updateDraft`, danh sách `changedFields` chỉ so sánh `field === 'province' && draft.provinceInput !== next.provinceInput` mà bỏ sót `wardInput`. Khi server trả lỗi validation ở ô `address.ward`, việc khách hàng gõ chỉnh sửa chữ tìm kiếm phường/xã trong combobox làm thay đổi `wardInput` chứ chưa chọn option mới (`draft.ward` chưa đổi). Vì vậy lỗi `address.ward` không bị xóa khỏi `state.fieldErrors` trong provider. Khi khách hàng rời sang giỏ hàng/cửa hàng rồi quay lại checkout, component form mount lại và lỗi cũ từ provider tái xuất hiện.
+- **Bản sửa:** bổ sung `|| (field === 'ward' && draft.wardInput !== next.wardInput)` vào điều kiện lọc `changedFields` của `updateDraft`. Khi `wardInput` thay đổi, khóa `address.ward` bị xóa khỏi `fieldErrors` ngay lập tức.
+- **Regression test (RED → GREEN):**
+  - Thêm ca test mới trong `CheckoutPage.test.tsx`: `does not resurrect an edited ward server error when returning from cart edits after editing ward search text`.
+  - **RED:** Chạy test trên code commit `b9152d4` thất bại chính xác tại assertion `expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument()` (phần tử lỗi vẫn còn tồn tại trong DOM sau khi đổi route).
+  - **GREEN:** Sau khi sửa `updateDraft`, test đạt (1.657ms). Toàn bộ 28/28 ca test trong `CheckoutPage.test.tsx` đạt.
+- **Tài liệu hợp đồng:** cập nhật mục Địa chỉ trong `docs/m4-contract.md` phản ánh đúng thiết kế picker 2 cấp (34 tỉnh/thành và 3.321 phường/xã/đặc khu), bỏ ô quận/huyện trên UI; không còn mô tả phường/xã nhập tay.
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/checkout/OrderSubmissionProvider.tsx` | Bổ sung `(field === 'ward' && draft.wardInput !== next.wardInput)` trong `updateDraft` để xóa `address.ward` khỏi `fieldErrors`. |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` | Regression test đổi route sau khi sửa chữ tìm kiếm phường/xã để xác nhận không phục hồi lỗi server cũ. |
+| `docs/m4-contract.md` | Cập nhật mục Địa chỉ khớp với picker tỉnh/phường 2 cấp và bỏ mô tả phường/xã nhập tay. |
+| `progress.md` | Ghi nhận tiến độ, bằng chứng RED → GREEN và kết quả kiểm tra thực tế. |
+
+**Data flow:** Server trả lỗi 400 kèm field error `address.ward` → lưu vào `state.fieldErrors` của `OrderSubmissionProvider` → Khách hàng gõ ký tự vào ô tìm kiếm phường/xã (`wardInput`) → `updateDraft` nhận biết `draft.wardInput !== next.wardInput` và xóa `address.ward` khỏi `fieldErrors` → Khách điều hướng sang giỏ hàng rồi quay lại checkout → provider cung cấp `fieldErrors` đã dọn sạch, form không còn hiện lỗi server cũ.
+
+**Kiểm tra:**
+- **Regression RED:** Vitest chạy riêng test mới fail đúng lỗi server còn trong DOM (code `b9152d4`).
+- **Regression GREEN:** Vitest chạy đạt 1/1 test mới sau khi sửa `OrderSubmissionProvider.tsx`.
+- **Checkout test:** 4 file / 43 test trong `src/features/checkout/` đạt 100% (trong đó `CheckoutPage.test.tsx` đạt 28/28).
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt 0 lỗi (cả backend và frontend).
+- **E2E:** `./tools/npm.ps1 run test:e2e -- order-creation.spec.ts` đạt 6/6 (1,4 phút), runner tự tạo và dọn DB `_test` riêng.
+
+**Giới hạn:** backend vẫn nhận text và schema DB giữ nguyên cột `district` (nullable trong DTO, DB lưu `""`), không ảnh hưởng đơn cũ. Chưa merge hoặc deploy.
+
+**Còn lại:** Người dùng mở trình duyệt kiểm tra thực tế kịch bản lỗi server ward không tái xuất hiện sau khi đổi route; phản hồi rồi mới chốt phần.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
+## Ngày 02/11/2026 — Git/review: kiểm tra và push picker phường/xã
+
+- Người dùng yêu cầu kiểm tra lại và push nhánh `feat/checkout-ward-picker` từ `e9585da`. Kiểm tra đúng phần M4.3.2 do Antigravity triển khai: hai combobox tỉnh/phường đã nối dữ liệu; không tự chọn phường đầu tiên, đổi tỉnh xóa phường cũ, chữ tìm kiếm không phải lựa chọn, draft ở bộ nhớ và body API không có metadata picker. Không sửa code sản phẩm trong lượt review/push này.
+- **Kiểm tra mới:** 42/42 test checkout và typecheck toàn repo đạt; toàn bộ E2E **59/59 (6,2 phút)** đạt, runner build backend/frontend và dọn DB `_test` riêng thành công. Root test với `VITEST_MAX_WORKERS=4`: 10 tools và 74 backend đạt; frontend **544/545**, ca `App.test.tsx > redirects an unauthenticated account request to login` không tìm thấy heading login đúng hạn khi chạy song song E2E. Chạy riêng lại `App.test.tsx` **12/12 đạt**, không sửa test hoặc timeout; không coi lượt full đã xanh. Còn cảnh báo Vite chunk >500 kB và pg deprecation có sẵn. Các kết quả trong mục triển khai bên dưới là bằng chứng của Antigravity, không thay thế lượt kiểm tra này.
+- **Còn lỗi P2 đã tái hiện, chưa sửa:** `OrderSubmissionProvider.updateDraft` chỉ theo dõi thay đổi `provinceInput`, chưa theo dõi `wardInput`. Khi server trả lỗi `address.ward`, sửa chữ tìm kiếm làm form ẩn lỗi nhưng lỗi còn trong provider; rời checkout/quay lại thì lỗi cũ hiện lại. Harness tạm dùng component/page/provider thật đã thất bại đúng assertion thông báo lỗi cũ vẫn có mặt sau remount; đã dọn harness ngoài Git sau khi kiểm tra. Cần giao Antigravity thêm nhánh so sánh `wardInput` cho trường `ward` và regression test đổi route; cập nhật mục địa chỉ trong `docs/m4-contract.md` còn mô tả phường nhập tay.
+- **Git/điểm dừng:** đã rà đúng 12 file, tác giả Git, remote, diff/staged/ignore; quét mẫu credential và marker conflict không có phát hiện, env thật/runtime/dependency/build/log bị loại khỏi commit. Push bản hiện tại theo yêu cầu, ghi rõ lỗi còn lại; không coi tính năng đã nghiệm thu hoặc hết lỗi. Không merge main/deploy. Chưa có kết quả CI của commit mới.
+
+## Ngày 02/11/2026 — M4.3.2: Danh sách lựa chọn Phường/xã/đặc khu theo tỉnh/thành tại Checkout
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("oke"). Tiếp tục trên nhánh `feat/checkout-ward-picker`. **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu phần này.** Chỉ frontend + test/tài liệu; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/deploy.
+
+**Các thay đổi chính:**
+- Thêm bộ dữ liệu `vietnam-wards.ts` (3.321 đơn vị cấp xã gồm 687 phường, 2.621 xã, 13 đặc khu thuộc đúng 34 tỉnh/thành mới theo sắp xếp 2025) cùng các helper `wardsForProvince`, `wardNamesForProvince`, `isWardOfProvince`.
+- Chuyển ô "Phường/xã" trong `ContactAddressForm.tsx` từ textfield nhập tay sang `Autocomplete` (nhãn `Phường/xã/đặc khu`):
+  - Chưa chọn tỉnh/thành: combobox phường/xã bị vô hiệu hóa (`disabled`), gợi ý "Cần chọn tỉnh/thành trước".
+  - Chọn tỉnh/thành: mở khóa combobox, nạp danh sách phường/xã của đúng tỉnh đó; khách tự chọn một mục, không tự động chọn sẵn mục đầu tiên.
+  - Hỗ trợ gõ tìm kiếm không dấu (`searchableText`), chữ gõ tìm kiếm không được coi là giá trị đã chọn.
+  - Đổi tỉnh/thành: tự động xóa phường/xã và chữ tìm kiếm cũ, yêu cầu khách chọn lại.
+  - Chưa chọn hoặc gõ đè lên giá trị đã chọn: form chặn tạo đơn, báo lỗi `Chọn phường/xã/đặc khu từ danh sách.` và focus vào combobox; không gửi request tới server.
+  - Bỏ trường nhập tay quận/huyện trên giao diện form theo cấu trúc dữ liệu địa chính 2 cấp (tỉnh → xã/phường).
+  - Không báo đỏ trước khi tương tác; lỗi chỉ hiện sau blur hoặc bấm đặt hàng; form sạch ban đầu.
+- Cập nhật `ContactDraft` (`useCreateOrder.ts`, `OrderSubmissionProvider.tsx`): thêm `wardInput?: string`, chuyển `district?: string` thành tùy chọn; bản nháp giữ trong bộ nhớ (bao gồm cả chữ đang tìm kiếm dở) không bị mất khi khách điều hướng sang giỏ hàng rồi quay lại.
+- Cập nhật các test unit/component/page và test E2E sang chọn phường/xã từ danh sách qua combobox (chuột và bàn phím, mobile responsive).
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/checkout/vietnam-wards.ts` (mới) | Danh mục 3.321 xã/phường/đặc khu theo 34 mã tỉnh/thành và các hàm tra cứu `wardsForProvince`, `wardNamesForProvince`, `isWardOfProvince`. |
+| `apps/frontend/src/features/checkout/vietnam-wards.test.ts` (mới) | Test danh mục phường/xã: độ phủ 34 tỉnh, tỷ lệ 687 phường / 2.621 xã / 13 đặc khu, ràng buộc theo tỉnh. |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.tsx` | Nối `Autocomplete` `Phường/xã/đặc khu` phụ thuộc vào `province`; validate theo `isWardOfProvince` và `wardInput`; xóa phường/xã khi đổi tỉnh; bỏ ô quận/huyện. |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.test.tsx` | 8 ca test hành vi form: disable khi chưa chọn tỉnh, chọn bằng phím/chuột, gõ đè không tính là chọn, đổi tỉnh xóa phường, xóa lỗi server theo ô, form sạch ban đầu. |
+| `apps/frontend/src/features/checkout/hooks/useCreateOrder.ts` | `ContactDraft` bổ sung `wardInput?: string`, `district?: string`; `buildOrderBody` và `submit` gửi payload chuẩn API. |
+| `apps/frontend/src/features/checkout/OrderSubmissionProvider.tsx` | `EMPTY_CONTACT_DRAFT` và `DRAFT_ERROR_FIELDS` đồng bộ với `ContactDraft`. |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` | Helper form checkout chuyển sang chọn `Phường Bến Thành`; cập nhật ca gõ đè/đổi tỉnh kiểm tra ward; test giữ chữ tìm ward qua điều hướng. |
+| `apps/frontend/e2e/order-creation.spec.ts` | Helper `pickWard`; test picker không dấu bằng bàn phím cho cả tỉnh và phường; test gõ đè chặn tạo đơn; mobile viewport. |
+| `apps/frontend/e2e/admin-orders.spec.ts`, `apps/frontend/e2e/order-access.spec.ts` | Cập nhật helper tạo đơn thử nghiệm dùng phường/xã hợp lệ từ danh mục mới. |
+| `docs/local-trial-m4.md` | Cập nhật runbook kiểm thử M4.3.2 cho picker phường/xã. |
+
+**Data flow:** Khách chọn Tỉnh/thành → `ContactAddressForm` gọi `wardNamesForProvince` nạp danh sách phường/xã tương ứng và mở khóa combobox Phường/xã/đặc khu → Khách gõ tìm kiếm không dấu và chọn một mục → `onChange` cập nhật `ward` và `wardInput` vào draft trên `OrderSubmissionProvider` → Khi submit, `validateContactDraft` đối chiếu `isWardOfProvince(draft.province, draft.ward)` và khớp `wardInput`; nếu hợp lệ, `useCreateOrder` gửi `POST /api/v1/orders` tạo đơn COD và hiển thị màn hình xác nhận.
+
+**Kiểm tra:**
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt 0 lỗi (cả backend và frontend).
+- **Build:** `npm.cmd run build --workspaces` đạt cả backend và frontend; cảnh báo Vite chunk >500 kB có sẵn.
+- **Unit/Component test:**
+  - `vietnam-wards.test.ts`: 3/3 đạt.
+  - `ContactAddressForm.test.tsx`: 8/8 đạt.
+  - `CheckoutPage.test.tsx`: 27/27 đạt.
+  - Toàn bộ `src/features/checkout/`: 4 file / 42 test đạt.
+  - Toàn bộ `src/features/orders/`: 4 file / 75 test đạt.
+- **Toàn bộ frontend:** `powershell -Command "cd apps/frontend; node ../../node_modules/vitest/vitest.mjs run --config vite.config.ts --maxWorkers=4"`: **42 file / 545 test đạt** (107,35 giây).
+- **E2E:**
+  - `order-creation.spec.ts`: 6/6 đạt (55,7 giây).
+  - `admin-orders.spec.ts`: 5/5 đạt (1,3 phút).
+  - `order-access.spec.ts`: 4/4 đạt.
+
+**Giới hạn:** backend vẫn nhận địa chỉ text và schema DB giữ nguyên cột `district` (nullable trong DTO, DB lưu `""`), không ảnh hưởng đơn cũ. Chưa commit/push/deploy.
+
+**Còn lại:** Người dùng mở trình duyệt chạy thử local theo hướng dẫn bàn giao; phản hồi lỗi/UX rồi mới chốt phần.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
 ## Ngày 02/11/2026 — Git: ghép R2 và giải conflict nhánh checkout
 
 - **Phạm vi:** người dùng yêu cầu kéo về, fix conflict rồi push lại `feat/checkout-address-validation`. Working tree ban đầu sạch; fast-forward từ `68a0bd3` tới bản remote `78b501a` (đã ghép R1), rồi merge `origin/main` `ef6cd7f` (R2). Không rebase/force push, không merge ngược vào main hoặc deploy.
