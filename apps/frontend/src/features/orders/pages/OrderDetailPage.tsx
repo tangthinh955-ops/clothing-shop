@@ -4,19 +4,9 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import { ApiError } from '../../../shared/api/client';
-import { ordersApi, type OrderStatus } from '../api/orders.api';
+import { ordersApi } from '../api/orders.api';
+import { ORDER_STATUS_LABELS } from '../orderStatusLabels';
 import { sha256Hex } from '../token-tag';
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING: 'Chờ xác nhận',
-  CONFIRMED: 'Đã xác nhận',
-  PACKING: 'Đang đóng gói',
-  SHIPPED: 'Đã bàn giao vận chuyển',
-  DELIVERED: 'Đã giao',
-  CANCELLED: 'Đã hủy',
-  DELIVERY_FAILED: 'Giao thất bại',
-  RETURNED_TO_SHOP: 'Đã trả về cửa hàng',
-};
 
 const ENTRY_TIME = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' });
 
@@ -101,7 +91,7 @@ export function OrderDetailPage() {
         {query.data.order.code}
       </Typography>
       <Typography>
-        Trạng thái: <strong>{STATUS_LABELS[query.data.order.status]}</strong> · {query.data.order.method === 'COD'
+        Trạng thái: <strong>{ORDER_STATUS_LABELS[query.data.order.status]}</strong> · {query.data.order.method === 'COD'
           ? 'Thanh toán khi nhận hàng (COD)' : query.data.order.method}
         {query.data.order.status === 'PENDING' && <> — <strong>chưa thu tiền</strong></>}
       </Typography>
@@ -153,8 +143,8 @@ export function OrderDetailPage() {
         <Stack spacing={1.5}>
           {query.data.timeline.map((entry) => <Stack key={entry.version} spacing={0}>
             <Typography sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
-              {entry.fromStatus ? `${STATUS_LABELS[entry.fromStatus]} → ` : ''}
-              {STATUS_LABELS[entry.toStatus]}
+              {entry.fromStatus ? `${ORDER_STATUS_LABELS[entry.fromStatus]} → ` : ''}
+              {ORDER_STATUS_LABELS[entry.toStatus]}
               {entry.actorLabel ? ` · ${entry.actorLabel}` : ''}
             </Typography>
             <Typography variant="body2" color="text.secondary">

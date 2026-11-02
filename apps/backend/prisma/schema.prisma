@@ -69,6 +69,7 @@ model User {
   movements InventoryMovement[]
   orders Order[]
   orderHistory OrderStatusHistory[]
+  orderNotes OrderNote[]
   @@map("users")
 }
 
@@ -269,6 +270,7 @@ model Order {
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
   items OrderItem[]
   history OrderStatusHistory[]
+  notes OrderNote[]
   @@index([status, createdAt])
   @@index([phone])
   @@map("orders")
@@ -308,6 +310,20 @@ model OrderStatusHistory {
 }
 
 // Server-scoped mutation replay bookkeeping (m4-contract §7); response is stored for safe replays.
+// Internal admin notes (M4.5.2): append-only, never shown to the customer, and independent of
+// Order.version so writing one cannot invalidate an order action open in another tab.
+model OrderNote {
+  id String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId String @db.Uuid
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body String @db.VarChar(1000)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@index([orderId, createdAt])
+  @@map("order_notes")
+}
+
 model IdempotencyRecord {
   id String @id @default(uuid()) @db.Uuid
   scope String @db.VarChar(60)

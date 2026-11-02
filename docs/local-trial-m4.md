@@ -204,17 +204,68 @@ Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu h�
 
 ADMIN vào `/admin/orders`: thấy đơn thật vừa tạo; filter/page nằm trên URL, refresh giữ; empty/error/retry rõ. Khách/CUSTOMER gọi GET admin bị401/403; thông tin một đơn không lẫn vào dòng khác. Không dùng fixture giả trong UI sản phẩm để báo luồng đã chạy.
 
+Đã triển khai (chờ người dùng thử). Chạy `dev:backend`, `dev:frontend`; đặt một đơn COD ở cửa sổ riêng tư, rồi đăng nhập ADMIN ở cửa sổ khác.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Trang Quản trị → bấm "Đơn hàng" | Sang `/admin/orders`; đơn vừa đặt nằm trên cùng: mã đơn, "Chờ xác nhận", tên · SĐT, tổng tiền, "COD · Website · N sản phẩm · thời gian". Không hiện địa chỉ |
+| Chọn "Trạng thái" = "Đã hủy" | URL có `status=CANCELLED&page=1`; danh sách lọc lại, không có đơn thì báo "Không có đơn phù hợp bộ lọc."; tải lại trang vẫn giữ lọc |
+| Gõ mã đơn (một phần, chữ thường), tên hoặc SĐT (cả dạng `+84 9…`) rồi Enter | Tìm đúng đơn; "Xóa lọc" trả về toàn bộ |
+| Có hơn 20 đơn | Phân trang dưới danh sách, giữ bộ lọc |
+| Mở `/admin/orders?status=PAID` | "Bộ lọc không hợp lệ." và nút "Xóa lọc", không gọi API |
+| Đăng nhập tài khoản CUSTOMER rồi mở `/admin/orders` | Bị chuyển về `/account`, không tải đơn nào |
+| Thu về 390px | Không có thanh cuộn ngang |
+
+Chưa có ở phần này: bấm vào đơn để xem chi tiết (M4.5.2), các thao tác xử lý đơn (M4.5.3–5.8), trạng thái thu tiền (M4.6).
+
 ### M4.5.2 — Chi tiết và ghi chú admin
 
-Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/người nhận snapshot và lịch sử. Thêm ghi chú thử → refresh còn; lỗi mạng/version giữ draft và báo rõ, không ghi đè trường nghiệp vụ. Sau khi có thao tác tiếp theo, kiểm tra lịch sử actor/thời gian/lý do.
+Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/người nhận snapshot và lịch sử. Thêm ghi chú thử → refresh còn; lỗi mạng giữ draft, khóa nội dung và cho gửi lại đúng ghi chú đó, không ghi đè trường nghiệp vụ. Ghi chú chỉ thêm, không sửa/xóa, nên không có lỗi version. Sau khi có thao tác tiếp theo, kiểm tra lịch sử actor/thời gian/lý do.
+
+Đã triển khai (chờ người dùng thử). Có migration mới: chạy `./tools/npm.ps1 run db:migrate` từ root rồi khởi động lại `dev:backend`, `dev:frontend`.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Ở `/admin/orders`, lọc rồi bấm mã một đơn | Mở `/admin/orders/<id>`: mã đơn, trạng thái, phương thức, nguồn, thời gian; Người nhận (SĐT bấm gọi được, địa chỉ đầy đủ, ghi chú của khách); Sản phẩm, tạm tính, phí giao, tổng; Lịch sử trạng thái |
+| Đối chiếu với lúc đặt, sửa giá sản phẩm rồi tải lại | Đơn vẫn giữ giá và tên lúc đặt |
+| Bấm "Về danh sách đơn" | Về đúng danh sách đang lọc |
+| Bấm "Lưu ghi chú" khi ô trống | Báo "Nhập nội dung ghi chú.", không gửi |
+| Nhập ghi chú rồi lưu, tải lại trang | Ghi chú còn, có tên người viết và thời gian; ô nhập trống lại |
+| DevTools → Network → Offline, lưu ghi chú | Báo lỗi kết nối, nội dung bị khóa, có nút "Gửi lại"; bật mạng rồi bấm thì chỉ có một ghi chú |
+| Mở link xem đơn của khách (`/orders/<mã>#t=…`) | Không thấy ghi chú nội bộ |
+| Mở `/admin/orders/khong-co` | "Không tìm thấy đơn hàng." và nút về danh sách |
 
 ### M4.5.3 — Xác nhận COD
 
 Đơn PENDING → Xác nhận → CONFIRMED; tồn giữ nguyên, chưa thu COD. Lưu bằng tab snapshot cũ hoặc trạng thái sai →409. Bấm đúp không tạo hai history/effect. Bank chỉ thử sau6.2: thiếu tiền không confirm, đủ trước hạn mới hợp lệ.
 
+Đã triển khai (chờ người dùng thử). Cần migration của M4.5.2 nếu chưa chạy.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở một đơn "Chờ xác nhận", bấm "Xác nhận đơn" | Hộp thoại hỏi lại; bấm "Để sau" thì không có gì đổi |
+| Bấm "Xác nhận" | Trạng thái thành "Đã xác nhận", nút biến mất, Lịch sử thêm "Chờ xác nhận → Đã xác nhận" với tên admin; tải lại trang vẫn đúng |
+| Xem trang Kho của SKU đó | Tồn thực có và Đang giữ không đổi |
+| Mở đơn ở hai tab, xác nhận ở tab 1, rồi xác nhận ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; Lịch sử chỉ có một dòng xác nhận |
+| DevTools → Offline, bấm "Xác nhận" | Báo lỗi kết nối và có "Gửi lại"; bật mạng rồi bấm thì đơn được xác nhận đúng một lần |
+| Mở link xem đơn của khách | Thấy "Đã xác nhận", người thao tác hiện "Cửa hàng", không có tên admin |
+
 ### M4.5.4 — Đóng gói
 
 CONFIRMED → Đóng gói → PACKING. Khách giờ chỉ gửi yêu cầu hủy; nút/API hủy trực tiếp không được. Thử transition sai, stale version và double-click, số kho/tiền không bị đổi ngoài hiệu ứng được thiết kế.
+
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Khách hiện chưa có chức năng hủy hay xin hủy (M4.4.3, M4.4.4), nên phần "khách chỉ gửi yêu cầu hủy" chưa thử được.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở đơn "Chờ xác nhận" | Chưa có nút "Đóng gói" |
+| Xác nhận đơn, rồi bấm "Đóng gói" | Hộp thoại hỏi lại; bấm "Để sau" thì không có gì đổi |
+| Bấm "Đóng gói" trong hộp thoại | Trạng thái "Đang đóng gói", chỉ còn nút "Hủy đơn"; Lịch sử thêm "Đã xác nhận → Đang đóng gói" với tên admin; tải lại trang vẫn đúng |
+| Xem trang Kho của SKU đó | Tồn thực có và Đang giữ không đổi |
+| Mở link xem đơn của khách | Thấy "Đang đóng gói", không có tên admin |
+| Mở đơn "Đã xác nhận" ở hai tab, đóng gói ở tab 1, rồi đóng gói ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; Lịch sử chỉ có một dòng đóng gói |
+| DevTools → Offline, bấm "Đóng gói" | Báo lỗi kết nối và có "Gửi lại"; bật mạng rồi bấm thì đơn đóng gói đúng một lần |
+| Hủy đơn "Đang đóng gói" có lý do | Đơn "Đã hủy", Đang giữ giảm đúng lượng, Tồn thực có không đổi |
 
 ### M4.5.5 — Bàn giao vận chuyển
 
@@ -227,6 +278,19 @@ SHIPPED → Giao thành công → DELIVERED, có deliveredAt. Kho vẫn3/0, khô
 ### M4.5.7 — Admin hủy
 
 Tạo các đơn riêng PENDING/CONFIRMED/PACKING để hủy có lý do. Reserved được giải phóng đúng một lần, history giữ; SHIPPED không hủy thẳng. Khi có bank, kiểm tra thu dư rồi hủy chỉ tạo nghĩa vụ bổ sung phần allocated, không cộng dư hai lần.
+
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Đơn PACKING thử theo mục M4.5.4. Chưa có bank nên phần nghĩa vụ hoàn làm cùng M4.6.2.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD số lượng 2 ở cửa sổ ẩn danh, giữ lại link xem đơn; xem trang Kho của SKU đó | Đang giữ tăng 2 |
+| Mở đơn ở `/admin/orders`, bấm "Hủy đơn" rồi bấm "Hủy đơn" trong hộp thoại mà chưa nhập lý do | Báo "Nhập lý do từ 3 đến 500 ký tự.", đơn không đổi |
+| Nhập lý do, bấm "Hủy đơn" | Trạng thái "Đã hủy", hiện "Lý do hủy: …", hết nút thao tác; Lịch sử có tên admin và lý do; tải lại trang vẫn đúng |
+| Xem lại trang Kho | Đang giữ giảm 2, Tồn thực có không đổi; lịch sử kho ghi "Hủy đơn <mã>", không chép lý do |
+| Mở link xem đơn của khách | Thấy "Đã hủy" và lý do, người thao tác hiện "Cửa hàng", không có tên admin |
+| Mở một đơn khác ở hai tab, hủy ở tab 1, rồi hủy ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; kho chỉ nhả một lần |
+| DevTools → Offline, bấm hủy | Báo lỗi kết nối, ô lý do bị khóa, có "Gửi lại"; bật mạng rồi bấm thì đơn hủy đúng một lần |
+| Hủy đơn "Đã xác nhận" | Hủy được và nhả kho như đơn "Chờ xác nhận" |
 
 ### M4.5.8 — Duyệt/từ chối yêu cầu hủy
 

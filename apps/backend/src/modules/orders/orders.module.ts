@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
+import { AdminOrderNotesService } from './admin-order-notes.service.js';
+import { AdminOrderTransitionsService } from './admin-order-transitions.service.js';
+import { AdminOrdersController } from './admin-orders.controller.js';
+import { AdminOrdersService } from './admin-orders.service.js';
 import { CheckoutController } from './checkout.controller.js';
 import { CheckoutService } from './checkout.service.js';
 import { OrderAccessGuard } from './order-access.guard.js';
@@ -11,8 +15,8 @@ import { OrderCreationService } from './order-creation.service.js';
 
 @Module({
   imports: [SettingsModule, InventoryModule],
-  providers: [CheckoutService, OrderCreationService, OrderAccessService, OrderLookupService, OrderAccessGuard],
-  controllers: [CheckoutController, OrdersController],
+  providers: [CheckoutService, OrderCreationService, OrderAccessService, OrderLookupService, OrderAccessGuard, AdminOrdersService, AdminOrderNotesService, AdminOrderTransitionsService],
+  controllers: [CheckoutController, OrdersController, AdminOrdersController],
   exports: [CheckoutService, OrderCreationService],
 })
 export class OrdersModule {}

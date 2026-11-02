@@ -2,6 +2,123 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.5.4: admin đóng gói đơn
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.4 ("duyệt"). Làm tiếp trên nhánh `feat/m4.5-admin-orders`, cùng phần M4.5.7 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1–M4.5.3 và M4.5.7.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts`, `admin-orders.controller.ts` | Rule `PACK` (`CONFIRMED` → `PACKING`) và `POST /admin/orders/:id/pack`; kho và tiền không đổi |
+| `apps/frontend/src/features/admin/orders/components/OrderStepAction.tsx` (mới), `OrderActions.tsx` | Gộp hộp thoại xác nhận thành một component dùng cho cả đóng gói; xóa `OrderConfirmAction.tsx` tạo ở M4.5.7 (chưa từng commit) |
+| `.../api/admin-orders.api.ts` | Hàm `pack` |
+| `apps/backend/test/admin-orders.integration.spec.ts` | 16 ca mới; đưa helper tạo đơn giữ hàng ra dùng chung với test hủy |
+| `.../pages/AdminOrderDetailPage.test.tsx`, `apps/frontend/e2e/admin-orders.spec.ts` | 11 ca UI và 1 E2E (xác nhận → đóng gói → hủy); đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 450 frontend; `npm run test:integration` 190/190; `npm run test:e2e:implemented` 54/54. Đã xem ảnh trang đơn "Đang đóng gói" trên mobile. Các test xác nhận đơn hiện có vẫn đạt sau khi gộp component.
+
+**Giới hạn:** đơn `PACKING` chưa đi tiếp được cho tới khi có M4.5.5. Khách chưa có chức năng hủy hay xin hủy (M4.4.3, M4.4.4) nên phần "khách chỉ gửi yêu cầu hủy" chưa thử được. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.4. **Dừng chờ người dùng thử.**
+
+## Ngày 02/11/2026 — M4.5.7: admin hủy đơn trước bàn giao
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.7 ("duyệt"), gồm việc khách thấy lý do hủy. Làm trước M4.5.4 vì production đã nhận đơn thật mà chưa nhả được hàng giữ; lý do đã ghi ở kế hoạch M4. Làm tiếp trên nhánh `feat/m4.5-admin-orders`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.** Production vẫn chưa có chức năng hủy.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Rule nhận nhiều trạng thái nguồn và hiệu ứng chạy trong transaction; thêm `cancel()` nhả kho qua Inventory, ghi lý do. Lệnh confirm giữ nguyên dạng hash chống trùng để bản ghi đã lưu vẫn replay được |
+| `apps/backend/src/modules/orders/dto/admin-order-cancel.dto.ts` (mới), `admin-orders.controller.ts` | `POST /admin/orders/:id/cancel`, lý do 3–500 ký tự sau trim |
+| `apps/frontend/src/features/admin/orders/hooks/useOrderCommand.ts` (mới) | Logic chống bấm lặp, giữ key, "Gửi lại" đúng lệnh cũ, tách từ `OrderActions` để các thao tác sau dùng chung |
+| `.../components/OrderCancelAction.tsx` (mới), `OrderConfirmAction.tsx` (mới), `OrderActions.tsx` | Hộp thoại hủy; phần xác nhận chuyển nguyên sang file riêng; `OrderActions` chỉ chọn nút theo trạng thái. Khác kế hoạch: thêm `OrderConfirmAction.tsx`, và file hủy tên `OrderCancelAction` vì chứa cả nút |
+| `.../api/admin-orders.api.ts` | Hàm `cancel` |
+| `apps/backend/test/admin-orders.integration.spec.ts`, `.../pages/AdminOrderDetailPage.test.tsx`, `apps/frontend/e2e/admin-orders.spec.ts` | Test mới; đã quan sát fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, lý do đổi thứ tự, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 439 frontend; `npm run test:integration` 174/174 (thêm 23 ca: quyền, validation, 3 trạng thái hủy được, 5 trạng thái bị từ chối, version cũ, replay, hai admin hủy cùng lúc, trùng key cùng lúc, hủy đua với xác nhận, rollback khi không nhả được kho, khách thấy lý do); `npm run test:e2e:implemented` 53/53. Sau lượt đầy đủ chỉ đổi vị trí dòng cảnh báo trong hộp thoại, đã chạy lại test trang chi tiết, typecheck và E2E `admin-orders`.
+
+**Giới hạn:** chưa thử được đơn `PACKING` trên giao diện cho tới khi có M4.5.4 (đã có integration test). Chưa tạo nghĩa vụ hoàn tiền vì chưa có bảng thu tiền (M4.6.2). Khách chưa tự hủy được (M4.4.3), shop chưa duyệt được yêu cầu hủy (M4.5.8), hủy đơn chưa gửi email (M4.10). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.7. **Dừng chờ người dùng thử.**
+
+## Ngày 02/11/2026 — Commit, PR #28 và deploy production M4.5.1–M4.5.3
+
+- **Yêu cầu:** người dùng yêu cầu "commit và tạo mr sau đó deploy lên vps", sau khi đã được báo nhiều lần rằng chưa nên deploy tới khi xong M4.5.7 và M4.10.1. Không merge vào `main` vì không được yêu cầu.
+- **Git:** nhánh đổi tên thành `feat/m4.5-admin-orders`; 3 commit theo phần (`9ad5936`, `f491003`, `9b51b1c`) và 1 commit sửa test (`bc7e778`); PR #28 vào `main`, chưa merge.
+- **CI:** lượt `pull_request` đầu của `9b51b1c` lỗi 1 ca `order-creation.spec.ts`, lượt `push` cùng commit đạt. Nguyên nhân là test: `getByText('Thông tin nhận hàng')` khớp cả đoạn giới thiệu luôn hiện ở checkout, nên ca này chỉ đạt khi kiểm tra trước lúc báo giá về và fail khi tiêu đề form đã hiện. Sửa 3 chỗ sang tìm heading, local đạt 5/5 hai spec. Cả hai lượt CI của `bc7e778` đạt.
+- **Deploy:** workflow Deploy production [run 41369477432](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41369477432), ref `bc7e778`, release `ci-20261102-0052-bc7e778`, thành công 6/6 bước gồm migration `order_notes`.
+- **Kiểm tra công khai sau deploy (agent, chỉ request đọc hoặc bị từ chối, không tạo dữ liệu):** `health/ready` `{"status":"ok"}`; `/`, `/shop`, `/checkout` 200; 5 sản phẩm còn nguyên; `GET /admin/orders` không đăng nhập 401.  `POST /orders` và `POST /admin/orders/:id/confirm` không có CSRF đều 403 (trước deploy `POST /orders` là 404). **Chưa kiểm tra bằng tài khoản admin thật và chưa đặt đơn thật trên production.**
+- **Trạng thái production quan trọng:** khách đã đặt được đơn COD trên web thật. Shop chỉ xem và xác nhận được đơn; **chưa có đóng gói, bàn giao, hủy (M4.5.4–5.7) nên đơn giữ hàng chưa nhả được trên giao diện**, và chưa có thông báo đơn mới (M4.10.1), admin phải tự mở `/admin/orders` kiểm tra.
+- **Rủi ro vận hành:** `main` chưa có các commit này; chạy workflow deploy với `main` sẽ đưa production về bản không có trang admin đơn (bảng `order_notes` vẫn còn, không ảnh hưởng). Merge PR #28 để tránh.
+- **Phát hiện chưa sửa:** tiêu đề tab còn tên cũ "Clothing Shop" ở `CheckoutPage.tsx`, `OrderDetailPage.tsx`, `OrderLookupPage.tsx`, `SettingsPage.tsx`; SĐT/Zalo và email shop vẫn chưa có trong `shared/shop.ts`.
+
+## Ngày 02/11/2026 — M4.5.3: admin xác nhận đơn COD
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.3 ("duyệt"), gồm đơn chuyển khoản chưa xác nhận được tới M4.6. Làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1, M4.5.2.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts`, `dto/admin-order-transition.dto.ts` (mới); `admin-orders.controller.ts`, `orders.module.ts` | `POST /admin/orders/:id/confirm` (200, CSRF, `Idempotency-Key`, `{expectedVersion}`). Một transaction: kiểm tra key, khóa dòng đơn, kiểm tra version, trạng thái `PENDING` và COD, cập nhật đơn (version +1), ghi `order_status_history` có actor, ghi bản ghi chống trùng scope `orders.transition:confirm`. Không đổi kho hay tiền. Các phần M4.5.4–5.7 thêm một rule mới vào service này. Không migration |
+| `apps/frontend/src/features/admin/orders/components/OrderActions.tsx` (mới); `api/admin-orders.api.ts`; `pages/AdminOrderDetailPage.tsx` | Nút "Xác nhận đơn" chỉ hiện với đơn PENDING + COD; hộp thoại hỏi lại; 4xx báo lỗi + "Tải lại đơn"; lỗi mạng "Gửi lại" cùng key và version; rời hộp thoại sau kết quả không rõ thì tải lại đơn |
+| Test | `admin-orders.integration.spec.ts` +11; `AdminOrderDetailPage.test.tsx` +8; `e2e/admin-orders.spec.ts` thêm bước xác nhận (kiểm tra kho không đổi, tải lại vẫn đúng) |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Chốt response/mã lỗi của confirm; hướng dẫn thử; điểm dừng |
+
+**TDD:** 11 ca API RED (chưa có route) và 6/8 ca UI RED (2 ca "không hiện nút" đạt sẵn vì trang chưa có nút; vẫn giữ làm test hồi quy) → GREEN.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 422 frontend |
+| `npm run test:integration` | 151/151, 15 file; gồm hai admin đua khác key đúng một thắng, cùng key chỉ áp dụng một lần, kho không đổi, khách không thấy tên admin |
+| `npm run test:e2e:implemented` | 52/52 |
+
+**Giới hạn:** chưa có đóng gói, bàn giao, giao xong, hủy (M4.5.4–5.7). Đơn đã xác nhận vẫn giữ hàng và chưa có cách nhả. Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.3. **Dừng chờ người dùng thử.**
+
+## Ngày 01/11/2026 — M4.5.2: chi tiết đơn và ghi chú nội bộ cho admin
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.2 ("duyệt"), gồm ghi chú chỉ thêm không sửa/xóa và làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng nói "tiếp tục" sau M4.5.1, chưa xác nhận đã chạy thử M4.5.1.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `prisma/migrations/202611010001_m4_order_notes/migration.sql` | **Migration chỉ thêm bảng** `order_notes` (đơn, người viết, nội dung ≤1000, thời gian); xóa đơn thì xóa ghi chú, không xóa được user đã viết ghi chú. Chưa áp dụng vào DB local `clothing_local` và production; DB test tự áp dụng |
+| `apps/backend/src/modules/orders/admin-orders.service.ts`, `admin-orders.controller.ts`, `orders.module.ts` | `GET /admin/orders/:id`: snapshot, lịch sử (tên người thao tác), ghi chú; không có hash token; id sai dạng 400, không có đơn 404 |
+| `admin-order-notes.service.ts`, `dto/admin-order-note.dto.ts` (mới) | `POST /admin/orders/:id/notes` qua CSRF + `Idempotency-Key`: ghi chú và bản ghi chống trùng trong một transaction; gửi lại trả đúng ghi chú cũ, cùng key khác nội dung/khác đơn 409, hai request đua chỉ tạo một ghi chú. Không đổi `Order.version`/trạng thái/tiền |
+| `apps/frontend/src/features/admin/orders/pages/AdminOrderDetailPage.tsx`, `components/OrderNotes.tsx`, `orderLabels.ts` (mới, `orderLabels.ts` **ngoài danh sách dự kiến** để list và chi tiết dùng chung nhãn); `api/admin-orders.api.ts`; `pages/AdminOrdersPage.tsx`; `app/App.tsx` | Mã đơn trong danh sách là link; quay lại giữ bộ lọc; trang chi tiết có Người nhận (SĐT bấm gọi được), Sản phẩm + tiền, Lịch sử, Ghi chú nội bộ. Lỗi mạng khóa nội dung và cho "Gửi lại" cùng key; server từ chối (4xx) thì giữ draft để sửa, dùng key mới |
+| Test | `admin-orders.integration.spec.ts` +12; mới `AdminOrderDetailPage.test.tsx` (12); `AdminOrdersPage.test.tsx` +1; `e2e/admin-orders.spec.ts` thêm mở đơn, ghi chú, tải lại, quay lại giữ bộ lọc |
+| `docs/m4-contract.md`, `docs/architecture.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Chốt API ghi chú; bỏ yêu cầu lỗi version của ghi chú; hướng dẫn thử |
+
+**TDD:** 12 ca API và 12 ca UI RED (chưa có route/trang) → GREEN. Bản đầu của phần gửi lại ép kiểu mù JSON đã lưu; đã đổi sang đọc lại đúng ghi chú từ DB trước khi chạy kiểm tra cuối.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 414 frontend |
+| `npm run test:integration` | 140/140, 15 file; gồm ghi chú không xuất hiện trong view của khách |
+| `npm run test:e2e:implemented` | 52/52 (1,5 phút) |
+| Ảnh Playwright 390px danh sách và chi tiết | Không tràn ngang; bản máy tính chỉ qua E2E, chưa xem ảnh |
+
+**Giới hạn:** chưa có nút xử lý đơn (M4.5.3–5.8), chưa có trạng thái thu tiền (M4.6). Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** cần `./tools/npm.ps1 run db:migrate` trước; xem [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.2. **Dừng chờ người dùng thử.**
+
+## Ngày 01/11/2026 — M4.5.1: admin xem danh sách đơn
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.1 ("duyệt"). Nhánh `feat/m4.5.1-admin-orders-list` từ `main` `a421fcb`. Làm trước M4.4.3 vì shop cần thấy đơn trước tiên và phần này chỉ phụ thuộc M4.3.1; lý do đã ghi ở kế hoạch M4. Tài liệu giao M4 cho Người B, đã báo người dùng nên báo Người B tránh trùng việc. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-orders.controller.ts`, `admin-orders.service.ts`, `dto/admin-orders-query.dto.ts` (mới); `orders.module.ts` | `GET /admin/orders` chỉ ADMIN (`SessionGuard` + `RolesGuard`); lọc `status`, tìm `q` theo mã đơn/tên/SĐT (SĐT `+84…` được chuẩn hóa), mới nhất trước, mặc định 20 đơn/trang. Chỉ trả id, mã, trạng thái, nguồn, phương thức, tổng tiền, tên, SĐT, số sản phẩm, thời gian; không có địa chỉ, email, ghi chú, hash token. Chỉ đọc, không migration |
+| `apps/frontend/src/features/admin/orders/api/admin-orders.api.ts`, `pages/AdminOrdersPage.tsx` (mới); `app/App.tsx`; `features/admin/AdminPage.tsx` | Trang `/admin/orders` với lọc/tìm/trang trên URL; đang tải, rỗng (phân biệt chưa có đơn và không khớp lọc), lỗi có "Tải lại đơn hàng", URL sai không gọi API; nút "Đơn hàng" là nút chính ở trang Quản trị |
+| `apps/frontend/src/features/orders/orderStatusLabels.ts` (mới, **ngoài danh sách dự kiến**); `features/orders/pages/OrderDetailPage.tsx` | Nhãn trạng thái dùng chung thay vì chép lại ở trang admin; trang khách không đổi hành vi |
+| Test | Mới `apps/backend/test/admin-orders.integration.spec.ts` (14 ca, gồm đơn thật qua `POST /orders`), `AdminOrdersPage.test.tsx` (12 ca), `apps/frontend/e2e/admin-orders.spec.ts` (2 ca, thêm vào `test:e2e:implemented`) |
+| `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hướng dẫn thử M4.5.1, điểm dừng, lý do đổi thứ tự |
+
+**TDD:** 14 ca API RED (404 vì chưa có route) và 11/12 ca UI RED (chưa có trang; ca CUSTOMER đạt ngay vì route chưa tồn tại nên chưa chứng minh được chặn, sau khi có route vẫn đạt) → GREEN.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run typecheck`, `npm run build` | Đạt |
+| `npm test` (`VITEST_MAX_WORKERS=2`) | 10 công cụ + 69 backend + 401 frontend |
+| `npm run test:integration` | 128/128, 15 file |
+| `npm run test:e2e:implemented` | 52/52 (1,3 phút) |
+| Ảnh Playwright 390px trong E2E | Không tràn ngang (`scrollWidth <= innerWidth`) |
+
+**Giới hạn:** chưa xem được chi tiết đơn (M4.5.2), chưa có thao tác xử lý đơn (M4.5.3–5.8), chưa có trạng thái thu tiền vì bảng tiền thuộc M4.6. Vẫn **không nên deploy `main`** cho tới khi xong M4.5.7 và M4.10.1. Chưa commit/push, chưa chạy CI. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.1. **Dừng chờ người dùng thử.**
+
 ## Ngày 01/11/2026 — M4.4.2: cô lập rate limit giữa các spec E2E trên CI
 
 - **Phạm vi được duyệt:** xác minh lỗi đăng nhập trong 6 ca E2E CI, cô lập client của từng spec, cải thiện assertion đăng nhập, cập nhật tiến độ rồi commit/push nhánh hiện tại. Không thay code ứng dụng, guard, giới hạn rate limit, schema hoặc timeout.

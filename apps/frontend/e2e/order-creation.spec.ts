@@ -92,7 +92,7 @@ test('guest orders COD without an account: confirmation, DB snapshot and reserve
   await page.goto('/cart');
   await page.getByRole('link', { name: 'Xem phí và tổng tiền' }).click();
   await page.getByRole('button', { name: 'Lấy báo giá' }).click();
-  await expect(page.getByText('Thông tin nhận hàng')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await fillRecipient(page, '0901234567');
   await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
   await expect(page.getByText(/Đã tạo đơn hàng COD/)).toBeVisible();
@@ -158,7 +158,7 @@ test('an out-of-stock cart is refused at creation with the form kept', async ({ 
   await addToCart(page, slugB, 'Xanh', 'L', '2');
   await page.goto('/checkout');
   await page.getByRole('button', { name: 'Lấy báo giá' }).click();
-  await expect(page.getByText('Thông tin nhận hàng')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await fillRecipient(page, '0901234567');
   // available drops to 0 (onHand == reserved) after the quote but before the create.
   await db.inventory.update({ where: { variantId: variantB }, data: { onHand: reservedB } });
