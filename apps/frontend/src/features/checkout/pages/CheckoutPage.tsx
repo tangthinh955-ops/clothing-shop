@@ -2,7 +2,7 @@ import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
 import { useCart } from '../../cart/CartProvider';
-import { ContactAddressForm, validateContactDraft } from '../components/ContactAddressForm';
+import { ContactAddressForm } from '../components/ContactAddressForm';
 import { OrderConfirmation } from '../components/OrderConfirmation';
 import { describeQuoteChanges, QuoteSummary } from '../components/QuoteSummary';
 import { cartMatchesQuote, useCreateOrder, type ContactDraft } from '../hooks/useCreateOrder';
@@ -23,7 +23,6 @@ export function CheckoutPage() {
   const { phase, quote, pendingQuote, error: quoteError, remainingMs, fetchQuote, acceptPending } = useCheckoutQuote(cart.items);
   const { phase: submitPhase, result, error: submitError, fieldErrors, body, submit, retry, dismiss, markCartHandled, cartHandled } = useCreateOrder(quote);
   const [draft, setDraft] = useState<ContactDraft>(EMPTY_DRAFT);
-  const [showDraftErrors, setShowDraftErrors] = useState(false);
 
   // On success: clear the cart only when the live cart is still the one that was submitted. The
   // once-per-command guard lives in the provider (review fix 6) so a page remount cannot re-run it
@@ -73,8 +72,6 @@ export function CheckoutPage() {
   const quoteAccepted = phase === 'accepted' && quote;
   // 'unknown' never reaches here: the early return above owns that state exclusively.
   const formLocked = submitPhase === 'pending';
-  const draftErrors = validateContactDraft(draft);
-  const formUsable = quoteAccepted && !formLocked && Object.keys(draftErrors).length === 0;
   const serverFieldErrors = submitPhase === 'failed' ? fieldErrors : {};
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -132,9 +129,8 @@ export function CheckoutPage() {
     {quoteAccepted && quote && submitPhase !== 'confirmed' && <>
       <ContactAddressForm value={draft} disabled={formLocked} serverErrors={serverFieldErrors}
         onChange={setDraft} onSubmit={(values) => { setDraft(values); void submit(values); }}
-        submitDisabled={!formUsable}
-        submitLabel={submitPhase === 'pending' ? 'Đang đặt hàng…' : 'Đặt hàng COD'}
-        showDraftErrors={showDraftErrors} />
+        submitDisabled={formLocked || !quoteAccepted}
+        submitLabel={submitPhase === 'pending' ? 'Đang đặt hàng…' : 'Đặt hàng COD'} />
       {submitPhase === 'failed' && submitError && <Alert severity="error" role="alert">{submitError}</Alert>}
     </>}
 

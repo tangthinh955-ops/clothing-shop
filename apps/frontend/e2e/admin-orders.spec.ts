@@ -70,6 +70,13 @@ test.afterAll(async () => {
   } finally { await db.$disconnect(); }
 });
 
+/** The province is a searchable picker: typing filters, clicking the option commits the value. */
+async function pickProvince(page: Page, name: string) {
+  const province = page.getByRole('combobox', { name: 'Tỉnh/thành' });
+  await province.fill(name);
+  await page.getByRole('option', { name, exact: true }).click();
+}
+
 async function placeCodOrder(page: Page): Promise<string> {
   await page.goto(`/products/${SLUG}`);
   await page.getByRole('group', { name: 'Chọn màu' }).getByRole('button', { name: 'Đen', exact: true }).click();
@@ -82,7 +89,7 @@ async function placeCodOrder(page: Page): Promise<string> {
   await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
   await page.getByLabel('Họ tên', { exact: true }).fill(RECIPIENT);
   await page.getByLabel('Số điện thoại', { exact: true }).fill(PHONE);
-  await page.getByLabel('Tỉnh/thành', { exact: true }).fill('TP. Hồ Chí Minh');
+  await pickProvince(page, 'TP. Hồ Chí Minh');
   await page.getByLabel('Phường/xã', { exact: true }).fill('Phường Bến Nghé');
   await page.getByLabel('Địa chỉ cụ thể', { exact: true }).fill('12 Nguyễn Huệ, Quận 1');
   await page.getByRole('button', { name: 'Đặt hàng COD' }).click();

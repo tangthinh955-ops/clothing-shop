@@ -83,6 +83,18 @@ function renderPage(items: { variantId: string; quantity: number }[] = [
   </QueryClientProvider>);
 }
 
+/** Picks a province from the searchable list; typed search text alone is never a selection. */
+async function fillProvince(name: string) {
+  const combobox = screen.getByRole('combobox', { name: 'Tỉnh/thành' });
+  // Typing implies focus; MUI resets an unfocused input to the selected value, which would make a
+  // province switch look like a no-op in tests (real shoppers always focus the input first).
+  fireEvent.focus(combobox);
+  fireEvent.change(combobox, { target: { value: name } });
+  fireEvent.keyDown(combobox, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('option', { name }));
+  return combobox;
+}
+
 beforeEach(() => { window.localStorage.clear(); });
 afterEach(() => vi.restoreAllMocks());
 
@@ -100,9 +112,10 @@ describe('checkout quote page', () => {
     expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible();
     // eslint-disable-next-line no-console
     for (const [label, value] of [
-      ['Họ tên', 'Nguyễn Thử'], ['Số điện thoại', '0901234567'], ['Tỉnh/thành', 'TP. Hồ Chí Minh'],
+      ['Họ tên', 'Nguyễn Thử'], ['Số điện thoại', '0901234567'],
       ['Phường/xã', 'Phường Bến Nghé'], ['Địa chỉ cụ thể', '12 Nguyễn Huệ'],
     ] as const) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    await fillProvince('TP. Hồ Chí Minh');
     return request;
   }
 
@@ -268,9 +281,10 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible();
     expect(screen.queryByText(/Đã tạo đơn hàng COD/)).not.toBeInTheDocument();
     for (const [label, value] of [
-      ['Họ tên', 'Khách mới'], ['Số điện thoại', '0987654321'], ['Tỉnh/thành', 'Hà Nội'],
+      ['Họ tên', 'Khách mới'], ['Số điện thoại', '0987654321'],
       ['Phường/xã', 'Phường Đình Bảng'], ['Địa chỉ cụ thể', '99 Đường mới'],
     ] as const) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    await fillProvince('Hà Nội');
     vi.mocked(client.request).mockResolvedValueOnce({ order: { code: 'MN23456789OP', status: 'PENDING', method: 'COD',
       currency: 'VND', items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } });
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
@@ -282,16 +296,28 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
   });
 
 
-  it('shows server field errors from the API without ever sending client money fields', async () => {
+  it('clears a server field error when its field is edited and shows a fresh error on retry', async () => {
+    const fieldError = () => new client.ApiError('VALIDATION_ERROR', 'Thông tin chưa hợp lệ.', 400,
+      [{ field: 'address.addressLine', message: 'Địa chỉ cụ thể từ 5 đến 255 ký tự.' }]);
     const request = await acceptQuoteAndFillForm([
       quoteResponse(),
-      new client.ApiError('VALIDATION_ERROR', 'Thông tin chưa hợp lệ.', 400,
-        [{ field: 'address.addressLine', message: 'Địa chỉ cụ thể từ 5 đến 255 ký tự.' }]),
+      fieldError(),
+      fieldError(),
       { order: { code: 'AB23456789CD', status: 'PENDING', method: 'COD', currency: 'VND',
         items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } },
     ]);
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
     expect(await screen.findByText('Địa chỉ cụ thể từ 5 đến 255 ký tự.')).toBeVisible();
+    const addressLine = screen.getByLabelText('Địa chỉ cụ thể');
+    fireEvent.change(addressLine, { target: { value: '12 Nguyễn Huệ 2' } });
+    expect(screen.queryByText('Địa chỉ cụ thể từ 5 đến 255 ký tự.')).not.toBeInTheDocument();
+    // The suppression is per edit, not permanent: a later server error must surface again.
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText('Địa chỉ cụ thể từ 5 đến 255 ký tự.')).toBeVisible();
+    fireEvent.change(addressLine, { target: { value: '12 Nguyễn Huệ 3' } });
+    expect(screen.queryByText('Địa chỉ cụ thể từ 5 đến 255 ký tự.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
     const moneyInBody = request.mock.calls.filter(([, options]) => options?.method === 'POST'
       && JSON.stringify(options?.body).includes('"subtotal"'));
     expect(moneyInBody).toHaveLength(0);
@@ -417,5 +443,54 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     const stored = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY)!);
     expect(Object.keys(stored)).toEqual(['schemaVersion', 'items']);
     expect(window.localStorage.getItem('checkout-quote')).toBeNull();
+  });
+
+  it('keeps a fresh form clean, then reveals every missing field on submit without calling the API', async () => {
+    const request = vi.spyOn(client, 'request').mockResolvedValue(quoteResponse());
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
+    expect(await screen.findByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
+    expect(screen.queryByText('Họ tên từ 2 đến 120 ký tự.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Thông tin nhận hàng chưa hợp lệ/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Họ tên')).not.toHaveAttribute('aria-invalid', 'true');
+    const submit = screen.getByRole('button', { name: 'Đặt hàng COD' });
+    expect(submit).toBeEnabled(); // the button exists to reveal mistakes, not only to submit
+    await userEvent.click(submit);
+    expect(screen.getByText('Họ tên từ 2 đến 120 ký tự.')).toBeVisible();
+    expect(screen.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
+    expect(screen.getByText(/Thông tin nhận hàng chưa hợp lệ/)).toBeVisible();
+    expect(screen.getByLabelText('Họ tên')).toHaveFocus();
+    expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText('Họ tên'), { target: { value: 'Nguyễn Thử' } });
+    expect(screen.queryByText('Họ tên từ 2 đến 120 ký tự.')).not.toBeInTheDocument();
+  });
+
+  it('never sends a stale province or district when the search text is not selected', async () => {
+    const request = await acceptQuoteAndFillForm([
+      quoteResponse(),
+      { order: { code: 'CD23456789AB', status: 'PENDING', method: 'COD', currency: 'VND',
+        items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } },
+    ]);
+    const combobox = await fillProvince('Hà Nội');
+    fireEvent.change(screen.getByLabelText('Quận/huyện (không bắt buộc)'),
+      { target: { value: 'Quận Hoàn Kiếm' } });
+    fireEvent.change(combobox, { target: { value: 'xyz' } }); // no longer the picked province
+    fireEvent.submit(screen.getByRole('form', { name: 'Thông tin nhận hàng' }));
+    expect(screen.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
+    expect(combobox).toHaveFocus();
+    const postsBefore = request.mock.calls.filter(([path, options]) =>
+      path === '/orders' && options?.method === 'POST');
+    expect(postsBefore).toHaveLength(0);
+    // Picking Cần Thơ drops the old district; its new manual value is the one sent.
+    await fillProvince('Cần Thơ');
+    const district = screen.getByLabelText('Quận/huyện (không bắt buộc)');
+    expect(district).toHaveValue('');
+    fireEvent.change(district, { target: { value: 'Quận Ninh Kiều' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
+    const post = request.mock.calls.find(([path, options]) => path === '/orders' && options?.method === 'POST');
+    expect(post?.[1]?.body).toMatchObject({
+      address: { province: 'Cần Thơ', district: 'Quận Ninh Kiều' },
+    });
   });
 });

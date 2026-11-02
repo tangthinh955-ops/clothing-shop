@@ -77,13 +77,98 @@ async function addToCart(page: import('@playwright/test').Page, slug: string, co
   await page.getByRole('button', { name: 'Đóng giỏ hàng' }).click();
 }
 
+/** The province is a searchable picker: typing filters, clicking the option commits the value. */
+async function pickProvince(page: import('@playwright/test').Page, name: string) {
+  const province = page.getByRole('combobox', { name: 'Tỉnh/thành' });
+  await province.fill(name);
+  await page.getByRole('option', { name, exact: true }).click();
+}
+
 async function fillRecipient(page: import('@playwright/test').Page, phone: string) {
   await page.getByLabel('Họ tên', { exact: true }).fill('Nguyễn Thử E2E');
   await page.getByLabel('Số điện thoại', { exact: true }).fill(phone);
-  await page.getByLabel('Tỉnh/thành', { exact: true }).fill('TP. Hồ Chí Minh');
+  await pickProvince(page, 'TP. Hồ Chí Minh');
   await page.getByLabel('Phường/xã', { exact: true }).fill('Phường Bến Nghé');
   await page.getByLabel('Địa chỉ cụ thể', { exact: true }).fill('12 Nguyễn Huệ, Quận 1');
 }
+
+test('an untouched recipient form stays quiet until submit, then focuses the first mistake', async ({ page }) => {
+  test.setTimeout(60000);
+  const createRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/orders')) createRequests.push(request.url());
+  });
+  await addToCart(page, slugA, 'Đen', 'M', '1');
+  await page.goto('/checkout');
+  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
+  // Opening the form must not accuse the shopper of anything before they act.
+  await expect(page.getByLabel('Họ tên', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('Họ tên từ 2 đến 120 ký tự.')).toHaveCount(0);
+  await expect(page.getByText(/Thông tin nhận hàng chưa hợp lệ/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Đặt hàng COD' }).click();
+  await expect(page.getByText('Họ tên từ 2 đến 120 ký tự.')).toBeVisible();
+  await expect(page.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
+  await expect(page.getByText(/Thông tin nhận hàng chưa hợp lệ/)).toBeVisible();
+  await expect(page.getByLabel('Họ tên', { exact: true })).toBeFocused();
+  expect(createRequests).toHaveLength(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('the province picker searches without accents, selects with the keyboard and keeps a manual district for every province', async ({ page }) => {
+  test.setTimeout(60000);
+  await addToCart(page, slugA, 'Đen', 'M', '1');
+  await page.goto('/checkout');
+  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
+  const province = page.getByRole('combobox', { name: 'Tỉnh/thành' });
+  const district = page.getByLabel('Quận/huyện (không bắt buộc)', { exact: true });
+  await province.focus();
+  await province.pressSequentially('ha noi'); // no accents: the client-side filter still finds Hà Nội
+  await province.press('Enter');
+  await expect(province).toHaveValue('Hà Nội');
+  await expect(district).toBeVisible();
+  await district.fill('Quận Hoàn Kiếm');
+  await province.fill('can tho');
+  await province.press('Enter');
+  await expect(province).toHaveValue('Cần Thơ');
+  await expect(district).toBeVisible();
+  await expect(district).toHaveValue(''); // changing province drops the previous district
+  await district.fill('Quận Ninh Kiều');
+  await expect(district).toHaveValue('Quận Ninh Kiều');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('typing over a picked province never submits the old province or district', async ({ page }) => {
+  test.setTimeout(60000);
+  const createRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/v1/orders')) createRequests.push(request.url());
+  });
+  await addToCart(page, slugA, 'Đen', 'M', '1');
+  await page.goto('/checkout');
+  await page.getByRole('button', { name: 'Lấy báo giá' }).click();
+  await expect(page.getByRole('heading', { name: 'Thông tin nhận hàng' })).toBeVisible();
+  await fillRecipient(page, '0901234567'); // picks TP. Hồ Chí Minh as the committed province
+  await pickProvince(page, 'Hà Nội');
+  const district = page.getByLabel('Quận/huyện (không bắt buộc)', { exact: true });
+  await district.fill('Quận Hoàn Kiếm');
+  const province = page.getByRole('combobox', { name: 'Tỉnh/thành' });
+  await province.focus();
+  await province.fill('xyz'); // typed over the picked province: not an option
+  await province.press('Enter');
+  await expect(page.getByText('Chọn tỉnh/thành từ danh sách.')).toBeVisible();
+  await expect(province).toBeFocused();
+  expect(createRequests).toHaveLength(0);
+  // Correcting the picker clears the error and the district that belonged to the old province.
+  await province.fill('can tho');
+  await province.press('Enter');
+  await expect(province).toHaveValue('Cần Thơ');
+  await expect(page.getByText('Chọn tỉnh/thành từ danh sách.')).toHaveCount(0);
+  await expect(district).toHaveValue('');
+});
 
 test('guest orders COD without an account: confirmation, DB snapshot and reserved stock', async ({ page }, info) => {
   test.setTimeout(60000);

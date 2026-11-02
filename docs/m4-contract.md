@@ -102,7 +102,7 @@ Lịch sử kho và lịch sử đơn lưu `actorType` + `actorId` nullable; res
 | ~~Quote TTL~~ **ĐÃ CHỐT 31/10/2026 cho M4.2.2** | 15 phút, hằng số `QUOTE_TTL_MINUTES` v1 (không cấu hình) | CheckoutQuote.expiresAt; đổi sau chỉ ảnh hưởng giá trị ghi |
 | Chống spam tạo đơn | theo IP và theo SĐT; số PENDING tối đa mỗi SĐT; con số chốt ở M4.3 | không ảnh hưởng schema |
 | Tra cứu/hủy rate limit | giới hạn theo IP, failure đồng nhất; đã chốt 5/phút/IP cho cả tra cứu (M4.4.2) và hủy (M4.4.3) | không ảnh hưởng schema |
-| Địa chỉ | nhập tay 4 trường, giới hạn độ dài; không dataset hành chính | cột text có sẵn, đổi sau không migrate |
+| Địa chỉ | **Đã chốt 02/11/2026 (M4.3.1, sửa ở M4.3.1.1):** tỉnh/thành chọn từ danh mục 34 đơn vị cấp tỉnh ngay trong FE (QĐ 19/2025/QĐ-TTg), gõ không dấu để tìm; khi submit, chữ đang hiện phải khớp đúng option đã chọn, nếu không thì chặn gửi và báo lỗi; quận/huyện nhập tay, không bắt buộc cho **mọi** tỉnh/thành; lỗi trường từ server biến mất khi khách sửa đúng ô đó; phường/xã và địa chỉ cụ thể nhập tay; backend vẫn nhận text, không migration | cột text có sẵn; danh mục đổi chỉ sửa FE |
 | Format mã đơn | ~10–12 ký tự bảng chữ không nhập nhằng | cột `code` VarChar(24) chứa đủ |
 | Retention idempotency | 30 ngày | chỉ dọn dữ liệu |
 

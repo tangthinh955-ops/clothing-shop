@@ -88,6 +88,13 @@ function trackCreatedOrder(page: import('@playwright/test').Page, captured: { to
   });
 }
 
+/** The province is a searchable picker: typing filters, clicking the option commits the value. */
+async function pickProvince(page: import('@playwright/test').Page, name: string) {
+  const province = page.getByRole('combobox', { name: 'Tỉnh/thành' });
+  await province.fill(name);
+  await page.getByRole('option', { name, exact: true }).click();
+}
+
 /** Places a real COD order through the checkout page and waits for the confirmation. */
 async function checkoutAndOrder(page: import('@playwright/test').Page, phone = '0901234567', note = '') {
   await addToCart(page);
@@ -96,7 +103,7 @@ async function checkoutAndOrder(page: import('@playwright/test').Page, phone = '
   await page.getByRole('button', { name: 'Lấy báo giá' }).click();
   await page.getByLabel('Họ tên', { exact: true }).fill('Nguyễn Thử Link');
   await page.getByLabel('Số điện thoại', { exact: true }).fill(phone);
-  await page.getByLabel('Tỉnh/thành', { exact: true }).fill('TP. Hồ Chí Minh');
+  await pickProvince(page, 'TP. Hồ Chí Minh');
   await page.getByLabel('Phường/xã', { exact: true }).fill('Phường Bến Nghé');
   await page.getByLabel('Địa chỉ cụ thể', { exact: true }).fill('12 Nguyễn Huệ, Quận 1');
   if (note) await page.getByLabel('Ghi chú (không bắt buộc)').fill(note);
