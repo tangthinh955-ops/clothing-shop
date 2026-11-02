@@ -1,7 +1,7 @@
 import { Alert, Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { Link as RouterLink, useLocation, useParams } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import { ApiError } from '../../../shared/api/client';
 import { pageTitle, seller } from '../../../shared/shop';
@@ -34,8 +34,11 @@ function AccessError({ message }: { message: string }) {
   return <Alert severity="error" role="alert">
     {message}
     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-      Nếu bạn vừa nhập lại đường dẫn, hãy mở lại link đã nhận từ shop.
+      Hãy mở lại link nhận được khi đặt hàng, hoặc tra cứu đơn bằng mã đơn và số điện thoại.
     </Typography>
+    <Button component={RouterLink} to="/orders/lookup" variant="outlined" size="small" sx={{ mt: 1 }}>
+      Tra cứu bằng mã đơn và số điện thoại
+    </Button>
   </Alert>;
 }
 

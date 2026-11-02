@@ -458,6 +458,9 @@ describe('OrderDetailPage', () => {
     const { spy } = spyOk([]);
     renderDetail(`/orders/${CODE}`);
     expect(await screen.findByText(UNIFORM_404)).toBeInTheDocument();
+    // No dead end: the guest recovery path sits right under the message.
+    expect(screen.getByRole('link', { name: 'Tra cứu bằng mã đơn và số điện thoại' })).toHaveAttribute('href', '/orders/lookup');
+    expect(screen.getByText(/link nhận được khi đặt hàng/)).toBeVisible();
     expect(spy).not.toHaveBeenCalled();
     expect(screen.queryByText(/Áo xem chi tiết/)).not.toBeInTheDocument();
   });

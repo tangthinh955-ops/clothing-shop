@@ -96,9 +96,7 @@ describe('checkout quote page', () => {
       return body instanceof Error ? Promise.reject(body) : Promise.resolve(body);
     });
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
-    expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible();
-    // eslint-disable-next-line no-console
+    expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible(); // quoted on arrival, no extra tap
     for (const [label, value] of [
       ['Họ tên', 'Nguyễn Thử'], ['Số điện thoại', '0901234567'], ['Tỉnh/thành', 'TP. Hồ Chí Minh'],
       ['Phường/xã', 'Phường Bến Nghé'], ['Địa chỉ cụ thể', '12 Nguyễn Huệ'],
@@ -123,14 +121,18 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(screen.getByText(/Chờ xác nhận/)).toBeVisible();
     expect(screen.getByText(/chưa thu tiền/)).toBeVisible();
     expect(screen.queryByText(/AO-A|JEAN-B/)).not.toBeInTheDocument();
-    // The confirmation total and the leftover quote summary may both print 730.000.
-    expect(screen.getAllByText(/730\.000/).length).toBeGreaterThanOrEqual(1);
+    // Only the confirmation is left: no outdated quote, no quote action above the success.
+    expect(screen.getAllByText(/730\.000/)).toHaveLength(1);
+    expect(screen.queryByText(/KHÔNG CÒN ÁP DỤNG|Giỏ đã thay đổi/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /báo giá/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Đặt hàng COD' })).not.toBeInTheDocument();
     // The confirmation stays on screen; the matching cart is cleared underneath it.
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY)!);
       expect(stored.items).toEqual([]);
     });
+    // The cart was the ordered one and has been emptied: nothing claims it was kept.
+    expect(screen.queryByText(/vẫn được giữ nguyên/)).not.toBeInTheDocument();
     const post = request.mock.calls.find(([, options]) => options?.method === 'POST' && JSON.stringify(options?.body).includes('quoteId'));
     expect(post).toBeTruthy();
   });
@@ -145,9 +147,14 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     ]);
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
     expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
-    // M4.4.1: the confirmation exposes the private link exactly once, through buttons only.
+    // M4.4.1: the confirmation exposes the private link once. It is also printed in a read-only
+    // field, because in-app browsers often block the clipboard.
     expect(screen.getByRole('link', { name: 'Xem đơn hàng' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Sao chép link riêng' })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'Link riêng của đơn' }))
+      .toHaveValue(`${window.location.origin}/orders/AB23456789CD#t=${token}`);
+    expect(screen.queryByRole('button', { name: 'Chia sẻ link' })).not.toBeInTheDocument(); // no Web Share here
+    await userEvent.click(screen.getByRole('button', { name: 'Sao chép link riêng' }));
+    expect(await screen.findByText(/Không sao chép được tự động/)).toBeVisible();
     // M4.4.2: the recovery path is announced on the confirmation as well.
     expect(screen.getByRole('link', { name: 'Tra cứu bằng mã đơn và số điện thoại' }))
       .toHaveAttribute('href', '/orders/lookup');
@@ -155,6 +162,64 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     // The fragment token travels in the address; the path query stays free of it.
     expect(await screen.findByText(/Trang đơn chi tiết \/orders\/AB23456789CD/)).toBeVisible();
     expect(screen.getByText(/#t=A{32}/)).toBeInTheDocument();
+  });
+
+  it('keeps a cart edited during the submission and says so on the confirmation', async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    const request = await acceptQuoteAndFillForm([quoteResponse()]);
+    request.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    await userEvent.click(screen.getByRole('button', { name: 'tăng-số-lượng' })); // edited while pending
+    await act(async () => { finish({ order: { code: 'QR23456789ST', status: 'PENDING', method: 'COD', currency: 'VND',
+      items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 } }); });
+    expect(await screen.findByText(/vẫn được giữ nguyên/)).toBeVisible();
+    expect(JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY)!).items).toHaveLength(2);
+  });
+
+  it('offers the phone share sheet for the private link where the browser has one', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+    try {
+      await acceptQuoteAndFillForm([quoteResponse(), { order: { code: 'AB23456789CD', status: 'PENDING', method: 'COD',
+        currency: 'VND', items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 },
+        lookupToken: 'B'.repeat(32) }]);
+      await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Chia sẻ link' }));
+      expect(share).toHaveBeenCalledWith(expect.objectContaining({
+        url: `${window.location.origin}/orders/AB23456789CD#t=${'B'.repeat(32)}` }));
+    } finally {
+      Reflect.deleteProperty(navigator, 'share');
+    }
+  });
+
+  it('stays quiet until the shopper leaves a field, then points to the first problem on submit', async () => {
+    const request = vi.spyOn(client, 'request').mockResolvedValue(quoteResponse());
+    renderPage();
+    expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible();
+    expect(screen.queryByText('Họ tên từ 2 đến 120 ký tự.')).not.toBeInTheDocument(); // nothing red on arrival
+    const name = screen.getByLabelText('Họ tên');
+    fireEvent.blur(name);
+    expect(await screen.findByText('Họ tên từ 2 đến 120 ký tự.')).toBeVisible();
+    expect(screen.queryByText('Số điện thoại Việt Nam chưa hợp lệ.')).not.toBeInTheDocument(); // untouched field
+    const button = screen.getByRole('button', { name: 'Đặt hàng COD' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(await screen.findByText(/Thông tin nhận hàng chưa hợp lệ/)).toBeVisible();
+    expect(screen.getByText('Số điện thoại Việt Nam chưa hợp lệ.')).toBeVisible();
+    expect(name).toHaveFocus();
+    expect(request.mock.calls.some(([path]) => path === '/orders')).toBe(false); // nothing sent
+  });
+
+  it('keeps the typed address while the shopper goes back to edit the cart', async () => {
+    vi.spyOn(client, 'request').mockResolvedValue(quoteResponse());
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Họ tên'), { target: { value: 'Nguyễn Thử' } });
+    fireEvent.change(screen.getByLabelText('Địa chỉ cụ thể'), { target: { value: '12 Nguyễn Huệ' } });
+    await userEvent.click(screen.getByRole('button', { name: 'đi-shop' }));
+    expect(await screen.findByText('Trang cửa hàng')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'về-checkout' }));
+    expect(await screen.findByLabelText('Họ tên')).toHaveValue('Nguyễn Thử');
+    expect(screen.getByLabelText('Địa chỉ cụ thể')).toHaveValue('12 Nguyễn Huệ');
   });
 
   it('does not fabricate an access link for a replay answer without a token', async () => {
@@ -181,7 +246,7 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
     expect(await screen.findByText('Báo giá đã hết hạn. Hãy lấy báo giá mới.')).toBeVisible();
     expect(screen.getByLabelText('Họ tên')).toHaveValue('Nguyễn Thử'); // draft kept
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' })); // re-quote after QUOTE_CHANGED
+    await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' })); // re-quote after QUOTE_CHANGED
     await screen.findByText('Thông tin nhận hàng');
     expect(screen.getByLabelText('Họ tên')).toHaveValue('Nguyễn Thử'); // draft survives the re-quote
     await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
@@ -266,8 +331,8 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     vi.mocked(client.request).mockResolvedValueOnce(quoteResponse());
     await userEvent.click(screen.getByRole('button', { name: 'về-checkout' }));
     await userEvent.click(screen.getByRole('button', { name: 'thêm-giỏ-mới' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText('Thông tin nhận hàng')).toBeVisible();
+    expect(screen.getByLabelText('Họ tên')).toHaveValue(''); // the placed order's draft is gone
     expect(screen.queryByText(/Đã tạo đơn hàng COD/)).not.toBeInTheDocument();
     for (const [label, value] of [
       ['Họ tên', 'Khách mới'], ['Số điện thoại', '0987654321'], ['Tỉnh/thành', 'Hà Nội'],
@@ -306,7 +371,6 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
       serverNow: now.toISOString(), expiresAt: now.toISOString(),
     }));
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     await screen.findByText(/Báo giá đã hết hạn/);
     request.mockResolvedValue(quoteResponse({ quoteId: 'quote-2', shippingFee: 40000, total: 740000 }));
     await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' }));
@@ -325,29 +389,27 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
   it('renders exactly the server response with money and expiry, never a local estimate', async () => {
     vi.spyOn(client, 'request').mockResolvedValue(quoteResponse());
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText('Áo cotton')).toBeVisible();
     expect(screen.getByText(/400\.000/)).toBeVisible();
     // The unit price and the line total of the jeans both contain 300.000.
     expect(screen.getAllByText(/300\.000/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/730\.000/)).toBeVisible();
     expect(screen.getByText(/Báo giá chưa giữ hàng/)).toBeVisible();
-    expect(screen.getByText(/Báo giá có hiệu lực khoảng/)).toBeVisible();
+    expect(await screen.findByText(/Báo giá có hiệu lực khoảng/)).toBeVisible(); // set on the first countdown tick
     expect(screen.queryByText(/Tạm tính/)).not.toBeInTheDocument();
   });
 
-  it('collapses a same-tick double click into one request', async () => {
+  it('asks for the quote by itself on arrival, exactly once', async () => {
     let finish: (value: unknown) => void = () => undefined;
     const request = vi.spyOn(client, 'request')
       .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     renderPage();
-    const button = screen.getByRole('button', { name: 'Lấy báo giá' });
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(screen.getByRole('button', { name: 'Đang lấy báo giá…' })).toBeDisabled();
+    expect(await screen.findByText('Đang lấy báo giá…')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /báo giá/ })).not.toBeInTheDocument();
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
     await act(async () => { finish(quoteResponse()); });
     expect(await screen.findByText(/730\.000/)).toBeVisible();
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it('never lets a late response for the old cart become the quote of the edited cart', async () => {
@@ -355,8 +417,7 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     const request = vi.spyOn(client, 'request')
       .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
-    await screen.findByRole('button', { name: 'Đang lấy báo giá…' });
+    await screen.findByText('Đang lấy báo giá…');
     await userEvent.click(screen.getByRole('button', { name: 'tăng-số-lượng' }));
     await act(async () => { finish(quoteResponse()); });
     expect(await screen.findByText(/Giỏ đã thay đổi/)).toBeVisible();
@@ -364,7 +425,7 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     // The shopper can fetch again; the next response is for the current cart and applies.
     vi.spyOn(client, 'request').mockResolvedValue(quoteResponse({ total: 1030000, subtotal: 1000000,
       items: [quoteResponse().items[0], { ...quoteResponse().items[1]!, quantity: 2, lineTotalVnd: 600000 }] }));
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' }));
     expect(await screen.findByText(/1\.030\.000/)).toBeVisible();
     void request;
   });
@@ -372,7 +433,6 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
   it('reports a malformed response as an error instead of a quote', async () => {
     vi.spyOn(client, 'request').mockResolvedValue({ hello: 'world' });
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText('Chưa đọc được báo giá. Vui lòng thử lại.')).toBeVisible();
     expect(screen.queryByText('Áo cotton')).not.toBeInTheDocument();
   });
@@ -382,22 +442,23 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     vi.spyOn(client, 'request').mockResolvedValue(quoteResponse({
       serverNow: now.toISOString(), expiresAt: now.toISOString() }));
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText(/Báo giá đã hết hạn/, {}, { timeout: 4000 })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Cập nhật báo giá' })).toBeEnabled();
     expect(screen.queryByText(/Báo giá chưa giữ hàng/)).not.toBeInTheDocument();
+    // The form stays so a half-typed address survives; only placing the order waits for a fresh quote.
+    expect(screen.getByLabelText('Họ tên')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Đặt hàng COD' })).toBeDisabled();
   });
 
   it('shows the changed price or fee only after an explicit confirmation', async () => {
     const request = vi.spyOn(client, 'request').mockResolvedValue(quoteResponse());
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText(/730\.000/)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'tăng-số-lượng' }));
     expect(await screen.findByText(/Giỏ đã thay đổi/)).toBeVisible();
     request.mockResolvedValue(quoteResponse({ subtotal: 1000000, total: 1030000,
       items: [quoteResponse().items[0], { ...quoteResponse().items[1]!, quantity: 2, lineTotalVnd: 600000 }] }));
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' }));
     expect(await screen.findByText('Dùng báo giá mới')).toBeVisible();
     expect(screen.getByText(/1\.030\.000/)).toBeVisible();
     expect(screen.getByText(/730\.000/)).toBeVisible();
@@ -411,7 +472,6 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
       .mockRejectedValueOnce(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.', 0))
       .mockResolvedValue(quoteResponse());
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Lấy báo giá' }));
     expect(await screen.findByText('Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
     expect(await screen.findByText(/730\.000/)).toBeVisible();

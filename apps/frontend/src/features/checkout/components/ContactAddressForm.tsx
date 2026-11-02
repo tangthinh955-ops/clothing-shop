@@ -1,5 +1,5 @@
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import type { ContactDraft } from '../hooks/useCreateOrder';
 
 export interface ContactDraftErrors {
@@ -40,59 +40,72 @@ interface Props {
   /** The submit button lives INSIDE the form element: no form-attribute association quirks. */
   submitDisabled: boolean;
   submitLabel: string;
-  showDraftErrors: boolean;
 }
+
+// Field order on screen: the first invalid one receives focus after a refused submit.
+const CHECKED_FIELDS: ReadonlyArray<keyof ContactDraftErrors> = ['name', 'phone', 'email', 'province', 'ward', 'addressLine'];
 
 /** Controlled recipient form: the page owns the draft, the form owns layout and pre-validation. */
 export function ContactAddressForm({ value, disabled, serverErrors, onChange, onSubmit,
-  submitDisabled, submitLabel, showDraftErrors }: Props) {
+  submitDisabled, submitLabel }: Props) {
   const id = useId();
+  // A field speaks up only after the shopper has left it, or after a refused submit.
+  const [touched, setTouched] = useState<Partial<Record<keyof ContactDraftErrors, true>>>({});
+  const [submitTried, setSubmitTried] = useState(false);
   const errors = validateContactDraft(value);
+  const hasErrors = Object.keys(errors).length > 0;
   const showError = (field: keyof ContactDraftErrors, serverField: string): string | undefined =>
-    serverErrors[serverField] ?? errors[field];
+    serverErrors[serverField] ?? (touched[field] || submitTried ? errors[field] : undefined);
+  const leave = (field: keyof ContactDraftErrors) => () => setTouched((prev) => ({ ...prev, [field]: true }));
 
   const update = (field: keyof ContactDraft) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       onChange({ ...value, [field]: event.target.value });
 
-  return <Box component="form" id="checkout-contact-form" aria-label="Thông tin nhận hàng" aria-busy={disabled}
+  return <Box component="form" id="checkout-contact-form" aria-label="Thông tin nhận hàng" aria-busy={disabled} noValidate
     sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
     onSubmit={(event) => {
       event.preventDefault();
+      if (hasErrors) {
+        setSubmitTried(true);
+        const first = CHECKED_FIELDS.find((field) => errors[field]);
+        if (first) document.getElementById(`${id}-${first}`)?.focus();
+        return;
+      }
       onSubmit(value);
     }}>
-    <Typography component="h3" variant="h5">Thông tin nhận hàng</Typography>
+    <Typography component="h2" variant="h5">Thông tin nhận hàng</Typography>
     <TextField id={`${id}-name`} label="Họ tên" value={value.name} disabled={disabled}
-      onChange={update('name')} error={Boolean(showError('name', 'contact.name'))}
+      onChange={update('name')} onBlur={leave('name')} error={Boolean(showError('name', 'contact.name'))}
       helperText={showError('name', 'contact.name') ?? 'Nhập họ tên người nhận.'}
       slotProps={{ htmlInput: { required: true, maxLength: 120, autoComplete: 'name' } }} />
     <TextField id={`${id}-phone`} label="Số điện thoại" value={value.phone} disabled={disabled}
-      onChange={update('phone')} error={Boolean(showError('phone', 'contact.phone'))}
+      onChange={update('phone')} onBlur={leave('phone')} error={Boolean(showError('phone', 'contact.phone'))}
       helperText={showError('phone', 'contact.phone') ?? 'Ví dụ 0901234567 hoặc +84901234567.'}
       slotProps={{ htmlInput: { required: true, inputMode: 'tel', autoComplete: 'tel', maxLength: 20 } }} />
     <TextField id={`${id}-email`} label="Email (không bắt buộc)" value={value.email} disabled={disabled}
-      onChange={update('email')} error={Boolean(showError('email', 'contact.email'))}
+      onChange={update('email')} onBlur={leave('email')} error={Boolean(showError('email', 'contact.email'))}
       helperText={showError('email', 'contact.email') ?? 'Để nhận thông tin đơn nếu muốn.'}
       slotProps={{ htmlInput: { type: 'email', autoComplete: 'email', maxLength: 254 } }} />
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
       <TextField id={`${id}-province`} label="Tỉnh/thành" value={value.province} disabled={disabled} sx={{ flex: 1 }}
-        onChange={update('province')} error={Boolean(showError('province', 'address.province'))}
+        onChange={update('province')} onBlur={leave('province')} error={Boolean(showError('province', 'address.province'))}
         helperText={showError('province', 'address.province')}
         slotProps={{ htmlInput: { required: true, maxLength: 100 } }} />
       <TextField id={`${id}-district`} label="Quận/huyện (không bắt buộc)" value={value.district} disabled={disabled} sx={{ flex: 1 }}
         onChange={update('district')} slotProps={{ htmlInput: { maxLength: 100 } }} />
     </Stack>
     <TextField id={`${id}-ward`} label="Phường/xã" value={value.ward} disabled={disabled}
-      onChange={update('ward')} error={Boolean(showError('ward', 'address.ward'))}
+      onChange={update('ward')} onBlur={leave('ward')} error={Boolean(showError('ward', 'address.ward'))}
       helperText={showError('ward', 'address.ward')}
       slotProps={{ htmlInput: { required: true, maxLength: 100 } }} />
     <TextField id={`${id}-addressLine`} label="Địa chỉ cụ thể" value={value.addressLine} disabled={disabled}
-      onChange={update('addressLine')} error={Boolean(showError('addressLine', 'address.addressLine'))}
+      onChange={update('addressLine')} onBlur={leave('addressLine')} error={Boolean(showError('addressLine', 'address.addressLine'))}
       helperText={showError('addressLine', 'address.addressLine') ?? 'Số nhà, tên đường…'}
       slotProps={{ htmlInput: { required: true, maxLength: 255, autoComplete: 'street-address' } }} />
     <TextField id={`${id}-note`} label="Ghi chú (không bắt buộc)" value={value.note} disabled={disabled} multiline minRows={2}
       onChange={update('note')} slotProps={{ htmlInput: { maxLength: 500 } }} />
-    {showDraftErrors && <Alert severity="error">Thông tin nhận hàng chưa hợp lệ — hãy kiểm tra các ô được đánh dấu.</Alert>}
+    {submitTried && hasErrors && <Alert severity="error" role="alert">Thông tin nhận hàng chưa hợp lệ — hãy kiểm tra các ô được đánh dấu.</Alert>}
     <Button type="submit" variant="contained" size="large" disabled={submitDisabled}>{submitLabel}</Button>
     <Typography variant="body2" color="text.secondary">
       Đặt hàng không cần tài khoản. Thông tin chỉ dùng để giao hàng và liên hệ.
