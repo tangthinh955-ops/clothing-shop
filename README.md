@@ -4,7 +4,7 @@ Website bán hàng thật của một shop quần áo, phục vụ khách từ I
 
 ## Trạng thái
 
-Từ 29/10/2026 dự án là website bán hàng thật, không còn là demo (quyết định và lộ trình mới ở [kế hoạch](docs/plan.md#chuyển-sang-shop-thật-29102026)). Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
+Xem [tiến độ thực tế](progress.md); một mục trong kế hoạch không đồng nghĩa tính năng đã hoàn thành.
 
 Điểm dừng hiện tại: ngày 31/10/2026 workflow GitHub **Deploy production** lần đầu đã deploy `main` `6d35c3d` — release `ci-20261031-1218-6d35c3d` tại [trang chủ](https://rmglabels.duckdns.org/) và [cửa hàng](https://rmglabels.duckdns.org/shop): M4.2 giỏ/quote, **5 sản phẩm thật** và **link preview M7.1.1** (`/api/v1/share/products/<slug>`). Gate CI + SSH key riêng cho CI + rollback tự động theo [hướng dẫn deploy](docs/deployment-guide.md). Cả ba dịch vụ healthy; chờ người dùng thử card Zalo bằng link share và nghiệm thu các phần đã làm. Bằng chứng ở [progress.md](progress.md); hướng dẫn M3/M4/tài khoản: [local-trial-m3](docs/local-trial-m3.md), [local-trial-m4](docs/local-trial-m4.md), [local-trial-m2](docs/local-trial-m2.md).
 
