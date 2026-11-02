@@ -2,6 +2,17 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — Commit, PR #28 và deploy production M4.5.1–M4.5.3
+
+- **Yêu cầu:** người dùng yêu cầu "commit và tạo mr sau đó deploy lên vps", sau khi đã được báo nhiều lần rằng chưa nên deploy tới khi xong M4.5.7 và M4.10.1. Không merge vào `main` vì không được yêu cầu.
+- **Git:** nhánh đổi tên thành `feat/m4.5-admin-orders`; 3 commit theo phần (`9ad5936`, `f491003`, `9b51b1c`) và 1 commit sửa test (`bc7e778`); PR #28 vào `main`, chưa merge.
+- **CI:** lượt `pull_request` đầu của `9b51b1c` lỗi 1 ca `order-creation.spec.ts`, lượt `push` cùng commit đạt. Nguyên nhân là test: `getByText('Thông tin nhận hàng')` khớp cả đoạn giới thiệu luôn hiện ở checkout, nên ca này chỉ đạt khi kiểm tra trước lúc báo giá về và fail khi tiêu đề form đã hiện. Sửa 3 chỗ sang tìm heading, local đạt 5/5 hai spec. Cả hai lượt CI của `bc7e778` đạt.
+- **Deploy:** workflow Deploy production [run 41369477432](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41369477432), ref `bc7e778`, release `ci-20261102-0052-bc7e778`, thành công 6/6 bước gồm migration `order_notes`.
+- **Kiểm tra công khai sau deploy (agent, chỉ request đọc hoặc bị từ chối, không tạo dữ liệu):** `health/ready` `{"status":"ok"}`; `/`, `/shop`, `/checkout` 200; 5 sản phẩm còn nguyên; `GET /admin/orders` không đăng nhập 401.  `POST /orders` và `POST /admin/orders/:id/confirm` không có CSRF đều 403 (trước deploy `POST /orders` là 404). **Chưa kiểm tra bằng tài khoản admin thật và chưa đặt đơn thật trên production.**
+- **Trạng thái production quan trọng:** khách đã đặt được đơn COD trên web thật. Shop chỉ xem và xác nhận được đơn; **chưa có đóng gói, bàn giao, hủy (M4.5.4–5.7) nên đơn giữ hàng chưa nhả được trên giao diện**, và chưa có thông báo đơn mới (M4.10.1), admin phải tự mở `/admin/orders` kiểm tra.
+- **Rủi ro vận hành:** `main` chưa có các commit này; chạy workflow deploy với `main` sẽ đưa production về bản không có trang admin đơn (bảng `order_notes` vẫn còn, không ảnh hưởng). Merge PR #28 để tránh.
+- **Phát hiện chưa sửa:** tiêu đề tab còn tên cũ "Clothing Shop" ở `CheckoutPage.tsx`, `OrderDetailPage.tsx`, `OrderLookupPage.tsx`, `SettingsPage.tsx`; SĐT/Zalo và email shop vẫn chưa có trong `shared/shop.ts`.
+
 ## Ngày 02/11/2026 — M4.5.3: admin xác nhận đơn COD
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.3 ("duyệt"), gồm đơn chuyển khoản chưa xác nhận được tới M4.6. Làm tiếp trên nhánh `feat/m4.5.1-admin-orders-list`. **Đã viết, agent đã kiểm tra local; chưa commit; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1, M4.5.2.
