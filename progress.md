@@ -2,6 +2,32 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.4.4: khách xin hủy khi đơn đang đóng gói
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.4 ("duyệt"), gồm shop xử lý yêu cầu bằng nút đã có (hủy là đồng ý, bàn giao là không đồng ý) và vẫn cho bàn giao khi có yêu cầu đang chờ, kèm cảnh báo. Nhánh `feat/m4.4.4-cancellation-request` từ `main` `a0f9d1d`. **Đã commit, CI xanh, đã deploy production; PR #32 chưa merge; người dùng chưa nghiệm thu.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `apps/backend/prisma/migrations/202611020003_m4_cancellation_requests/migration.sql` | Bảng `cancellation_requests` và enum; chỉ thêm, không đổi bảng cũ |
+| `apps/backend/src/modules/orders/order-cancellation-requests.service.ts` (mới), `dto/cancellation-request.dto.ts` (mới), `orders.controller.ts`, `orders.module.ts` | `POST /orders/:code/cancellation-requests`; một yêu cầu đang chờ mỗi đơn, kiểm dưới khóa dòng đơn; không đổi `Order.version` |
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Hủy đơn đóng yêu cầu là `APPROVED`, bàn giao đóng là `REJECTED`, trong cùng transaction |
+| `apps/backend/src/modules/orders/order-access.service.ts`, `admin-orders.service.ts`, `order-notifications.service.ts` | Khách thấy yêu cầu đang chờ; admin thấy danh sách và nhãn; thêm sự kiện `order.cancel-requested.shop` |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `pages/OrderDetailPage.tsx`, `components/OrderCancelRequestAction.tsx` (mới) | Nút xin hủy, trạng thái đang chờ. Khác kế hoạch: giữ thêm dòng nhắn Instagram cho trường hợp gấp, thay vì bỏ hẳn |
+| `apps/frontend/src/features/admin/orders/api/admin-orders.api.ts`, `pages/AdminOrderDetailPage.tsx`, `pages/AdminOrdersPage.tsx`, `components/OrderActions.tsx` | Khung cảnh báo, mục yêu cầu đã đóng, nhãn danh sách, cảnh báo khi bàn giao |
+| `apps/backend/test/order-cancellation-requests.integration.spec.ts` (mới), `admin-orders.integration.spec.ts`, `order-access.integration.spec.ts`, `order-lookup.integration.spec.ts`, các test giao diện trong `apps/frontend/src/features/`, `apps/frontend/e2e/admin-orders.spec.ts` | 29 ca integration, 21 ca UI; nối E2E đóng gói sang xin hủy rồi admin hủy; đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, thu hẹp M4.5.8, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 74 backend + 520 frontend; `npm run test:integration` 320/320; spec mới chạy lặp thêm 3 lần đều 29/29; `npm run test:e2e:implemented` 56/56. Đã xem ảnh trang đơn của admin trên mobile.
+
+**Giới hạn:** chưa có từ chối mà đơn vẫn `PACKING` (M4.5.8); mỗi đơn chỉ gửi được một yêu cầu; khách không nhận thư khi shop xử lý (M4.10.2.2). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.4.4. **Dừng chờ người dùng thử.**
+
+**Trạng thái production và Git:**
+- **Commit và PR:** `dc1c4e6`, [PR #32](https://github.com/tangthinh955-ops/clothing-shop/pull/32), CI của commit xanh cả hai lượt (push và pull_request). PR còn mở lúc deploy.
+- **Deploy:** người dùng yêu cầu. Workflow Deploy production [run 41399470964](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41399470964), ref `dc1c4e6`, release `ci-20261102-0622-dc1c4e6`, thành công, áp dụng migration `202611020003_m4_cancellation_requests`. GitHub ghi `headSha` của run là `a0f9d1d` vì workflow chạy từ `main`; bản được đóng gói là `dc1c4e6`, theo tên release.
+- **Bản trước đó:** PR #31 (M4.10.2.1) do `kangha23` merge lúc 04:49:08Z, merge commit `a0f9d1d`; người dùng đã deploy qua [run 41391436026](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41391436026), release `ci-20261102-0459-a0f9d1d`. Bản này còn trên đĩa để rollback tay.
+- **Kiểm tra công khai sau deploy (agent, chỉ request đọc hoặc bị từ chối, không tạo dữ liệu):** `health/ready` `{"status":"ok"}`; `/`, `/shop`, `/checkout`, `/admin/orders` 200; 5 sản phẩm; `GET /admin/orders` không đăng nhập 401; `POST /orders/:code/cancellation-requests` và `POST /admin/orders/:id/deliver` không có CSRF đều 403, route không tồn tại 404; bundle có chữ "Xin hủy đơn". **Chưa thử bằng đơn thật và tài khoản admin thật, chưa xác nhận thư thật qua Resend.**
+- **Rủi ro vận hành:** `main` chưa có M4.4.4. Chạy workflow deploy với `main` trước khi merge PR #32 sẽ đưa code production về `a0f9d1d`, bảng `cancellation_requests` vẫn còn.
+
 ## Ngày 02/11/2026 — M4.10.2.1: tự gửi lại thư báo shop
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("duyệt"): tách M4.10.2 thành M4.10.2.1 (retry thư báo shop) và M4.10.2.2 (thư trạng thái cho khách, chờ domain); 5 lần gửi với các khoảng chờ 1 phút, 5 phút, 30 phút, 2 giờ; chấp nhận hiếm khi trùng thư để không mất thông báo. Nhánh `feat/m4.10.2.1-notice-retry` từ `main` `339a17e`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chưa từng gửi thư thật qua Resend.**

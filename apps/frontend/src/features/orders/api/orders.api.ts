@@ -42,6 +42,7 @@ export interface OrderDetailView {
   recipient: OrderDetailRecipient;
   trackingNumber: string | null;
   deliveredAt: string | null;
+  cancellationRequest: { status: 'PENDING'; reason: string; createdAt: string } | null;
 }
 
 export interface OrderDetailTimelineEntry {
@@ -122,6 +123,12 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
     || !(order['deliveredAt'] === null || iso(order['deliveredAt']))) {
     throw malformed();
   }
+  const waiting = order['cancellationRequest'];
+  if (waiting !== null) {
+    if (typeof waiting !== 'object' || Array.isArray(waiting)) throw malformed();
+    const asked = waiting as Record<string, unknown>;
+    if (asked['status'] !== 'PENDING' || !text(asked['reason']) || !iso(asked['createdAt'])) throw malformed();
+  }
   if (typeof order['recipient'] !== 'object' || order['recipient'] === null || Array.isArray(order['recipient']))
     throw malformed();
   const recipientRow = order['recipient'] as Record<string, unknown>;
@@ -161,6 +168,7 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
         addressLine: recipientRow['addressLine'] as string, note: recipientRow['note'] as string | null },
       trackingNumber: order['trackingNumber'] as string | null,
       deliveredAt: order['deliveredAt'] as string | null,
+      cancellationRequest: waiting as OrderDetailView['cancellationRequest'],
     },
     timeline,
   };
@@ -206,6 +214,9 @@ export const ordersApi = {
     return parseOrderLookupResult(
       await request<unknown>('/orders/lookup', { method: 'POST', body: { code, phone: body.phone } }), code);
   },
+  /** M4.4.4 ask to cancel while packing; the page reloads the order afterwards, so the answer needs no reading here. */
+  requestCancellation: (code: string, token: string, reason: string, idempotencyKey: string) =>
+    request<unknown>(`/orders/${encodeURIComponent(code)}/cancellation-requests`, { method: 'POST', orderToken: token, idempotencyKey, body: { reason } }),
   /** M4.4.3 cancel before packing; the page reloads the order afterwards, so the answer needs no reading here. */
   cancel: (code: string, token: string, expectedVersion: number, reason: string, idempotencyKey: string) =>
     request<unknown>(`/orders/${encodeURIComponent(code)}/cancel`, { method: 'POST', orderToken: token, idempotencyKey, body: { expectedVersion, reason } }),

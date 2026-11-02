@@ -215,6 +215,21 @@ Test riêng: integration `test/order-lookup.integration.spec.ts` (trong `./tools
 
 Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu hủy. Mong đợi đơn vẫn PACKING, yêu cầu pending, gửi lại không trùng; việc hủy thực sự chờ M4.5.8. Không cho dùng API hủy trực tiếp để vượt bước.
 
+Đã triển khai (chờ người dùng thử). Cần chạy `./tools/npm.ps1 run db:migrate` trước. Khác mô tả trên theo kế hoạch đã duyệt: shop xử lý yêu cầu ngay bằng nút "Hủy đơn" (đồng ý) hoặc "Bàn giao" (không đồng ý), không phải chờ M4.5.8.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD ở cửa sổ ẩn danh, bấm "Xem đơn hàng"; admin xác nhận rồi đóng gói; tải lại trang của khách | Có nút "Xin hủy đơn", không còn nút "Hủy đơn" |
+| Bấm "Xin hủy đơn", nhập lý do, gửi | Hiện "Đã gửi yêu cầu hủy lúc …" kèm lý do; hết nút xin hủy; tải lại trang vẫn đúng; trạng thái vẫn "Đang đóng gói" |
+| Xem trang Kho | Tồn thực có và Đang giữ không đổi |
+| Mở `/admin/orders` | Đơn có nhãn "Khách xin hủy" |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách xin hủy đơn <mã> \| RMG Labels", có link đơn, không có lý do |
+| Mở đơn đó trên admin | Khung cảnh báo có lý do, hướng dẫn đồng ý hoặc không đồng ý |
+| Bấm "Bàn giao" | Hộp thoại cảnh báo "không đồng ý yêu cầu hủy"; bấm "Để sau" |
+| Bấm "Hủy đơn", nhập lý do, gửi | Đơn "Đã hủy", kho nhả đúng lượng; mục "Yêu cầu hủy của khách" ghi "Đã đồng ý"; trang của khách thấy "Đã hủy" |
+| Đơn khác làm tương tự nhưng bấm "Bàn giao" | Đơn "Đã bàn giao vận chuyển"; mục yêu cầu ghi "Không đồng ý"; trang của khách hết thông báo đang chờ |
+| Mở link của khách trước, admin bàn giao ở tab khác, rồi khách mới gửi yêu cầu | Khách thấy thông báo không gửi được và nút "Tải lại đơn" |
+
 ### M4.5.1 — Admin danh sách đơn
 
 ADMIN vào `/admin/orders`: thấy đơn thật vừa tạo; filter/page nằm trên URL, refresh giữ; empty/error/retry rõ. Khách/CUSTOMER gọi GET admin bị401/403; thông tin một đơn không lẫn vào dòng khác. Không dùng fixture giả trong UI sản phẩm để báo luồng đã chạy.

@@ -18,7 +18,10 @@ function OrderRow({ order, listSearch }: { order: AdminOrderRow; listSearch: str
       <Typography component="h2" sx={{ fontWeight: 700 }}>
         <MuiLink component={Link} to={`/admin/orders/${order.id}`} state={{ listSearch }} underline="always">{order.code}</MuiLink>
       </Typography>
-      <Chip size="small" variant="outlined" label={ORDER_STATUS_LABELS[order.status]} />
+      <Stack direction="row" useFlexGap sx={{ gap: 1, flexWrap: 'wrap' }}>
+        {order.hasPendingCancellationRequest && <Chip size="small" color="error" label="Khách xin hủy" />}
+        <Chip size="small" variant="outlined" label={ORDER_STATUS_LABELS[order.status]} />
+      </Stack>
     </Stack>
     <Typography>{order.recipientName} · {order.phone}</Typography>
     <Typography sx={{ fontWeight: 700 }}>{formatMoney(order.totalVnd)}</Typography>

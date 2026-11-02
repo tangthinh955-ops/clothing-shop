@@ -22,6 +22,7 @@ export function OrderActions({ order, onChanged }: OrderActionsProps) {
   const canShip = order.status === 'PACKING';
   const canDeliver = order.status === 'SHIPPED';
   const canCancel = CANCELLABLE.includes(order.status);
+  const customerWaiting = order.cancellationRequests.some((request) => request.status === 'PENDING');
   if (!canConfirm && !canPack && !canShip && !canDeliver && !canCancel) return null;
 
   return <Stack direction="row" useFlexGap sx={{ gap: 1, flexWrap: 'wrap' }}>
@@ -32,7 +33,7 @@ export function OrderActions({ order, onChanged }: OrderActionsProps) {
       description="Đơn chuyển sang “Đang đóng gói” và không quay lại được. Hàng vẫn đang được giữ; shop vẫn hủy được trước khi bàn giao."
       perform={(key) => adminOrdersApi.pack(order.id, order.version, key)} onChanged={onChanged} />}
     {canShip && <OrderInputAction label="Bàn giao" title={`Bàn giao đơn ${order.code}?`} fieldLabel="Mã vận đơn" maxLength={100}
-      description="Kho sẽ trừ số hàng của đơn này. Đơn đã bàn giao không hủy được và không quay lại được; mã vận đơn không sửa được sau khi lưu. Khách sẽ thấy mã này."
+      description={`${customerWaiting ? 'Khách đang xin hủy đơn này: bàn giao nghĩa là không đồng ý yêu cầu hủy. ' : ''}Kho sẽ trừ số hàng của đơn này. Đơn đã bàn giao không hủy được và không quay lại được; mã vận đơn không sửa được sau khi lưu. Khách sẽ thấy mã này.`}
       validate={(value) => (TRACKING_PATTERN.test(value) ? '' : 'Chỉ gồm chữ, số, - _ . (3–100 ký tự).')}
       perform={(value, key) => adminOrdersApi.ship(order.id, order.version, value, key)} onChanged={onChanged} />}
     {canDeliver && <OrderInputAction label="Giao thành công" title={`Ghi đơn ${order.code} đã giao?`} fieldLabel="Thời điểm giao (giờ Việt Nam)" inputType="datetime-local"

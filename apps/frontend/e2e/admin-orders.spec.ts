@@ -288,6 +288,29 @@ test('an admin packs a confirmed order and can still cancel it', async ({ page, 
     await page.goto(orderLink);
     await expect(page.getByText('Đang đóng gói').first()).toBeVisible();
 
+    // M4.4.4: the customer can only ask now; asking moves nothing until the shop answers.
+    await page.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    const askDialog = page.getByRole('dialog');
+    const asked = `Đổi ý ${tag.slice(0, 8)}`;
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath('customer-cancel-request-mobile.png'), animations: 'disabled' });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await askDialog.getByLabel(/Lý do xin hủy/).fill(asked);
+    await askDialog.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    await expect(page.getByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Xin hủy đơn', exact: true })).toHaveCount(0);
+    expect(await held()).toEqual({ onHand: before.onHand, reserved: before.reserved + 2 });
+
+    await admin.reload();
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toContainText(asked);
+    await admin.getByRole('link', { name: 'Về danh sách đơn' }).click();
+    await expect(admin.getByRole('listitem', { name: code, exact: true })).toContainText('Khách xin hủy');
+    await admin.getByRole('link', { name: code, exact: true }).click();
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toBeVisible();
+
     await admin.setViewportSize({ width: 390, height: 844 });
     expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await admin.screenshot({ path: info.outputPath('admin-order-packing-mobile.png'), fullPage: true, animations: 'disabled' });
@@ -299,9 +322,13 @@ test('an admin packs a confirmed order and can still cancel it', async ({ page, 
     await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
     await expect(history).toContainText('Đang đóng gói → Đã hủy');
     expect(await held()).toEqual(before);
+    const closed = await db.cancellationRequest.findFirstOrThrow({ where: { order: { code } }, select: { status: true } });
+    expect(closed.status).toBe('APPROVED');
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toHaveCount(0);
 
     await page.reload();
     await expect(page.getByText('Đã hủy').first()).toBeVisible();
+    await expect(page.getByText(/Đã gửi yêu cầu hủy/)).toHaveCount(0);
   } finally {
     await adminContext.close();
   }

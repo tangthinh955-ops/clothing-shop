@@ -7,6 +7,7 @@ import { ApiError } from '../../../shared/api/client';
 import { seller } from '../../../shared/shop';
 import { ordersApi, type OrderStatus } from '../api/orders.api';
 import { OrderCancelAction } from '../components/OrderCancelAction';
+import { OrderCancelRequestAction } from '../components/OrderCancelRequestAction';
 import { ORDER_STATUS_LABELS } from '../orderStatusLabels';
 import { sha256Hex } from '../token-tag';
 
@@ -108,10 +109,18 @@ export function OrderDetailPage() {
         <OrderCancelAction key={query.data.timeline.at(-1)!.version} code={query.data.order.code} token={token}
           version={query.data.timeline.at(-1)!.version} onChanged={() => query.refetch()} />
       </Box>}
-      {query.data.order.status === 'PACKING' && <Typography>
-        Đơn đang được đóng gói nên không tự hủy được nữa. Nếu cần hủy, hãy nhắn shop qua Instagram{' '}
-        <Link href={seller.instagram.url} target="_blank" rel="noopener noreferrer" underline="always">@{seller.instagram.handle}</Link>.
-      </Typography>}
+      {query.data.order.status === 'PACKING' && <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+        {query.data.order.cancellationRequest
+          ? <Alert severity="info" role="status" sx={{ width: '100%', overflowWrap: 'anywhere' }}>
+            Đã gửi yêu cầu hủy lúc {ENTRY_TIME.format(new Date(query.data.order.cancellationRequest.createdAt))}. Đơn chưa bị hủy, shop sẽ xử lý yêu cầu này.
+            <Typography variant="body2">Lý do: {query.data.order.cancellationRequest.reason}</Typography>
+          </Alert>
+          : <OrderCancelRequestAction code={query.data.order.code} token={token} onChanged={() => query.refetch()} />}
+        <Typography variant="body2">
+          Đơn đang được đóng gói nên không tự hủy được nữa. Nếu cần gấp, hãy nhắn shop qua Instagram{' '}
+          <Link href={seller.instagram.url} target="_blank" rel="noopener noreferrer" underline="always">@{seller.instagram.handle}</Link>.
+        </Typography>
+      </Stack>}
       <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
         <Typography component="h2" variant="h6" sx={{ mb: 2 }}>Sản phẩm đặt mua</Typography>
         <Stack spacing={2}>

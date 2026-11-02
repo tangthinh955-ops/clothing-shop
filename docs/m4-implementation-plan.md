@@ -64,7 +64,7 @@ Tình trạng từng phần xem mục điểm dừng và progress. Cột chạy 
 | M4.5.5 | Admin bàn giao | PACKING →SHIPPED, tracking, inventory ship | onHand/reserved cùng giảm đúng lượng; cancel/ship đồng thời có một kết quả hợp lệ | 5.4, 0.3 |
 | M4.5.6 | Admin ghi giao thành công | SHIPPED →DELIVERED, deliveredAt | Không trừ kho lần nữa; chưa tự ghi thu COD | 5.5 |
 | M4.5.7 | Admin hủy trước bàn giao | Hủy PENDING/CONFIRMED/PACKING có lý do | Giải phóng giữ một lần; bank đã thu chỉ tạo phần nghĩa vụ còn thiếu, không coi đã hoàn | 5.2, 0.3; mở rộng kiểm chứng khi6.2 có |
-| M4.5.8 | Admin duyệt/từ chối yêu cầu hủy | Cancellation decision qua cùng cancel pipeline | Duyệt hủy một lần; từ chối giữ trạng thái; ship/duyệt hủy không cùng thắng | 4.4, 5.7 |
+| M4.5.8 | Admin từ chối yêu cầu hủy có lý do, đơn vẫn PACKING | Cancellation decision; từ M4.4.4 "Hủy đơn" đã là đồng ý và "Bàn giao" đã là không đồng ý | Từ chối giữ trạng thái; khách gửi lại được yêu cầu mới (cần xử lý ràng buộc duy nhất của thư); ship/quyết định không cùng thắng | 4.4, 5.7 |
 | M4.6.1 | Khách đặt bank và xem VietQR | Payment schema cần thiết, method bank/deadline snapshot, QR trong shop + thông tin dạng chữ | QR đúng ngân hàng/số tiền còn phải trả/mã đơn; chưa thu tiền; không gửi dữ liệu sang dịch vụ QR ngoài | 3.1, 4.1, 1.2 |
 | M4.6.2 | Admin ghi khoản chuyển vào | Receipt immutable, reference unique, allocation/obligation trong cùng transaction | Thiếu chưa PAID; đủ trước hạn mới confirm; dư phân bổ đúng, key/reference trùng không thu lặp | 6.1, 5.3 |
 | M4.6.3 | Admin xem sổ thu và nghĩa vụ | Ledger read-only/filter/page, trạng thái tiền độc lập | Từ khoản thu truy tới đơn/phần phân bổ/phần cần hoàn; không lộ cho khách khác | 6.2 |

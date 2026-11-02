@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 const ORDER_CREATED_SHOP = 'order.created.shop';
 const ORDER_CANCELLED_SHOP = 'order.cancelled.shop';
+const ORDER_CANCEL_REQUESTED_SHOP = 'order.cancel-requested.shop';
 const MONEY = new Intl.NumberFormat('vi-VN');
 const MINUTE_MS = 60000;
 const MAX_ATTEMPTS = 5;
@@ -52,6 +53,14 @@ export class OrderNotificationsService {
 
   enqueueOrderCancelled(tx: Prisma.TransactionClient, orderId: string) {
     return this.enqueue(tx, ORDER_CANCELLED_SHOP, orderId);
+  }
+
+  enqueueCancelRequested(tx: Prisma.TransactionClient, orderId: string) {
+    return this.enqueue(tx, ORDER_CANCEL_REQUESTED_SHOP, orderId);
+  }
+
+  dispatchCancelRequested(code: string) {
+    return this.dispatch(code, ORDER_CANCEL_REQUESTED_SHOP);
   }
 
   dispatchOrderCreated(code: string) {
@@ -106,6 +115,12 @@ export class OrderNotificationsService {
       return {
         subject: `Khách hủy đơn ${order.code} | RMG Labels`,
         text: `Khách đã hủy đơn ${order.code}. Hàng đã được trả lại kho; nếu đang chuẩn bị đơn này, hãy dừng lại.\n\nLý do hủy xem trên trang đơn.\n\n${link}`,
+      };
+    }
+    if (event === ORDER_CANCEL_REQUESTED_SHOP) {
+      return {
+        subject: `Khách xin hủy đơn ${order.code} | RMG Labels`,
+        text: `Khách xin hủy đơn ${order.code} đang đóng gói. Đơn chưa bị hủy và hàng vẫn đang giữ.\n\nĐồng ý: bấm "Hủy đơn". Không đồng ý: nhắn khách rồi "Bàn giao". Lý do xem trên trang đơn.\n\n${link}`,
       };
     }
     return null;

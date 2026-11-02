@@ -51,12 +51,20 @@ describe('admin order list', () => {
     expect(document.title).toBe('Đơn hàng | Quản trị | RMG Labels');
   });
 
+  it('marks only the order whose customer is asking to cancel (M4.4.4)', async () => {
+    const asking = { ...order, id: 'asking-order', code: 'ASKS2345CANC', status: 'PACKING', hasPendingCancellationRequest: true };
+    const quiet = { ...order, hasPendingCancellationRequest: false };
+    renderPage('/admin/orders', () => Promise.resolve(page([asking, quiet])));
+    expect(within(await screen.findByRole('listitem', { name: asking.code })).getByText('Khách xin hủy')).toBeVisible();
+    expect(within(screen.getByRole('listitem', { name: quiet.code })).queryByText('Khách xin hủy')).not.toBeInTheDocument();
+  });
+
   it('opens an order from its code and comes back to the same filtered list', async () => {
     const user = userEvent.setup();
     const detail = { ...order, currency: 'VND', version: 0, bankDeadlineAt: null, trackingNumber: null, deliveredAt: null, cancelledAt: null,
       cancelReason: null, recipient: { name: 'Nguyễn Thử', phone: '0901234567', email: null },
       address: { province: 'Hà Nội', district: '', ward: 'Phường A', addressLine: '1 Phố B' }, customerNote: null,
-      subtotalVnd: 700000, shippingFeeVnd: 30000, items: [], history: [], notes: [] };
+      subtotalVnd: 700000, shippingFeeVnd: 30000, items: [], history: [], notes: [], cancellationRequests: [] };
     vi.spyOn(catalogApi, 'categories').mockResolvedValue([]);
     vi.spyOn(authApi, 'me').mockResolvedValue(admin);
     vi.spyOn(client, 'request').mockImplementation((url: string) =>
