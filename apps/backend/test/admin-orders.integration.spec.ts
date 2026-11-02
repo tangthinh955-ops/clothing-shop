@@ -420,3 +420,321 @@ describe('POST /admin/orders/:id/confirm (M4.5.3)', () => {
     expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
   });
 });
+
+type SeedStatus = 'PENDING' | 'CONFIRMED' | 'PACKING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'DELIVERY_FAILED' | 'RETURNED_TO_SHOP';
+const SEED_CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+let seedSequence = 0;
+let firstVariant = '';
+let secondVariant = '';
+
+const stockOf = (id: string) => db.inventory.findUniqueOrThrow({ where: { variantId: id }, select: { onHand: true, reserved: true } });
+const orderOf = (id: string) => db.order.findUniqueOrThrow({ where: { id } });
+const historyOf = (orderId: string) => db.orderStatusHistory.findMany({ where: { orderId }, orderBy: { version: 'asc' } });
+
+beforeAll(async () => {
+  const prefix = randomUUID();
+  const category = await db.category.create({ data: { name: 'Danh mục hủy đơn', slug: `admin-cancel-${prefix}`, active: true } });
+  const product = await db.product.create({ data: { name: 'Áo hủy đơn', slug: `admin-cancel-${prefix}`, description: '',
+    categoryId: category.id, status: 'PUBLISHED', priceFrom: 200000, variants: { create: [
+      { sku: `CAN-A-${prefix}`.toUpperCase().slice(0, 64), size: 'M', color: 'Đen', price: 200000, active: true, inventory: { create: { onHand: 500, reserved: 0 } } },
+      { sku: `CAN-B-${prefix}`.toUpperCase().slice(0, 64), size: 'L', color: 'Đen', price: 200000, active: true, inventory: { create: { onHand: 500, reserved: 0 } } },
+    ] } }, include: { variants: true } });
+  firstVariant = product.variants[0]!.id;
+  secondVariant = product.variants[1]!.id;
+});
+
+/** An order that really holds its stock unless it already gave it up, as checkout and shipping would leave it. */
+async function seedHoldingOrder(status: SeedStatus = 'PENDING', overrides: { method?: 'COD' | 'BANK_TRANSFER'; token?: string;
+  lines?: Array<{ variantId: string; quantity: number }>; holding?: boolean } = {}) {
+  seedSequence += 1;
+  const code = `HHHHHHHHHH${SEED_CODE_LETTERS[Math.floor(seedSequence / 23)]!}${SEED_CODE_LETTERS[seedSequence % 23]!}`;
+  const lines = overrides.lines ?? [{ variantId: firstVariant, quantity: 2 }];
+  const order = await db.order.create({ data: {
+    code, status, source: 'WEB', userId: null, recipientName: 'Khách Hủy Đơn', phone: '0904000001', email: null,
+    province: 'Hà Nội', district: '', ward: 'Phường A', addressLine: '1 Phố B', note: null, method: overrides.method ?? 'COD', currency: 'VND',
+    subtotalVnd: 400000, shippingFeeVnd: 30000, totalVnd: 430000, settingsVersion: 0, version: 0,
+    lookupTokenHash: overrides.token ? lookupTokenHash(overrides.token) : null,
+    items: { create: lines.map((line, index) => ({ variantId: line.variantId, productName: 'Áo hủy đơn', sku: `SKU-${index}`, size: 'M', color: 'Đen',
+      unitPriceVnd: 200000, quantity: line.quantity, lineTotalVnd: 200000 * line.quantity })) },
+    history: { create: [{ fromStatus: null, toStatus: status, actorType: 'GUEST', actorId: null, version: 0 }] },
+  } });
+  if (overrides.holding ?? true) {
+    for (const line of lines) await db.inventory.update({ where: { variantId: line.variantId }, data: { reserved: { increment: line.quantity } } });
+  }
+  return { id: order.id, code };
+}
+
+async function postTransition(action: string, agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey(), withCsrf = true) {
+  const csrf = withCsrf ? (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string : undefined;
+  const request = agent.post(`/api/v1/admin/orders/${orderId}/${action}`).set('Origin', origin);
+  if (csrf) request.set('X-CSRF-Token', csrf);
+  if (key !== undefined) request.set('Idempotency-Key', key);
+  return request.send(body as object);
+}
+
+describe('POST /admin/orders/:id/pack (M4.5.4)', () => {
+  const pack = (agent: Agent, orderId: string, body: unknown, key?: string, withCsrf?: boolean) => postTransition('pack', agent, orderId, body, key, withCsrf);
+
+  it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    expect((await pack(guest, id, { expectedVersion: 0 })).status).toBe(401);
+    expect((await pack(customer, id, { expectedVersion: 0 })).status).toBe(403);
+    expect((await pack(admin, id, { expectedVersion: 0 }, noteKey(), false)).status).toBe(403);
+    expect((await pack(admin, randomUUID(), { expectedVersion: 0 })).status).toBe(404);
+    expect((await orderOf(id)).status).toBe('CONFIRMED');
+  });
+
+  it('needs a valid key and an expected version', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    expect((await pack(admin, id, { expectedVersion: 0 }, 'short')).status).toBe(400);
+    const csrf = (await admin.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    await admin.post(`/api/v1/admin/orders/${id}/pack`).set('Origin', origin).set('X-CSRF-Token', csrf)
+      .send({ expectedVersion: 0 }).expect(400);
+    expect((await pack(admin, id, {})).status).toBe(400);
+    expect((await orderOf(id)).status).toBe('CONFIRMED');
+  });
+
+  it('moves a confirmed order to PACKING with a history entry, leaving stock untouched', async () => {
+    const { id, code } = await seedHoldingOrder('CONFIRMED');
+    const before = await stockOf(firstVariant);
+    const response = await pack(admin, id, { expectedVersion: 0 });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ id, code, status: 'PACKING', version: 1 });
+    const history = await historyOf(id);
+    expect(history).toHaveLength(2);
+    expect(history[1]).toMatchObject({ fromStatus: 'CONFIRMED', toStatus: 'PACKING', actorType: 'ADMIN', reason: null, version: 1 });
+    expect(await stockOf(firstVariant)).toEqual(before);
+    const detail = await admin.get(`/api/v1/admin/orders/${id}`).expect(200);
+    expect((detail.body as { history: Array<{ actorName: string }> }).history[1]).toMatchObject({ actorName: 'Admin đơn thử' });
+  });
+
+  it.each(['PENDING', 'PACKING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'] as const)('refuses a %s order and changes nothing', async (status) => {
+    const { id } = await seedHoldingOrder(status, { holding: false });
+    const before = await stockOf(firstVariant);
+    expect((await pack(admin, id, { expectedVersion: 0 })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status, version: 0 });
+    expect(await historyOf(id)).toHaveLength(1);
+    expect(await stockOf(firstVariant)).toEqual(before);
+  });
+
+  it('refuses a stale version without changing the order', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    expect((await pack(admin, id, { expectedVersion: 7 })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'CONFIRMED', version: 0 });
+    expect(await historyOf(id)).toHaveLength(1);
+  });
+
+  it('replays the same key to the same result and refuses that key with another version', async () => {
+    const { id, code } = await seedHoldingOrder('CONFIRMED');
+    const key = noteKey();
+    expect((await pack(admin, id, { expectedVersion: 0 }, key)).status).toBe(200);
+    const replay = await pack(admin, id, { expectedVersion: 0 }, key);
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ id, code, status: 'PACKING', version: 1 });
+    expect((await pack(admin, id, { expectedVersion: 1 }, key)).status).toBe(409);
+    expect(await historyOf(id)).toHaveLength(2);
+  });
+
+  it('lets exactly one of two racing admins win when their keys differ', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    const results = await Promise.all([pack(admin, id, { expectedVersion: 0 }), pack(admin, id, { expectedVersion: 0 })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(await historyOf(id)).toHaveLength(2);
+    expect(await orderOf(id)).toMatchObject({ status: 'PACKING', version: 1 });
+  });
+
+  it('applies once when the same key races', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    const key = noteKey();
+    const results = await Promise.all([pack(admin, id, { expectedVersion: 0 }, key), pack(admin, id, { expectedVersion: 0 }, key)]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    expect(await historyOf(id)).toHaveLength(2);
+  });
+
+  it('leaves a consistent order when packing races a cancel', async () => {
+    const { id } = await seedHoldingOrder('CONFIRMED');
+    const before = await stockOf(firstVariant);
+    const results = await Promise.all([pack(admin, id, { expectedVersion: 0 }),
+      postTransition('cancel', admin, id, { expectedVersion: 0, reason: 'Khách đổi ý' })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const packed = results[0]!.status === 200;
+    expect(await orderOf(id)).toMatchObject({ status: packed ? 'PACKING' : 'CANCELLED', version: 1 });
+    expect(await stockOf(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - (packed ? 0 : 2) });
+  });
+
+  it('shows the customer the new status without naming the admin', async () => {
+    const token = 'G'.repeat(32);
+    const { id, code } = await seedHoldingOrder('CONFIRMED', { token });
+    expect((await pack(admin, id, { expectedVersion: 0 })).status).toBe(200);
+    const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
+    expect((view.body as { order: { status: string } }).order.status).toBe('PACKING');
+    expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
+  });
+});
+
+describe('POST /admin/orders/:id/cancel (M4.5.7)', () => {
+  const REASON = 'Khách đặt nhầm size';
+  const stock = stockOf;
+  const seedCancelable = seedHoldingOrder;
+  const releases = (code: string) => db.inventoryMovement.findMany({ where: { source: 'ORDER_RELEASE', reason: `Hủy đơn ${code}` } });
+  const cancel = (agent: Agent, orderId: string, body: unknown, key?: string, withCsrf?: boolean) => postTransition('cancel', agent, orderId, body, key, withCsrf);
+
+  it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
+    const { id } = await seedCancelable();
+    const before = await stock(firstVariant);
+    const body = { expectedVersion: 0, reason: REASON };
+    expect((await cancel(guest, id, body)).status).toBe(401);
+    expect((await cancel(customer, id, body)).status).toBe(403);
+    expect((await cancel(admin, id, body, noteKey(), false)).status).toBe(403);
+    expect((await cancel(admin, randomUUID(), body)).status).toBe(404);
+    expect((await orderOf(id)).status).toBe('PENDING');
+    expect(await stock(firstVariant)).toEqual(before);
+  });
+
+  it.each([
+    ['a missing reason', { expectedVersion: 0 }],
+    ['a reason shorter than 3 characters after trimming', { expectedVersion: 0, reason: '  ab  ' }],
+    ['a reason over 500 characters', { expectedVersion: 0, reason: 'x'.repeat(501) }],
+    ['a missing version', { reason: REASON }],
+  ])('rejects %s without touching the order or the stock', async (_label, body) => {
+    const { id } = await seedCancelable();
+    const before = await stock(firstVariant);
+    expect((await cancel(admin, id, body)).status).toBe(400);
+    expect((await orderOf(id)).status).toBe('PENDING');
+    expect(await stock(firstVariant)).toEqual(before);
+  });
+
+  it('needs a valid Idempotency-Key', async () => {
+    const { id } = await seedCancelable();
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON }, 'short')).status).toBe(400);
+    const csrf = (await admin.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    await admin.post(`/api/v1/admin/orders/${id}/cancel`).set('Origin', origin).set('X-CSRF-Token', csrf)
+      .send({ expectedVersion: 0, reason: REASON }).expect(400);
+    expect((await orderOf(id)).status).toBe('PENDING');
+  });
+
+  it.each(['PENDING', 'CONFIRMED', 'PACKING'] as const)('cancels a %s order, gives back only what it held and records why', async (status) => {
+    const { id, code } = await seedCancelable(status);
+    const before = await stock(firstVariant);
+    const response = await cancel(admin, id, { expectedVersion: 0, reason: `  ${REASON}  ` });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ id, code, status: 'CANCELLED', version: 1 });
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - 2 });
+    const saved = await orderOf(id);
+    expect(saved).toMatchObject({ status: 'CANCELLED', version: 1, cancelReason: REASON });
+    expect(saved.cancelledAt).toBeInstanceOf(Date);
+    const history = await historyOf(id);
+    expect(history).toHaveLength(2);
+    expect(history[1]).toMatchObject({ fromStatus: status, toStatus: 'CANCELLED', actorType: 'ADMIN', reason: REASON, version: 1 });
+    const detail = await admin.get(`/api/v1/admin/orders/${id}`).expect(200);
+    expect(detail.body).toMatchObject({ status: 'CANCELLED', cancelReason: REASON });
+    expect((detail.body as { history: Array<{ actorName: string }> }).history[1]).toMatchObject({ actorName: 'Admin đơn thử' });
+  });
+
+  it('releases every line of the order, and the movement does not copy the free-text reason', async () => {
+    const { id, code } = await seedCancelable('PENDING', { lines: [{ variantId: firstVariant, quantity: 2 }, { variantId: secondVariant, quantity: 3 }] });
+    const [first, second] = [await stock(firstVariant), await stock(secondVariant)];
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON })).status).toBe(200);
+    expect(await stock(firstVariant)).toEqual({ onHand: first.onHand, reserved: first.reserved - 2 });
+    expect(await stock(secondVariant)).toEqual({ onHand: second.onHand, reserved: second.reserved - 3 });
+    const movements = await releases(code);
+    expect(movements).toHaveLength(2);
+    for (const movement of movements) expect(movement).toMatchObject({ actorType: 'ADMIN', delta: 0 });
+  });
+
+  it.each(['SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'] as const)('refuses a %s order and changes nothing', async (status) => {
+    const { id, code } = await seedCancelable(status, { holding: false });
+    const before = await stock(firstVariant);
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status, version: 0, cancelReason: null, cancelledAt: null });
+    expect(await stock(firstVariant)).toEqual(before);
+    expect(await releases(code)).toHaveLength(0);
+  });
+
+  it('refuses a stale version without changing the order or the stock', async () => {
+    const { id } = await seedCancelable();
+    const before = await stock(firstVariant);
+    expect((await cancel(admin, id, { expectedVersion: 7, reason: REASON })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'PENDING', version: 0 });
+    expect(await historyOf(id)).toHaveLength(1);
+    expect(await stock(firstVariant)).toEqual(before);
+  });
+
+  it('cancels a bank transfer order that has not been paid', async () => {
+    const { id } = await seedCancelable('PENDING', { method: 'BANK_TRANSFER' });
+    const before = await stock(firstVariant);
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON })).status).toBe(200);
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - 2 });
+  });
+
+  it('replays the same key once, and refuses that key with another reason', async () => {
+    const { id, code } = await seedCancelable();
+    const before = await stock(firstVariant);
+    const key = noteKey();
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON }, key)).status).toBe(200);
+    const replay = await cancel(admin, id, { expectedVersion: 0, reason: REASON }, key);
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ id, code, status: 'CANCELLED', version: 1 });
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: 'Lý do khác hẳn' }, key)).status).toBe(409);
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - 2 });
+    expect(await historyOf(id)).toHaveLength(2);
+    expect((await orderOf(id)).cancelReason).toBe(REASON);
+  });
+
+  it('lets exactly one of two racing admins cancel, and releases once', async () => {
+    const { id, code } = await seedCancelable();
+    const before = await stock(firstVariant);
+    const results = await Promise.all([cancel(admin, id, { expectedVersion: 0, reason: REASON }), cancel(admin, id, { expectedVersion: 0, reason: REASON })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - 2 });
+    expect(await releases(code)).toHaveLength(1);
+  });
+
+  it('releases once when the same key races', async () => {
+    const { id, code } = await seedCancelable();
+    const before = await stock(firstVariant);
+    const key = noteKey();
+    const body = { expectedVersion: 0, reason: REASON };
+    const results = await Promise.all([cancel(admin, id, body, key), cancel(admin, id, body, key)]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - 2 });
+    expect(await releases(code)).toHaveLength(1);
+  });
+
+  it('leaves a consistent order when a cancel races a confirm', async () => {
+    const { id, code } = await seedCancelable();
+    const before = await stock(firstVariant);
+    const csrf = (await admin.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    const confirming = admin.post(`/api/v1/admin/orders/${id}/confirm`).set('Origin', origin).set('X-CSRF-Token', csrf)
+      .set('Idempotency-Key', noteKey()).send({ expectedVersion: 0 });
+    const results = await Promise.all([cancel(admin, id, { expectedVersion: 0, reason: REASON }), confirming]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const saved = await orderOf(id);
+    const cancelled = results[0]!.status === 200;
+    expect(saved).toMatchObject({ status: cancelled ? 'CANCELLED' : 'CONFIRMED', version: 1 });
+    expect(await stock(firstVariant)).toEqual({ onHand: before.onHand, reserved: before.reserved - (cancelled ? 2 : 0) });
+    expect(await releases(code)).toHaveLength(cancelled ? 1 : 0);
+  });
+
+  it('rolls everything back when the stock cannot be released', async () => {
+    const lonely = await db.variant.create({ data: { productId: (await db.variant.findUniqueOrThrow({ where: { id: firstVariant } })).productId,
+      sku: `CAN-C-${randomUUID()}`.toUpperCase().slice(0, 64), size: 'XL', color: 'Đen', price: 200000, active: true,
+      inventory: { create: { onHand: 5, reserved: 0 } } } });
+    const { id } = await seedCancelable('PENDING', { lines: [{ variantId: lonely.id, quantity: 2 }], holding: false });
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'PENDING', version: 0, cancelReason: null, cancelledAt: null });
+    expect(await historyOf(id)).toHaveLength(1);
+    expect(await stock(lonely.id)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  it('shows the customer the cancellation and its reason without naming the admin', async () => {
+    const token = 'F'.repeat(32);
+    const { id, code } = await seedCancelable('PENDING', { token });
+    expect((await cancel(admin, id, { expectedVersion: 0, reason: REASON })).status).toBe(200);
+    const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
+    expect((view.body as { order: { status: string } }).order.status).toBe('CANCELLED');
+    const raw = JSON.stringify(view.body);
+    expect(raw).toContain(REASON);
+    expect(raw).not.toContain('Admin đơn thử');
+  });
+});

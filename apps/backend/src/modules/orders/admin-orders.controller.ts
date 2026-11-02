@@ -7,6 +7,7 @@ import { SessionGuard } from '../auth/session.guard.js';
 import { AdminOrderNotesService } from './admin-order-notes.service.js';
 import { AdminOrderTransitionsService } from './admin-order-transitions.service.js';
 import { AdminOrdersService } from './admin-orders.service.js';
+import { AdminOrderCancelDto } from './dto/admin-order-cancel.dto.js';
 import { AdminOrderNoteDto } from './dto/admin-order-note.dto.js';
 import { AdminOrderTransitionDto } from './dto/admin-order-transition.dto.js';
 import { AdminOrdersQuery } from './dto/admin-orders-query.dto.js';
@@ -36,6 +37,20 @@ export class AdminOrdersController {
   confirm(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
     @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderTransitionDto) {
     return this.transitions.confirm(user.id, id, key, dto.expectedVersion);
+  }
+
+  @Post(':id/pack')
+  @HttpCode(200)
+  pack(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
+    @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderTransitionDto) {
+    return this.transitions.pack(user.id, id, key, dto.expectedVersion);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
+    @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderCancelDto) {
+    return this.transitions.cancel(user.id, id, key, dto.expectedVersion, dto.reason);
   }
 
   @Post(':id/notes')

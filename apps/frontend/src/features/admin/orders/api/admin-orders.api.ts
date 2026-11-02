@@ -109,6 +109,16 @@ export const adminOrdersApi = {
     return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/confirm`,
       { method: 'POST', body: { expectedVersion }, idempotencyKey });
   },
+  // POST /api/v1/admin/orders/:id/pack — CONFIRMED to PACKING; stock and money do not change.
+  pack(id: string, expectedVersion: number, idempotencyKey: string) {
+    return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/pack`,
+      { method: 'POST', body: { expectedVersion }, idempotencyKey });
+  },
+  // POST /api/v1/admin/orders/:id/cancel — before handover only; releases held stock once; the customer sees the reason.
+  cancel(id: string, expectedVersion: number, reason: string, idempotencyKey: string) {
+    return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: { expectedVersion, reason }, idempotencyKey });
+  },
   // POST /api/v1/admin/orders/:id/notes — append-only internal note; the key makes a resend safe.
   addNote(id: string, body: string, idempotencyKey: string) {
     return request<AdminOrderNote>(`/admin/orders/${encodeURIComponent(id)}/notes`, { method: 'POST', body: { body }, idempotencyKey });

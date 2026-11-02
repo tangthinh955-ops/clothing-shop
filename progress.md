@@ -2,6 +2,41 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.5.4: admin đóng gói đơn
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.4 ("duyệt"). Làm tiếp trên nhánh `feat/m4.5-admin-orders`, cùng phần M4.5.7 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1–M4.5.3 và M4.5.7.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts`, `admin-orders.controller.ts` | Rule `PACK` (`CONFIRMED` → `PACKING`) và `POST /admin/orders/:id/pack`; kho và tiền không đổi |
+| `apps/frontend/src/features/admin/orders/components/OrderStepAction.tsx` (mới), `OrderActions.tsx` | Gộp hộp thoại xác nhận thành một component dùng cho cả đóng gói; xóa `OrderConfirmAction.tsx` tạo ở M4.5.7 (chưa từng commit) |
+| `.../api/admin-orders.api.ts` | Hàm `pack` |
+| `apps/backend/test/admin-orders.integration.spec.ts` | 16 ca mới; đưa helper tạo đơn giữ hàng ra dùng chung với test hủy |
+| `.../pages/AdminOrderDetailPage.test.tsx`, `apps/frontend/e2e/admin-orders.spec.ts` | 11 ca UI và 1 E2E (xác nhận → đóng gói → hủy); đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 450 frontend; `npm run test:integration` 190/190; `npm run test:e2e:implemented` 54/54. Đã xem ảnh trang đơn "Đang đóng gói" trên mobile. Các test xác nhận đơn hiện có vẫn đạt sau khi gộp component.
+
+**Giới hạn:** đơn `PACKING` chưa đi tiếp được cho tới khi có M4.5.5. Khách chưa có chức năng hủy hay xin hủy (M4.4.3, M4.4.4) nên phần "khách chỉ gửi yêu cầu hủy" chưa thử được. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.4. **Dừng chờ người dùng thử.**
+
+## Ngày 02/11/2026 — M4.5.7: admin hủy đơn trước bàn giao
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.7 ("duyệt"), gồm việc khách thấy lý do hủy. Làm trước M4.5.4 vì production đã nhận đơn thật mà chưa nhả được hàng giữ; lý do đã ghi ở kế hoạch M4. Làm tiếp trên nhánh `feat/m4.5-admin-orders`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.** Production vẫn chưa có chức năng hủy.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Rule nhận nhiều trạng thái nguồn và hiệu ứng chạy trong transaction; thêm `cancel()` nhả kho qua Inventory, ghi lý do. Lệnh confirm giữ nguyên dạng hash chống trùng để bản ghi đã lưu vẫn replay được |
+| `apps/backend/src/modules/orders/dto/admin-order-cancel.dto.ts` (mới), `admin-orders.controller.ts` | `POST /admin/orders/:id/cancel`, lý do 3–500 ký tự sau trim |
+| `apps/frontend/src/features/admin/orders/hooks/useOrderCommand.ts` (mới) | Logic chống bấm lặp, giữ key, "Gửi lại" đúng lệnh cũ, tách từ `OrderActions` để các thao tác sau dùng chung |
+| `.../components/OrderCancelAction.tsx` (mới), `OrderConfirmAction.tsx` (mới), `OrderActions.tsx` | Hộp thoại hủy; phần xác nhận chuyển nguyên sang file riêng; `OrderActions` chỉ chọn nút theo trạng thái. Khác kế hoạch: thêm `OrderConfirmAction.tsx`, và file hủy tên `OrderCancelAction` vì chứa cả nút |
+| `.../api/admin-orders.api.ts` | Hàm `cancel` |
+| `apps/backend/test/admin-orders.integration.spec.ts`, `.../pages/AdminOrderDetailPage.test.tsx`, `apps/frontend/e2e/admin-orders.spec.ts` | Test mới; đã quan sát fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, lý do đổi thứ tự, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 439 frontend; `npm run test:integration` 174/174 (thêm 23 ca: quyền, validation, 3 trạng thái hủy được, 5 trạng thái bị từ chối, version cũ, replay, hai admin hủy cùng lúc, trùng key cùng lúc, hủy đua với xác nhận, rollback khi không nhả được kho, khách thấy lý do); `npm run test:e2e:implemented` 53/53. Sau lượt đầy đủ chỉ đổi vị trí dòng cảnh báo trong hộp thoại, đã chạy lại test trang chi tiết, typecheck và E2E `admin-orders`.
+
+**Giới hạn:** chưa thử được đơn `PACKING` trên giao diện cho tới khi có M4.5.4 (đã có integration test). Chưa tạo nghĩa vụ hoàn tiền vì chưa có bảng thu tiền (M4.6.2). Khách chưa tự hủy được (M4.4.3), shop chưa duyệt được yêu cầu hủy (M4.5.8), hủy đơn chưa gửi email (M4.10). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.7. **Dừng chờ người dùng thử.**
+
 ## Ngày 02/11/2026 — Commit, PR #28 và deploy production M4.5.1–M4.5.3
 
 - **Yêu cầu:** người dùng yêu cầu "commit và tạo mr sau đó deploy lên vps", sau khi đã được báo nhiều lần rằng chưa nên deploy tới khi xong M4.5.7 và M4.10.1. Không merge vào `main` vì không được yêu cầu.

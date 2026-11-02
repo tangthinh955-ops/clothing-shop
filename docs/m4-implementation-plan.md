@@ -85,7 +85,7 @@ Tình trạng từng phần xem mục điểm dừng và progress. Cột chạy 
 
 `0.1 → 0.2 → 0.3 → 1.1 → 1.2 → 2.1 → 2.2 → 3.1 → 4.1 → 4.2 → 4.3 → 5.1 → 5.2 → 5.3 → 5.4 → 4.4 → 5.5 → 5.6 → 5.7 → 5.8 → 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 7.1 → 7.2 → 8.1 → 9.1 → 9.2 → 10.1 → 10.2 → 11.1`.
 
-Đây là thứ tự đề xuất; có thể đổi khi có lý do phụ thuộc rõ và cập nhật tài liệu, không tự bỏ bước duyệt. Ngày 01/11/2026 làm M4.5.1 trước M4.4.3: shop phải thấy đơn trước tiên, và M4.5.1 chỉ phụ thuộc M4.3.1. Hoàn tất một phần không tự cho phép làm phần sau. Các tính năng bank không được phát hành production ở trạng thái thiếu expiry/exception handling.
+Đây là thứ tự đề xuất; có thể đổi khi có lý do phụ thuộc rõ và cập nhật tài liệu, không tự bỏ bước duyệt. Ngày 01/11/2026 làm M4.5.1 trước M4.4.3: shop phải thấy đơn trước tiên, và M4.5.1 chỉ phụ thuộc M4.3.1. Ngày 02/11/2026 làm M4.5.7 trước M4.5.4: production đã nhận đơn thật mà chưa nhả được hàng giữ, và M4.5.7 chỉ phụ thuộc M4.5.2 cùng thao tác kho M4.0.3. Hoàn tất một phần không tự cho phép làm phần sau. Các tính năng bank không được phát hành production ở trạng thái thiếu expiry/exception handling.
 
 ## 4. Contract và điểm phải chốt trước implementation
 

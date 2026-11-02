@@ -183,6 +183,108 @@ test('a guest order reaches the admin list, which filters and searches it', asyn
   }
 });
 
+// M4.5.7: the shop cancels an order it can no longer fill; the stock comes back and the customer sees why.
+test('an admin cancels an order, which gives the stock back and tells the customer', async ({ page, browser }, info) => {
+  test.setTimeout(60000);
+  const held = () => db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } });
+  const before = await held();
+  const code = await placeCodOrder(page);
+  const orderLink = await page.getByRole('link', { name: 'Xem đơn hàng' }).getAttribute('href');
+  if (!orderLink) throw new Error('The confirmation screen did not link to the order.');
+  expect(await held()).toEqual({ onHand: before.onHand, reserved: before.reserved + 2 });
+
+  const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
+    extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });
+  const admin = await adminContext.newPage();
+  try {
+    await login(admin, adminEmail);
+    await admin.goto(`/admin/orders?q=${code}`);
+    await admin.getByRole('link', { name: code, exact: true }).click();
+
+    await admin.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    const dialog = admin.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    await expect(dialog.getByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-order-cancel-dialog-mobile.png'), animations: 'disabled' });
+    await admin.setViewportSize({ width: 1280, height: 720 });
+
+    const reason = `Hết hàng lỗi ${tag.slice(0, 8)}`;
+    await dialog.getByLabel(/Lý do hủy/).fill(reason);
+    await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    await expect(admin.getByRole('button', { name: 'Hủy đơn', exact: true })).toHaveCount(0);
+    await expect(admin.getByText(`Lý do hủy: ${reason}`)).toBeVisible();
+    const history = admin.getByRole('region', { name: 'Lịch sử trạng thái' });
+    await expect(history).toContainText('Chờ xác nhận → Đã hủy');
+    await expect(history).toContainText('Admin đơn thử');
+    await admin.reload();
+    await expect(admin.getByText(`Lý do hủy: ${reason}`)).toBeVisible();
+    await expect(admin.getByRole('button', { name: 'Hủy đơn', exact: true })).toHaveCount(0);
+    expect(await held()).toEqual(before);
+
+    await page.goto(orderLink);
+    await expect(page.getByText('Đã hủy').first()).toBeVisible();
+    await expect(page.getByText(new RegExp(reason))).toBeVisible();
+    await expect(page.getByText('Admin đơn thử')).toHaveCount(0);
+  } finally {
+    await adminContext.close();
+  }
+});
+
+// M4.5.4: confirm, then pack; packing keeps the stock on hold, and the shop can still cancel before handover.
+test('an admin packs a confirmed order and can still cancel it', async ({ page, browser }, info) => {
+  test.setTimeout(60000);
+  const held = () => db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } });
+  const before = await held();
+  const code = await placeCodOrder(page);
+  const orderLink = await page.getByRole('link', { name: 'Xem đơn hàng' }).getAttribute('href');
+  if (!orderLink) throw new Error('The confirmation screen did not link to the order.');
+
+  const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
+    extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });
+  const admin = await adminContext.newPage();
+  try {
+    await login(admin, adminEmail);
+    await admin.goto(`/admin/orders?q=${code}`);
+    await admin.getByRole('link', { name: code, exact: true }).click();
+    await expect(admin.getByRole('button', { name: 'Đóng gói', exact: true })).toHaveCount(0);
+
+    await admin.getByRole('button', { name: 'Xác nhận đơn' }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Xác nhận', exact: true }).click();
+    await admin.getByRole('button', { name: 'Đóng gói', exact: true }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Đóng gói', exact: true }).click();
+
+    const history = admin.getByRole('region', { name: 'Lịch sử trạng thái' });
+    await expect(history).toContainText('Đã xác nhận → Đang đóng gói');
+    await expect(admin.getByRole('button', { name: 'Đóng gói', exact: true })).toHaveCount(0);
+    await admin.reload();
+    await expect(history).toContainText('Đã xác nhận → Đang đóng gói');
+    expect(await held()).toEqual({ onHand: before.onHand, reserved: before.reserved + 2 });
+
+    await page.goto(orderLink);
+    await expect(page.getByText('Đang đóng gói').first()).toBeVisible();
+
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-order-packing-mobile.png'), fullPage: true, animations: 'disabled' });
+    await admin.setViewportSize({ width: 1280, height: 720 });
+
+    await admin.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    const dialog = admin.getByRole('dialog');
+    await dialog.getByLabel(/Lý do hủy/).fill('Sản phẩm bị lỗi khi đóng gói');
+    await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    await expect(history).toContainText('Đang đóng gói → Đã hủy');
+    expect(await held()).toEqual(before);
+
+    await page.reload();
+    await expect(page.getByText('Đã hủy').first()).toBeVisible();
+  } finally {
+    await adminContext.close();
+  }
+});
+
 test('a customer account cannot open the order list', async ({ page }) => {
   await login(page, customerEmail);
   await page.goto('/admin/orders');

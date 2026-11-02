@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { conflict, databaseError } from '../../common/database-errors.js';
 import type { IdempotencyRecord, Prisma } from '../../generated/prisma/client.js';
 import type { OrderMethod, OrderStatus } from '../../generated/prisma/enums.js';
+import { InventoryOperationsService } from '../inventory/inventory-operations.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 const KEY_PATTERN = /^[A-Za-z0-9_-]{16,120}$/;
@@ -18,18 +19,42 @@ export interface AdminOrderTransitionView {
 
 interface TransitionRule {
   action: string;
-  from: OrderStatus;
+  from: readonly OrderStatus[];
   to: OrderStatus;
   /** Extra business condition on the locked order; answers the refusal message, or null to proceed. */
   refuse?: (order: { method: OrderMethod }) => string | null;
 }
 
+interface TransitionCommand {
+  actorId: string;
+  orderId: string;
+  key: string | undefined;
+  expectedVersion: number;
+  reason?: string;
+}
+
+/** Runs inside the transition's transaction, so a failure here rolls the state change back too. */
+type TransitionEffect = (tx: Prisma.TransactionClient, order: { code: string }) => Promise<Prisma.OrderUpdateInput>;
+
 const CONFIRM: TransitionRule = {
   action: 'confirm',
-  from: 'PENDING',
+  from: ['PENDING'],
   to: 'CONFIRMED',
   // m4-contract §2: a bank order needs full payment before the deadline, which arrives with M4.6.2.
   refuse: (order) => (order.method === 'COD' ? null : 'Đơn chuyển khoản chỉ xác nhận được khi đã nhận đủ tiền.'),
+};
+
+const PACK: TransitionRule = {
+  action: 'pack',
+  from: ['CONFIRMED'],
+  to: 'PACKING',
+};
+
+// Refund obligations for money already collected arrive with the payment ledger in M4.6.2.
+const CANCEL: TransitionRule = {
+  action: 'cancel',
+  from: ['PENDING', 'CONFIRMED', 'PACKING'],
+  to: 'CANCELLED',
 };
 
 function isTransitionView(value: unknown): value is AdminOrderTransitionView {
@@ -43,20 +68,38 @@ function isTransitionView(value: unknown): value is AdminOrderTransitionView {
  */
 @Injectable()
 export class AdminOrderTransitionsService {
-  constructor(@Inject(PrismaService) private readonly db: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly db: PrismaService,
+    @Inject(InventoryOperationsService) private readonly inventory: InventoryOperationsService,
+  ) {}
 
   confirm(actorId: string, orderId: string, key: string | undefined, expectedVersion: number) {
-    return this.apply(CONFIRM, actorId, orderId, key, expectedVersion);
+    return this.apply(CONFIRM, { actorId, orderId, key, expectedVersion });
   }
 
-  private async apply(rule: TransitionRule, actorId: string, orderId: string, key: string | undefined,
-    expectedVersion: number): Promise<AdminOrderTransitionView> {
+  pack(actorId: string, orderId: string, key: string | undefined, expectedVersion: number) {
+    return this.apply(PACK, { actorId, orderId, key, expectedVersion });
+  }
+
+  cancel(actorId: string, orderId: string, key: string | undefined, expectedVersion: number, reason: string) {
+    return this.apply(CANCEL, { actorId, orderId, key, expectedVersion, reason }, async (tx, order) => {
+      const lines = await tx.orderItem.findMany({ where: { orderId }, select: { variantId: true, quantity: true } });
+      // The movement carries a fixed reason: what the admin typed belongs to the order, not the stock log.
+      await this.inventory.release(tx, `order:${orderId}:release`, lines, { type: 'ADMIN', id: actorId }, `Hủy đơn ${order.code}`);
+      return { cancelledAt: new Date(), cancelReason: reason };
+    });
+  }
+
+  private async apply(rule: TransitionRule, { actorId, orderId, key, expectedVersion, reason }: TransitionCommand,
+    effect?: TransitionEffect): Promise<AdminOrderTransitionView> {
     if (!key || !KEY_PATTERN.test(key)) {
       throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Cần Idempotency-Key hợp lệ.' });
     }
     const scope = `orders.transition:${rule.action}`;
     const identity = `admin:${actorId}`;
-    const requestHash = createHash('sha256').update(JSON.stringify([scope, orderId, expectedVersion])).digest('hex');
+    // Commands without a reason keep the original hash shape, so records already stored still replay.
+    const hashed = reason === undefined ? [scope, orderId, expectedVersion] : [scope, orderId, expectedVersion, reason];
+    const requestHash = createHash('sha256').update(JSON.stringify(hashed)).digest('hex');
     const command = (client: Prisma.TransactionClient) =>
       client.idempotencyRecord.findUnique({ where: { scope_identity_key: { scope, identity, key } } });
     try {
@@ -67,16 +110,18 @@ export class AdminOrderTransitionsService {
         // A same-key request may have committed while this one waited for the lock.
         const recordedNow = await command(tx);
         if (recordedNow) return this.replay(recordedNow, requestHash, orderId);
-        const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true, method: true, version: true } });
+        const order = await tx.order.findUnique({ where: { id: orderId }, select: { code: true, status: true, method: true, version: true } });
         if (!order) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Không tìm thấy đơn hàng.' });
         if (order.version !== expectedVersion) conflict('Đơn đã thay đổi. Hãy tải lại đơn rồi thử lại.');
-        if (order.status !== rule.from) conflict('Trạng thái đơn không cho phép thao tác này. Hãy tải lại đơn.');
+        if (!rule.from.includes(order.status)) conflict('Trạng thái đơn không cho phép thao tác này. Hãy tải lại đơn.');
         const refusal = rule.refuse?.(order);
         if (refusal) conflict(refusal);
+        const changes = await effect?.(tx, order);
         const version = order.version + 1;
-        const updated = await tx.order.update({ where: { id: orderId }, data: { status: rule.to, version },
+        const updated = await tx.order.update({ where: { id: orderId }, data: { ...changes, status: rule.to, version },
           select: { id: true, code: true, status: true, version: true } });
-        await tx.orderStatusHistory.create({ data: { orderId, fromStatus: rule.from, toStatus: rule.to, actorType: 'ADMIN', actorId, version } });
+        await tx.orderStatusHistory.create({ data: { orderId, fromStatus: order.status, toStatus: rule.to, actorType: 'ADMIN', actorId,
+          reason: reason ?? null, version } });
         await tx.idempotencyRecord.create({ data: { scope, identity, key, requestHash, resourceId: orderId,
           response: updated as unknown as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + RECORD_TTL_MS) } });
         return updated;

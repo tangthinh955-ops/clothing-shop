@@ -254,6 +254,19 @@ Mở dòng đơn ở `/admin/orders/<id>`, đối chiếu mã/items/giá/phí/ng
 
 CONFIRMED → Đóng gói → PACKING. Khách giờ chỉ gửi yêu cầu hủy; nút/API hủy trực tiếp không được. Thử transition sai, stale version và double-click, số kho/tiền không bị đổi ngoài hiệu ứng được thiết kế.
 
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Khách hiện chưa có chức năng hủy hay xin hủy (M4.4.3, M4.4.4), nên phần "khách chỉ gửi yêu cầu hủy" chưa thử được.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Mở đơn "Chờ xác nhận" | Chưa có nút "Đóng gói" |
+| Xác nhận đơn, rồi bấm "Đóng gói" | Hộp thoại hỏi lại; bấm "Để sau" thì không có gì đổi |
+| Bấm "Đóng gói" trong hộp thoại | Trạng thái "Đang đóng gói", chỉ còn nút "Hủy đơn"; Lịch sử thêm "Đã xác nhận → Đang đóng gói" với tên admin; tải lại trang vẫn đúng |
+| Xem trang Kho của SKU đó | Tồn thực có và Đang giữ không đổi |
+| Mở link xem đơn của khách | Thấy "Đang đóng gói", không có tên admin |
+| Mở đơn "Đã xác nhận" ở hai tab, đóng gói ở tab 1, rồi đóng gói ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; Lịch sử chỉ có một dòng đóng gói |
+| DevTools → Offline, bấm "Đóng gói" | Báo lỗi kết nối và có "Gửi lại"; bật mạng rồi bấm thì đơn đóng gói đúng một lần |
+| Hủy đơn "Đang đóng gói" có lý do | Đơn "Đã hủy", Đang giữ giảm đúng lượng, Tồn thực có không đổi |
+
 ### M4.5.5 — Bàn giao vận chuyển
 
 Với đơn2×A trước ship onHand5/reserved2: nhập tracking theo DTO → Bàn giao → SHIPPED, kho3/0. Gửi lại cùng key không xuống1/-2. Integration cancel/ship đồng thời phải có một kết quả hợp lệ, không đơn hủy mà vẫn xuất hoặc ngược lại.
@@ -265,6 +278,19 @@ SHIPPED → Giao thành công → DELIVERED, có deliveredAt. Kho vẫn3/0, khô
 ### M4.5.7 — Admin hủy
 
 Tạo các đơn riêng PENDING/CONFIRMED/PACKING để hủy có lý do. Reserved được giải phóng đúng một lần, history giữ; SHIPPED không hủy thẳng. Khi có bank, kiểm tra thu dư rồi hủy chỉ tạo nghĩa vụ bổ sung phần allocated, không cộng dư hai lần.
+
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Đơn PACKING thử theo mục M4.5.4. Chưa có bank nên phần nghĩa vụ hoàn làm cùng M4.6.2.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD số lượng 2 ở cửa sổ ẩn danh, giữ lại link xem đơn; xem trang Kho của SKU đó | Đang giữ tăng 2 |
+| Mở đơn ở `/admin/orders`, bấm "Hủy đơn" rồi bấm "Hủy đơn" trong hộp thoại mà chưa nhập lý do | Báo "Nhập lý do từ 3 đến 500 ký tự.", đơn không đổi |
+| Nhập lý do, bấm "Hủy đơn" | Trạng thái "Đã hủy", hiện "Lý do hủy: …", hết nút thao tác; Lịch sử có tên admin và lý do; tải lại trang vẫn đúng |
+| Xem lại trang Kho | Đang giữ giảm 2, Tồn thực có không đổi; lịch sử kho ghi "Hủy đơn <mã>", không chép lý do |
+| Mở link xem đơn của khách | Thấy "Đã hủy" và lý do, người thao tác hiện "Cửa hàng", không có tên admin |
+| Mở một đơn khác ở hai tab, hủy ở tab 1, rồi hủy ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; kho chỉ nhả một lần |
+| DevTools → Offline, bấm hủy | Báo lỗi kết nối, ô lý do bị khóa, có "Gửi lại"; bật mạng rồi bấm thì đơn hủy đúng một lần |
+| Hủy đơn "Đã xác nhận" | Hủy được và nhả kho như đơn "Chờ xác nhận" |
 
 ### M4.5.8 — Duyệt/từ chối yêu cầu hủy
 
