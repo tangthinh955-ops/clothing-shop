@@ -4,7 +4,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 02/11/2026 — M6.4: đổi domain sang `adecy.duckdns.org`
 
-**Phạm vi đã duyệt:** người dùng yêu cầu đổi domain và xóa hẳn domain cũ, không giữ chuyển hướng, vì web chưa hoạt động với bên ngoài. Nhánh `feat/m6.4-domain-adecy` từ `main` `7d5c857`. **Đã sửa repo; thao tác trên VPS và deploy chưa chạy.**
+**Phạm vi đã duyệt:** người dùng yêu cầu đổi domain và xóa hẳn domain cũ, không giữ chuyển hướng, vì web chưa hoạt động với bên ngoài. Nhánh `feat/m6.4-domain-adecy` từ `main` `7d5c857`. **Đang thực hiện: domain mới đã chạy trên VPS; chưa đổi `APP_ORIGIN`, chưa deploy, chưa xóa domain cũ.**
 
 | File | Thay đổi |
 |---|---|
@@ -13,9 +13,9 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 | `.github/workflows/deploy.yml`, `deploy/ci-known-hosts` | CI SSH qua domain mới; host key không đổi, đã đối chiếu `ssh-keyscan` của domain mới với key đang ghim |
 | `README.md`, `docs/deployment-guide.md`, `docs/plan.md` | Domain hiện tại, cách rollback về release cũ, mốc M6.4; giữ nguyên phần bằng chứng deploy cũ vì là lịch sử |
 
-**Kiểm tra:** `nslookup` cho thấy domain mới trỏ về `160.191.244.11`, cùng VPS với domain cũ; `bash -n deploy/deploy-release.sh` đạt. Chưa kiểm tra nginx, chứng chỉ hay deploy thật.
+**Kiểm tra:** `nslookup` cho thấy domain mới trỏ về `160.191.244.11`, cùng VPS với domain cũ; `bash -n deploy/deploy-release.sh` đạt. Pha 1 trên VPS đạt: sao lưu cấu hình, cấp chứng chỉ (hết hạn 31/01/2027), virtual host tạm; `health/ready` và `/shop` của domain mới 200, HTTP 301 sang HTTPS, domain cũ vẫn 200.
 
-**Vướng mắc:** lệnh SSH đọc cấu hình VPS của agent bị classifier chặn ([Production Reads]), nên người dùng tự chạy các bước trên VPS.
+**Vướng mắc:** lệnh SSH đọc cấu hình VPS của agent bị classifier chặn ([Production Reads]) khi chưa có lệnh cụ thể từ người dùng; pha 1 được chạy sau khi người dùng gửi đúng lệnh đó. Hook gia hạn cũ chỉ reload nginx cho `rmglabels.duckdns.org`, nên pha xóa domain cũ phải thay hook, nếu không nginx sẽ không nhận chứng chỉ gia hạn của domain mới.
 
 ## Ngày 02/11/2026 — M4.4.4: khách xin hủy khi đơn đang đóng gói
 
