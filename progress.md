@@ -4,12 +4,12 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 02/11/2026 — Commit và deploy production M4.5.7, M4.5.4
 
-- **Yêu cầu:** người dùng đồng ý đề xuất commit và deploy ("oke"). Lệnh deploy của agent bị hệ thống phân quyền chặn, nên người dùng tự chạy lệnh deploy. Không merge vào `main` vì không được yêu cầu.
-- **Git:** commit `6e76f87` lên PR #28, gộp M4.5.7 và M4.5.4 vì hai phần sửa cùng file; PR chưa merge. Cả hai lượt CI của `6e76f87` đạt.
+- **Yêu cầu:** người dùng đồng ý đề xuất commit và deploy ("oke"). Lệnh deploy của agent bị hệ thống phân quyền chặn, nên người dùng tự chạy lệnh deploy.
+- **Git:** commit `6e76f87` lên PR #28, gộp M4.5.7 và M4.5.4 vì hai phần sửa cùng file. Cả hai lượt CI của `6e76f87` đạt. Tài khoản `kangha23` merge PR #28 vào `main` lúc 03:01:03Z ngày 02/11/2026 (merge commit `0ee8edb`), agent không merge. So với `6e76f87`, `main` chỉ khác một dòng `README.md` do cùng tài khoản này sửa.
 - **Deploy:** workflow Deploy production [run 41380831838](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41380831838), ref `6e76f87`, release `ci-20261102-0302-6e76f87`, thành công. Không có migration mới.
 - **Kiểm tra công khai sau deploy (agent, chỉ request đọc hoặc bị từ chối, không tạo dữ liệu):** `health/ready` `{"status":"ok"}`; `/`, `/shop`, `/checkout`, `/orders/lookup` 200; vẫn 5 sản phẩm; `GET /admin/orders` không đăng nhập 401; `POST .../confirm`, `/pack`, `/cancel` không CSRF đều 403; `POST .../ship` 404 vì chưa làm; bundle đang phục vụ có chuỗi "Lý do hủy" và "Đóng gói đơn". **Chưa kiểm tra bằng tài khoản admin thật, chưa đặt hay hủy đơn thật trên production; người dùng chưa chạy thử M4.5.4 và M4.5.7.**
 - **Trạng thái production:** shop xem, ghi chú, xác nhận, đóng gói và hủy được đơn. Đơn giữ hàng đã nhả được bằng cách hủy. Chưa có bàn giao, giao xong (M4.5.5, M4.5.6), nên chưa có cách ghi đơn đã gửi đi và kho chưa trừ theo hàng đã giao trên giao diện. Chưa có thông báo đơn mới (M4.10.1), admin phải tự mở `/admin/orders`.
-- **Rủi ro vận hành:** `main` vẫn chưa có code đang chạy trên production; chạy deploy với `main` sẽ mất trang admin đơn. Merge PR #28 để tránh.
+- **Rủi ro vận hành:** rủi ro deploy từ `main` làm mất trang admin đơn đã hết, vì `main` đã có code đang chạy trên production. Mục tiến độ này được commit sau khi PR #28 merge, nên chỉ nằm trên nhánh `feat/m4.5-admin-orders` cho tới khi được đưa vào `main`.
 
 ## Ngày 02/11/2026 — M4.5.4: admin đóng gói đơn
 
