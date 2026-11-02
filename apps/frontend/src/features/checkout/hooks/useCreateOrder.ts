@@ -11,8 +11,10 @@ export interface ContactDraft {
   province: string;
   /** Uncommitted picker text, kept in memory with the draft across route changes. */
   provinceInput?: string;
-  district: string;
+  district?: string;
   ward: string;
+  /** Uncommitted picker text, kept in memory with the draft across route changes. */
+  wardInput?: string;
   addressLine: string;
   note: string;
 }
@@ -23,7 +25,7 @@ export function buildOrderBody(quote: CheckoutQuote): CreateOrderBody {
     quoteId: quote.quoteId,
     items: quote.items.map((item) => ({ variantId: item.variantId, quantity: item.quantity })),
     contact: { name: '', phone: '', email: '' },
-    address: { province: '', district: '', ward: '', addressLine: '' },
+    address: { province: '', ward: '', addressLine: '' },
     note: '',
     method: 'COD',
   };
@@ -52,11 +54,16 @@ export function useCreateOrder(quote: CheckoutQuote | null) {
   const submit = useCallback(async (contact: ContactDraft) => {
     if (!quote || !body) return;
     const email = contact.email.trim();
+    const district = contact.district?.trim();
     await submission.submit({
       ...body,
       contact: { name: contact.name.trim(), phone: contact.phone.trim(), ...(email ? { email } : {}) },
-      address: { province: contact.province.trim(), district: contact.district.trim(),
-        ward: contact.ward.trim(), addressLine: contact.addressLine.trim() },
+      address: {
+        province: contact.province.trim(),
+        ...(district ? { district } : {}),
+        ward: contact.ward.trim(),
+        addressLine: contact.addressLine.trim(),
+      },
       note: contact.note.trim() ? contact.note.trim() : ''
     });
   }, [body, quote, submission]);

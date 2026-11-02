@@ -4,7 +4,7 @@ import { isDefiniteOrderError, ordersApi, type CreateOrderBody, type CreateOrder
 import type { ContactDraft } from './hooks/useCreateOrder';
 
 export const EMPTY_CONTACT_DRAFT: ContactDraft = {
-  name: '', phone: '', email: '', province: '', district: '', ward: '', addressLine: '', note: '' };
+  name: '', phone: '', email: '', province: '', ward: '', addressLine: '', note: '' };
 
 export type SubmissionPhase = 'idle' | 'pending' | 'unknown' | 'confirmed' | 'failed';
 

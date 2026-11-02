@@ -1,6 +1,7 @@
 import { Alert, Autocomplete, Box, Button, Stack, TextField, Typography } from '@mui/material';
-import { useId, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { isProvinceName, PROVINCE_NAMES, searchableText } from '../vietnam-provinces';
+import { isWardOfProvince, wardNamesForProvince } from '../vietnam-wards';
 import type { ContactDraft } from '../hooks/useCreateOrder';
 
 export interface ContactDraftErrors {
@@ -23,11 +24,14 @@ export const phoneIsPlausible = (raw: string) => /^(\+?84|0)[\d\s.\-()]{8,14}$/.
 
 /**
  * Client-side mirror of the backend rules; the server re-validates everything at runtime.
- * `provinceInput` is the visible search text: a committed option is not enough when the shopper
- * has typed something else over it.
+ * `provinceInput` / `wardInput` are the visible search texts: a committed option is not enough when
+ * the shopper has typed something else over it.
  */
-export function validateContactDraft(draft: ContactDraft,
-  provinceInput: string = draft.provinceInput ?? draft.province): ContactDraftErrors {
+export function validateContactDraft(
+  draft: ContactDraft,
+  provinceInput: string = draft.provinceInput ?? draft.province,
+  wardInput: string = draft.wardInput ?? draft.ward,
+): ContactDraftErrors {
   const errors: ContactDraftErrors = {};
   if (draft.name.trim().length < 2 || draft.name.trim().length > 120) errors.name = 'Họ tên từ 2 đến 120 ký tự.';
   if (!phoneIsPlausible(draft.phone)) errors.phone = 'Số điện thoại Việt Nam chưa hợp lệ.';
@@ -39,7 +43,9 @@ export function validateContactDraft(draft: ContactDraft,
   if (!isProvinceName(draft.province.trim()) || draft.province.trim() !== provinceInput.trim()) {
     errors.province = 'Chọn tỉnh/thành từ danh sách.';
   }
-  if (draft.ward.trim().length < 2 || draft.ward.trim().length > 100) errors.ward = 'Phường/xã từ 2 đến 100 ký tự.';
+  if (!draft.province.trim() || !isWardOfProvince(draft.province.trim(), draft.ward.trim()) || draft.ward.trim() !== wardInput.trim()) {
+    errors.ward = 'Chọn phường/xã/đặc khu từ danh sách.';
+  }
   if (draft.addressLine.trim().length < 5 || draft.addressLine.trim().length > 255) errors.addressLine = 'Địa chỉ cụ thể từ 5 đến 255 ký tự.';
   return errors;
 }
@@ -68,6 +74,11 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
   const [touched, setTouched] = useState<Partial<Record<ErrorField, boolean>>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const provinceInput = value.provinceInput ?? value.province;
+  const wardInput = value.wardInput ?? value.ward;
+  const wardOptions = useMemo(
+    () => (value.province ? [...wardNamesForProvince(value.province)] : []),
+    [value.province],
+  );
   // A server error stays visible only until the shopper edits the field it belongs to.
   const [editedFields, setEditedFields] = useState<Partial<Record<keyof ContactDraft, boolean>>>({});
   const nameRef = useRef<HTMLInputElement>(null);
@@ -81,7 +92,7 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
     addressLine: addressLineRef,
   };
 
-  const errors = validateContactDraft(value, provinceInput);
+  const errors = validateContactDraft(value, provinceInput, wardInput);
   const hasErrors = Object.keys(errors).length > 0;
   const fieldError = (field: ErrorField, serverField: string): string | undefined => {
     const serverError = serverErrors[serverField];
@@ -99,14 +110,23 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
       onChange({ ...value, [field]: event.target.value });
     };
 
-  /** Selecting another province always drops the previous district: a district belongs to exactly
-   *  one province. The picker also commits the text it displays. */
+  /** Selecting another province drops the previous ward: a ward belongs to exactly one province.
+   *  The picker also commits the text it displays. */
   const chooseProvince = (province: string | null) => {
     const next = province ?? '';
     markEdited('province');
     setTouched((current) => ({ ...current, province: true }));
-    onChange({ ...value, province: next, provinceInput: next,
-      district: next === value.province ? value.district : '' });
+    const provinceChanged = next !== value.province;
+    const nextValue: ContactDraft = {
+      ...value,
+      province: next,
+      provinceInput: next,
+      ...(provinceChanged ? { ward: '', wardInput: '' } : {}),
+    };
+    if (provinceChanged && 'district' in nextValue) {
+      delete (nextValue as { district?: string }).district;
+    }
+    onChange(nextValue);
   };
 
   const handleProvinceInput = (_event: React.SyntheticEvent, next: string, reason: string) => {
@@ -117,9 +137,22 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
     onChange({ ...value, provinceInput: next });
   };
 
+  const chooseWard = (ward: string | null) => {
+    const next = ward ?? '';
+    markEdited('ward');
+    setTouched((current) => ({ ...current, ward: true }));
+    onChange({ ...value, ward: next, wardInput: next });
+  };
+
+  const handleWardInput = (_event: React.SyntheticEvent, next: string, reason: string) => {
+    if (reason === 'blur' || reason === 'reset') return;
+    markEdited('ward');
+    onChange({ ...value, wardInput: next });
+  };
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextErrors = validateContactDraft(value, provinceInput);
+    const nextErrors = validateContactDraft(value, provinceInput, wardInput);
     if (Object.keys(nextErrors).length > 0) {
       setSubmitAttempted(true);
       const first = FIELD_ORDER.find((field) => nextErrors[field]);
@@ -132,6 +165,7 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
   };
 
   const provinceError = fieldError('province', 'address.province');
+  const wardError = fieldError('ward', 'address.ward');
 
   return <Box component="form" id="checkout-contact-form" aria-label="Thông tin nhận hàng" aria-busy={disabled}
     noValidate
@@ -166,15 +200,20 @@ export function ContactAddressForm({ value, disabled, serverErrors, onChange, on
         renderInput={(params) => <TextField {...params} label="Tỉnh/thành"
           error={Boolean(provinceError)} helperText={provinceError ?? 'Chọn từ danh sách.'}
           inputRef={provinceRef} onBlur={touch('province')} />} />
-      <TextField id={`${id}-district`} label="Quận/huyện (không bắt buộc)"
-        value={value.district} disabled={disabled} sx={{ flex: 1 }}
-        onChange={update('district')} slotProps={{ htmlInput: { maxLength: 100 } }} />
+      <Autocomplete id={`${id}-ward`} options={wardOptions} value={value.ward || null}
+        inputValue={wardInput} onInputChange={handleWardInput}
+        onChange={(_, ward) => chooseWard(ward)} autoHighlight fullWidth
+        disabled={disabled || !value.province}
+        noOptionsText={value.province ? "Không tìm thấy phường/xã/đặc khu" : "Cần chọn tỉnh/thành trước"}
+        sx={{ flex: 1 }}
+        filterOptions={(options, state) => {
+          const query = searchableText(state.inputValue);
+          return query ? options.filter((name) => searchableText(name).includes(query)) : options;
+        }}
+        renderInput={(params) => <TextField {...params} label="Phường/xã/đặc khu"
+          error={Boolean(wardError)} helperText={wardError ?? (value.province ? 'Chọn từ danh sách.' : 'Cần chọn tỉnh/thành trước.')}
+          inputRef={wardRef} onBlur={touch('ward')} />} />
     </Stack>
-    <TextField id={`${id}-ward`} label="Phường/xã" value={value.ward} disabled={disabled}
-      onChange={update('ward')} error={Boolean(fieldError('ward', 'address.ward'))}
-      helperText={fieldError('ward', 'address.ward')}
-      inputRef={wardRef}
-      slotProps={{ htmlInput: { required: true, maxLength: 100, onBlur: touch('ward') } }} />
     <TextField id={`${id}-addressLine`} label="Địa chỉ cụ thể" value={value.addressLine} disabled={disabled}
       onChange={update('addressLine')} error={Boolean(fieldError('addressLine', 'address.addressLine'))}
       helperText={fieldError('addressLine', 'address.addressLine') ?? 'Số nhà, tên đường…'}
