@@ -38,6 +38,7 @@ function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: (
         {METHOD_LABELS[order.method]} · {SOURCE_LABELS[order.source]} · {formatOrderTime(order.createdAt)}
       </Typography>
       {order.trackingNumber && <Typography>Mã vận đơn: {order.trackingNumber}</Typography>}
+      {order.deliveredAt && <Typography>Đã giao lúc: {formatOrderTime(order.deliveredAt)}</Typography>}
       {order.cancelReason && <Typography>Lý do hủy: {order.cancelReason}</Typography>}
     </Box>
     {/* Remounts per version, so a finished action never carries its key or outcome into the next one. */}

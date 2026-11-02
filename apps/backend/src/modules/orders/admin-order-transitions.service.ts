@@ -9,6 +9,13 @@ import { PrismaService } from '../prisma/prisma.service.js';
 const KEY_PATTERN = /^[A-Za-z0-9_-]{16,120}$/;
 // Retention agrees with the m4-contract §10 proposal; sweeping expired records arrives with M4 cleanup.
 const RECORD_TTL_MS = 30 * 86400000;
+const MINUTE_MS = 60000;
+// An admin device whose clock runs slightly ahead must not turn a delivery recorded just now into "the future".
+const CLOCK_SKEW_MS = 5 * MINUTE_MS;
+
+function refuseDeliveryTime(message: string): never {
+  throw new BadRequestException({ code: 'VALIDATION_ERROR', message });
+}
 
 export interface AdminOrderTransitionView {
   id: string;
@@ -31,6 +38,8 @@ interface TransitionCommand {
   key: string | undefined;
   expectedVersion: number;
   reason?: string;
+  trackingNumber?: string;
+  deliveredAt?: string;
 }
 
 /** Runs inside the transition's transaction, so a failure here rolls the state change back too. */
@@ -48,6 +57,19 @@ const PACK: TransitionRule = {
   action: 'pack',
   from: ['CONFIRMED'],
   to: 'PACKING',
+};
+
+const SHIP: TransitionRule = {
+  action: 'ship',
+  from: ['PACKING'],
+  to: 'SHIPPED',
+};
+
+// COD stays uncollected here: delivery is not proof of money, which is reconciled in M4.6.4.
+const DELIVER: TransitionRule = {
+  action: 'deliver',
+  from: ['SHIPPED'],
+  to: 'DELIVERED',
 };
 
 // Refund obligations for money already collected arrive with the payment ledger in M4.6.2.
@@ -81,25 +103,48 @@ export class AdminOrderTransitionsService {
     return this.apply(PACK, { actorId, orderId, key, expectedVersion });
   }
 
+  ship(actorId: string, orderId: string, key: string | undefined, expectedVersion: number, trackingNumber: string) {
+    return this.apply(SHIP, { actorId, orderId, key, expectedVersion, trackingNumber }, async (tx, order) => {
+      await this.inventory.ship(tx, `order:${orderId}:ship`, await this.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Bàn giao đơn ${order.code}`);
+      return { trackingNumber };
+    });
+  }
+
+  deliver(actorId: string, orderId: string, key: string | undefined, expectedVersion: number, deliveredAt: string) {
+    const at = new Date(deliveredAt);
+    return this.apply(DELIVER, { actorId, orderId, key, expectedVersion, deliveredAt: at.toISOString() }, async (tx) => {
+      if (at.getTime() > Date.now() + CLOCK_SKEW_MS) refuseDeliveryTime('Thời điểm giao không được ở tương lai.');
+      const handover = await tx.orderStatusHistory.findFirst({ where: { orderId, toStatus: 'SHIPPED' }, orderBy: { version: 'desc' }, select: { createdAt: true } });
+      // The admin's field has no seconds, so the handover's own minute must still count as after it.
+      if (handover && at.getTime() < Math.floor(handover.createdAt.getTime() / MINUTE_MS) * MINUTE_MS) {
+        refuseDeliveryTime('Thời điểm giao không được trước lúc bàn giao.');
+      }
+      return { deliveredAt: at };
+    });
+  }
+
   cancel(actorId: string, orderId: string, key: string | undefined, expectedVersion: number, reason: string) {
     return this.apply(CANCEL, { actorId, orderId, key, expectedVersion, reason }, async (tx, order) => {
-      const lines = await tx.orderItem.findMany({ where: { orderId }, select: { variantId: true, quantity: true } });
       // The movement carries a fixed reason: what the admin typed belongs to the order, not the stock log.
-      await this.inventory.release(tx, `order:${orderId}:release`, lines, { type: 'ADMIN', id: actorId }, `Hủy đơn ${order.code}`);
+      await this.inventory.release(tx, `order:${orderId}:release`, await this.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Hủy đơn ${order.code}`);
       return { cancelledAt: new Date(), cancelReason: reason };
     });
   }
 
-  private async apply(rule: TransitionRule, { actorId, orderId, key, expectedVersion, reason }: TransitionCommand,
+  private linesOf(tx: Prisma.TransactionClient, orderId: string) {
+    return tx.orderItem.findMany({ where: { orderId }, select: { variantId: true, quantity: true } });
+  }
+
+  private async apply(rule: TransitionRule, { actorId, orderId, key, expectedVersion, reason, trackingNumber, deliveredAt }: TransitionCommand,
     effect?: TransitionEffect): Promise<AdminOrderTransitionView> {
     if (!key || !KEY_PATTERN.test(key)) {
       throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Cần Idempotency-Key hợp lệ.' });
     }
     const scope = `orders.transition:${rule.action}`;
     const identity = `admin:${actorId}`;
-    // Commands without a reason keep the original hash shape, so records already stored still replay.
-    const hashed = reason === undefined ? [scope, orderId, expectedVersion] : [scope, orderId, expectedVersion, reason];
-    const requestHash = createHash('sha256').update(JSON.stringify(hashed)).digest('hex');
+    // Only what a command actually carries joins the hash, so records already stored still replay.
+    const details = [reason, trackingNumber, deliveredAt].filter((detail) => detail !== undefined);
+    const requestHash = createHash('sha256').update(JSON.stringify([scope, orderId, expectedVersion, ...details])).digest('hex');
     const command = (client: Prisma.TransactionClient) =>
       client.idempotencyRecord.findUnique({ where: { scope_identity_key: { scope, identity, key } } });
     try {

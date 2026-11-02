@@ -104,10 +104,10 @@ describe('GET /orders/:code (M4.4.1 guest order access)', () => {
     const body = response.body as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['order', 'timeline']);
     const order = body.order as Record<string, unknown>;
-    expect(Object.keys(order).sort()).toEqual(['code', 'createdAt', 'currency', 'items', 'method', 'recipient',
-      'shippingFee', 'status', 'subtotal', 'total']);
+    expect(Object.keys(order).sort()).toEqual(['code', 'createdAt', 'currency', 'deliveredAt', 'items', 'method', 'recipient',
+      'shippingFee', 'status', 'subtotal', 'total', 'trackingNumber']);
     expect(order).toMatchObject({ code: CODE_A, status: 'CONFIRMED', method: 'COD', currency: 'VND',
-      createdAt: createdAt.toISOString(), subtotal: 400000, shippingFee: 30000, total: 430000 });
+      createdAt: createdAt.toISOString(), subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null, deliveredAt: null });
     const recipient = order.recipient as Record<string, unknown>;
     expect(Object.keys(recipient).sort()).toEqual(['addressLine', 'district', 'email', 'name', 'note', 'phone', 'province', 'ward']);
     expect(recipient).toMatchObject({ name: 'Nguyễn Thử Đơn A', phone: '0901230001', email: 'viewer-a@example.test',

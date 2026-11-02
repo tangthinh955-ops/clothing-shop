@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../../app/App';
 import * as client from '../../../../shared/api/client';
 import { authApi, type User } from '../../../auth/api/auth.api';
@@ -415,6 +415,222 @@ describe('packing an order', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Đóng gói' })).not.toBeInTheDocument());
     const [first, second] = packCalls(request);
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+});
+
+describe('handing an order over', () => {
+  const TRACKING = 'GHN-123.ABC_9';
+  const packing = { ...order, status: 'PACKING', version: 2 };
+  const shipped = { ...packing, status: 'SHIPPED', version: 3, trackingNumber: TRACKING, history: [...order.history,
+    { id: 'h3', fromStatus: 'PACKING', toStatus: 'SHIPPED', actorName: 'Admin Thử', reason: null, version: 3, createdAt: '2026-11-01T05:00:00.000Z' }] };
+  const transition = { id: ORDER_ID, code: order.code, status: 'SHIPPED', version: 3 };
+
+  // A small server: the order stays packing until the handover is accepted.
+  function server(): Answer {
+    let current: unknown = packing;
+    return (_url, options) => {
+      if (options?.method !== 'POST') return Promise.resolve(current);
+      current = shipped;
+      return Promise.resolve(transition);
+    };
+  }
+  const shipCalls = (request: ReturnType<typeof renderPage>) => request.mock.calls.filter(([url]) => String(url).endsWith('/ship'));
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Bàn giao' }));
+    return screen.findByRole('dialog', { name: `Bàn giao đơn ${order.code}?` });
+  }
+
+  it.each(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'])('offers no handover for a %s order', async (status) => {
+    renderPage(() => Promise.resolve({ ...order, status }));
+    await screen.findByRole('heading', { name: order.code, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Bàn giao' })).not.toBeInTheDocument();
+  });
+
+  it('warns that this cannot be undone, and sends nothing when the admin backs out', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    expect(within(dialog).getByText(/không hủy được/)).toBeVisible();
+    expect(within(dialog).getByText(/Khách sẽ thấy mã này/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(shipCalls(request)).toHaveLength(0);
+  });
+
+  it.each([['nothing', ''], ['too few characters', 'ab'], ['a space inside', 'GHN 123'], ['other characters', 'GHN<123>']])('asks for a real tracking number when given %s', async (_label, typed) => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    if (typed) await user.type(within(dialog).getByLabelText(/Mã vận đơn/), typed);
+    await user.click(within(dialog).getByRole('button', { name: 'Bàn giao' }));
+    expect(await within(dialog).findByText('Chỉ gồm chữ, số, - _ . (3–100 ký tự).')).toBeVisible();
+    expect(shipCalls(request)).toHaveLength(0);
+  });
+
+  it('sends the trimmed number and viewed version with a key, then shows it with no action left', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Mã vận đơn/), `  ${TRACKING}  `);
+    await user.click(within(dialog).getByRole('button', { name: 'Bàn giao' }));
+    expect(await screen.findByText(`Mã vận đơn: ${TRACKING}`)).toBeVisible();
+    const [call] = shipCalls(request);
+    expect(call?.[0]).toBe(`/admin/orders/${ORDER_ID}/ship`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 2, trackingNumber: TRACKING } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Bàn giao' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it('explains a conflict and reloads the order instead of retrying', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const request = renderPage((_url, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('CONFLICT', 'Đơn đã thay đổi. Hãy tải lại đơn rồi thử lại.', 409));
+      attempts += 1;
+      return Promise.resolve(attempts === 1 ? packing : shipped);
+    });
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Mã vận đơn/), TRACKING);
+    await user.click(within(dialog).getByRole('button', { name: 'Bàn giao' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Đơn đã thay đổi.');
+    expect(within(dialog).queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
+    expect(await screen.findByText(`Mã vận đơn: ${TRACKING}`)).toBeVisible();
+    expect(shipCalls(request)).toHaveLength(1);
+  });
+
+  it('locks the number after a lost response and resends the same key and content', async () => {
+    const user = userEvent.setup();
+    const backend = server();
+    let attempts = 0;
+    const request = renderPage((url, options) => {
+      if (options?.method !== 'POST') return backend(url, options);
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : backend(url, options);
+    });
+    const dialog = await openDialog(user);
+    const field = within(dialog).getByLabelText(/Mã vận đơn/);
+    await user.type(field, TRACKING);
+    await user.click(within(dialog).getByRole('button', { name: 'Bàn giao' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    expect(field).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    expect(await screen.findByText(`Mã vận đơn: ${TRACKING}`)).toBeVisible();
+    const [first, second] = shipCalls(request);
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+});
+
+describe('recording a delivery', () => {
+  // The handover happened at 10:30:40 Vietnam time on 1 Nov; the clock now reads 09:15:30 on 3 Nov there.
+  const NOW = new Date('2026-11-03T02:15:30.000Z');
+  const shippedHistory = [...order.history,
+    { id: 'h3', fromStatus: 'PACKING', toStatus: 'SHIPPED', actorName: 'Admin Thử', reason: null, version: 3, createdAt: '2026-11-01T03:30:40.000Z' }];
+  const shipped = { ...order, status: 'SHIPPED', version: 3, trackingNumber: 'GHN-123', history: shippedHistory };
+  const delivered = { ...shipped, status: 'DELIVERED', version: 4, deliveredAt: '2026-11-02T03:00:00.000Z', history: [...shippedHistory,
+    { id: 'h4', fromStatus: 'SHIPPED', toStatus: 'DELIVERED', actorName: 'Admin Thử', reason: null, version: 4, createdAt: '2026-11-03T02:15:30.000Z' }] };
+  const transition = { id: ORDER_ID, code: order.code, status: 'DELIVERED', version: 4 };
+
+  // Only Date is faked: timers keep running, so the page and user-event behave as usual.
+  beforeEach(() => vi.useFakeTimers({ toFake: ['Date'], now: NOW }));
+  afterEach(() => vi.useRealTimers());
+
+  // A small server: the order stays shipped until the delivery is accepted.
+  function server(): Answer {
+    let current: unknown = shipped;
+    return (_url, options) => {
+      if (options?.method !== 'POST') return Promise.resolve(current);
+      current = delivered;
+      return Promise.resolve(transition);
+    };
+  }
+  const deliverCalls = (request: ReturnType<typeof renderPage>) => request.mock.calls.filter(([url]) => String(url).endsWith('/deliver'));
+  const setTime = (dialog: HTMLElement, value: string) => fireEvent.change(within(dialog).getByLabelText(/Thời điểm giao/), { target: { value } });
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Giao thành công' }));
+    return screen.findByRole('dialog', { name: `Ghi đơn ${order.code} đã giao?` });
+  }
+
+  it.each(['PENDING', 'CONFIRMED', 'PACKING', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'])('offers no delivery for a %s order', async (status) => {
+    renderPage(() => Promise.resolve({ ...order, status }));
+    await screen.findByRole('heading', { name: order.code, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Giao thành công' })).not.toBeInTheDocument();
+  });
+
+  it('starts at the current Vietnam time, says COD is not collected yet, and sends nothing when the admin backs out', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    expect(within(dialog).getByLabelText(/Thời điểm giao/)).toHaveValue('2026-11-03T09:15');
+    expect(within(dialog).getByText(/chưa được ghi nhận/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(deliverCalls(request)).toHaveLength(0);
+  });
+
+  it.each([
+    ['an empty time', '', 'Chọn thời điểm giao.'],
+    ['a future time', '2026-11-03T09:16', 'Thời điểm giao không được ở tương lai.'],
+    ['a time before the handover', '2026-11-01T10:29', 'Thời điểm giao không được trước lúc bàn giao.'],
+  ])('refuses %s without calling the API', async (_label, value, message) => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    setTime(dialog, value);
+    await user.click(within(dialog).getByRole('button', { name: 'Giao thành công' }));
+    expect(await within(dialog).findByText(message)).toBeVisible();
+    expect(deliverCalls(request)).toHaveLength(0);
+  });
+
+  it('accepts the minute of the handover, since the field has no seconds', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    setTime(dialog, '2026-11-01T10:30');
+    await user.click(within(dialog).getByRole('button', { name: 'Giao thành công' }));
+    await waitFor(() => expect(deliverCalls(request)).toHaveLength(1));
+    expect(deliverCalls(request)[0]?.[1]?.body).toEqual({ expectedVersion: 3, deliveredAt: '2026-11-01T03:30:00.000Z' });
+  });
+
+  it('sends the chosen Vietnam time with the viewed version and a key, then shows it with no action left', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    setTime(dialog, '2026-11-02T10:00');
+    await user.click(within(dialog).getByRole('button', { name: 'Giao thành công' }));
+    expect(await screen.findByText(/^Đã giao lúc: 10:00/)).toBeVisible();
+    const [call] = deliverCalls(request);
+    expect(call?.[0]).toBe(`/admin/orders/${ORDER_ID}/deliver`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', body: { expectedVersion: 3, deliveredAt: '2026-11-02T03:00:00.000Z' } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Giao thành công' })).not.toBeInTheDocument();
+  });
+
+  it('locks the time after a lost response and resends the same key and content', async () => {
+    const user = userEvent.setup();
+    const backend = server();
+    let attempts = 0;
+    const request = renderPage((url, options) => {
+      if (options?.method !== 'POST') return backend(url, options);
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : backend(url, options);
+    });
+    const dialog = await openDialog(user);
+    setTime(dialog, '2026-11-02T10:00');
+    await user.click(within(dialog).getByRole('button', { name: 'Giao thành công' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    expect(within(dialog).getByLabelText(/Thời điểm giao/)).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    expect(await screen.findByText(/^Đã giao lúc: 10:00/)).toBeVisible();
+    const [first, second] = deliverCalls(request);
     expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
     expect(second?.[1]?.body).toEqual(first?.[1]?.body);
   });

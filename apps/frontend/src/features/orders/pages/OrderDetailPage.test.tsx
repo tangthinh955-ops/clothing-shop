@@ -39,7 +39,7 @@ const view = (name = 'Nguyễn Thử Đơn A', note = 'Giao giờ hành chính')
     createdAt: '2026-10-31T03:30:00.000Z',
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo xem chi tiết', sku: 'ACC-A',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
-    subtotal: 400000, shippingFee: 30000, total: 430000,
+    subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null as string | null, deliveredAt: null as string | null,
     recipient: { name, phone: '0901230001', email: 'viewer-a@example.test', province: 'TP. Hồ Chí Minh',
       district: '', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ', note },
   },
@@ -125,6 +125,34 @@ describe('OrderDetailPage', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.path).toBe(`/orders/${CODE}`); // the token rides the header, never the query string
     expect(sent[0]!.options.orderToken).toBe(TOKEN);
+  });
+
+  it('shows the tracking number once the shop has handed the order over, and no such line before', async () => {
+    const shipped = view();
+    spyOk([{ ...shipped, order: { ...shipped.order, status: 'SHIPPED', trackingNumber: 'GHN-123.ABC_9' } }]);
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    expect(await screen.findByText('Mã vận đơn: GHN-123.ABC_9')).toBeVisible();
+    first.unmount();
+    vi.restoreAllMocks();
+
+    spyOk([view()]);
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByText(/Mã vận đơn/)).not.toBeInTheDocument();
+  });
+
+  it('shows when the order was delivered, in Vietnam time, and no such line before', async () => {
+    const delivered = view();
+    spyOk([{ ...delivered, order: { ...delivered.order, status: 'DELIVERED', deliveredAt: '2026-11-01T03:00:00.000Z' } }]);
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    expect(await screen.findByText(/^Đã giao lúc: 10:00/)).toBeVisible();
+    first.unmount();
+    vi.restoreAllMocks();
+
+    spyOk([view()]);
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByText(/Đã giao lúc/)).not.toBeInTheDocument();
   });
 
   it('asks for nothing and shows one uniform access message when the fragment has no token', async () => {

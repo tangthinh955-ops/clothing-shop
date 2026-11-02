@@ -285,6 +285,81 @@ test('an admin packs a confirmed order and can still cancel it', async ({ page, 
   }
 });
 
+// M4.5.5: handing over takes the goods out of stock once, ends the way to cancel and tells the customer the tracking number.
+test('an admin hands a packed order over, which takes it out of stock', async ({ page, browser }, info) => {
+  test.setTimeout(60000);
+  const held = () => db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } });
+  const before = await held();
+  const code = await placeCodOrder(page);
+  const orderLink = await page.getByRole('link', { name: 'Xem đơn hàng' }).getAttribute('href');
+  if (!orderLink) throw new Error('The confirmation screen did not link to the order.');
+
+  const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
+    extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });
+  const admin = await adminContext.newPage();
+  try {
+    await login(admin, adminEmail);
+    await admin.goto(`/admin/orders?q=${code}`);
+    await admin.getByRole('link', { name: code, exact: true }).click();
+    await admin.getByRole('button', { name: 'Xác nhận đơn' }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Xác nhận', exact: true }).click();
+    await admin.getByRole('button', { name: 'Đóng gói', exact: true }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Đóng gói', exact: true }).click();
+
+    await admin.getByRole('button', { name: 'Bàn giao', exact: true }).click();
+    const dialog = admin.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Bàn giao', exact: true }).click();
+    await expect(dialog.getByText('Chỉ gồm chữ, số, - _ . (3–100 ký tự).')).toBeVisible();
+
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-order-ship-dialog-mobile.png'), animations: 'disabled' });
+    await admin.setViewportSize({ width: 1280, height: 720 });
+
+    const tracking = `GHN-${tag.slice(0, 8)}`;
+    await dialog.getByLabel(/Mã vận đơn/).fill(tracking);
+    await dialog.getByRole('button', { name: 'Bàn giao', exact: true }).click();
+    await expect(admin.getByText(`Mã vận đơn: ${tracking}`)).toBeVisible();
+    const history = admin.getByRole('region', { name: 'Lịch sử trạng thái' });
+    await expect(history).toContainText('Đang đóng gói → Đã bàn giao vận chuyển');
+    await expect(history).toContainText('Admin đơn thử');
+    await expect(admin.getByRole('button', { name: 'Hủy đơn', exact: true })).toHaveCount(0);
+    await admin.reload();
+    await expect(admin.getByText(`Mã vận đơn: ${tracking}`)).toBeVisible();
+    await expect(admin.getByRole('button', { name: 'Bàn giao', exact: true })).toHaveCount(0);
+    expect(await held()).toEqual({ onHand: before.onHand - 2, reserved: before.reserved });
+
+    await page.goto(orderLink);
+    await expect(page.getByText('Đã bàn giao vận chuyển').first()).toBeVisible();
+    await expect(page.getByText(`Mã vận đơn: ${tracking}`)).toBeVisible();
+    await expect(page.getByText('Admin đơn thử')).toHaveCount(0);
+
+    // M4.5.6: the delivery closes the order at the time shown in the field, read as Vietnam time, with no further stock change.
+    const shippedStock = await held();
+    await admin.getByRole('button', { name: 'Giao thành công', exact: true }).click();
+    const deliveryDialog = admin.getByRole('dialog');
+    const chosen = await deliveryDialog.getByLabel(/Thời điểm giao/).inputValue();
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-order-deliver-dialog-mobile.png'), animations: 'disabled' });
+    await admin.setViewportSize({ width: 1280, height: 720 });
+    await deliveryDialog.getByRole('button', { name: 'Giao thành công', exact: true }).click();
+    await expect(admin.getByText(/^Đã giao lúc:/)).toBeVisible();
+    await expect(history).toContainText('Đã bàn giao vận chuyển → Đã giao');
+    await expect(admin.getByRole('button', { name: 'Giao thành công', exact: true })).toHaveCount(0);
+    const saved = await db.order.findUniqueOrThrow({ where: { code }, select: { status: true, deliveredAt: true } });
+    expect(saved.status).toBe('DELIVERED');
+    expect(saved.deliveredAt?.toISOString()).toBe(new Date(`${chosen}:00+07:00`).toISOString());
+    expect(await held()).toEqual(shippedStock);
+
+    await page.reload();
+    await expect(page.getByText('Đã giao', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/^Đã giao lúc:/)).toBeVisible();
+  } finally {
+    await adminContext.close();
+  }
+});
+
 test('a customer account cannot open the order list', async ({ page }) => {
   await login(page, customerEmail);
   await page.goto('/admin/orders');
