@@ -12,6 +12,7 @@ import { OrderAccessGuard } from './order-access.guard.js';
 import { OrderAccessService } from './order-access.service.js';
 import { OrderCancellationService } from './order-cancellation.service.js';
 import { OrderLookupService } from './order-lookup.service.js';
+import { OrderNotificationWorker } from './order-notification-worker.service.js';
 import { OrderNotificationsService } from './order-notifications.service.js';
 import { OrderTransitionRunner } from './order-transition-runner.service.js';
 import { OrdersController } from './orders.controller.js';
@@ -19,7 +20,7 @@ import { OrderCreationService } from './order-creation.service.js';
 
 @Module({
   imports: [SettingsModule, InventoryModule, MailModule],
-  providers: [CheckoutService, OrderCreationService, OrderNotificationsService, OrderTransitionRunner, OrderCancellationService, OrderAccessService, OrderLookupService, OrderAccessGuard, AdminOrdersService, AdminOrderNotesService, AdminOrderTransitionsService],
+  providers: [CheckoutService, OrderCreationService, OrderNotificationsService, OrderNotificationWorker, OrderTransitionRunner, OrderCancellationService, OrderAccessService, OrderLookupService, OrderAccessGuard, AdminOrdersService, AdminOrderNotesService, AdminOrderTransitionsService],
   controllers: [CheckoutController, OrdersController, AdminOrdersController],
   exports: [CheckoutService, OrderCreationService],
 })

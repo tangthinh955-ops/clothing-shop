@@ -2,6 +2,24 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.10.2.1: tự gửi lại thư báo shop
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("duyệt"): tách M4.10.2 thành M4.10.2.1 (retry thư báo shop) và M4.10.2.2 (thư trạng thái cho khách, chờ domain); 5 lần gửi với các khoảng chờ 1 phút, 5 phút, 30 phút, 2 giờ; chấp nhận hiếm khi trùng thư để không mất thông báo. Nhánh `feat/m4.10.2.1-notice-retry` từ `main` `339a17e`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chưa từng gửi thư thật qua Resend.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `apps/backend/prisma/migrations/202611020002_m4_notification_retry/migration.sql` | Cột `nextAttemptAt` và index; chỉ thêm, không sửa migration đã có |
+| `apps/backend/src/modules/orders/order-notifications.service.ts` | `processDue()` xử lý thư `FAILED` đến hạn, `PENDING` quá 1 phút, `SENDING` quá 5 phút; nhận dòng bằng cập nhật có điều kiện; dừng sau 5 lần hoặc khi admin bị khóa |
+| `apps/backend/src/modules/orders/order-notification-worker.service.ts` (mới), `orders.module.ts`, `apps/backend/src/main.ts` | Chạy một lần lúc khởi động rồi mỗi phút; không chồng lượt; dừng khi tắt ứng dụng |
+| `apps/backend/test/order-notifications.integration.spec.ts`, `order-notification-worker.integration.spec.ts` (mới), `src/modules/orders/order-notification-worker.service.spec.ts` (mới) | 12 ca integration, 1 ca chạy tiến trình thật `dist/main.js`, 5 ca unit. Khác kế hoạch: thêm ca tiến trình thật, vì các ca khác gọi trực tiếp `processDue()` nên không chứng minh được tác vụ có chạy |
+| `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Hướng dẫn thử, tách phần, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 74 backend + 499 frontend; `npm run test:integration` 291/291; hai spec thông báo chạy lặp thêm 3 lần đều 28/28; `npm run test:e2e:implemented` 56/56. Đã quan sát ca tiến trình thật fail khi tạm gỡ dòng khởi động tác vụ (`['FAILED', 'PENDING']` thay vì `['SENT', 'SENT']`); agent khôi phục bằng `git checkout` làm mất cả dòng import chưa commit trong `main.ts`, đã thêm lại trước lượt kiểm tra đầy đủ.
+
+**Giới hạn:** không có cảnh báo trên giao diện khi thư lỗi hết 5 lần, chỉ có log `ORDER_NOTICE_GAVE_UP <mã đơn>`. Không biết thư có thật sự tới hộp thư sau khi nhà cung cấp nhận. Khách chưa nhận thư (M4.10.1.2, M4.10.2.2). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.10.2. **Dừng chờ người dùng thử.**
+
+**Trạng thái production và Git:** PR #30 (M4.10.1.1, M4.4.3) do `kangha23` merge vào `main` lúc 04:17:51Z, merge commit `339a17e`. **Production chưa deploy `0b93ae8` lẫn `339a17e`**: vẫn chạy `ci-20261102-0302-6e76f87`.
+
 ## Ngày 02/11/2026 — M4.4.3: khách tự hủy đơn trước khi đóng gói
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.3 ("duyệt"), gồm thư báo shop khi khách hủy. Người dùng không chọn "commit trước", nên làm tiếp trên nhánh `feat/m4.10.1.1-shop-order-notice`, chung với M4.10.1.1 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**
