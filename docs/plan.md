@@ -47,6 +47,7 @@ Lộ trình đến khi mở bán (mỗi phần vẫn gửi kế hoạch riêng v
 | M6.1–M6.3 | Deploy VPS + HTTPS + deploy sau CI; backup ngoài VPS + diễn tập khôi phục; bảo vệ VPS + báo động khi web sập | A/B |
 | M6.4 | Đổi domain production sang `adecy.duckdns.org`, xóa domain cũ `rmglabels.duckdns.org` | A |
 | M6.5 | Đổi tên shop thành ADECY, Instagram `@adecy.co` | A |
+| M7.2 | Nhập 7 mẫu ADECY từ ảnh lookbook vào cửa hàng; giá, size, tồn đang là dữ liệu giả, cần thay trước khi mở bán | A |
 | Mở bán | Khi xong các phần trên, chính sách thật đã đăng, thủ tục website bán hàng với Bộ Công Thương do chủ shop hoàn tất | Chủ shop |
 | Sau mở bán | Link sản phẩm hiện ảnh/tên khi chia sẻ Instagram/Zalo, nhật ký hoạt động admin, kiểm thử bảo mật định kỳ (M7 rút gọn) | A/B |
 
