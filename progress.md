@@ -2,6 +2,85 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — Git: ghép R2 và giải conflict nhánh checkout
+
+- **Phạm vi:** người dùng yêu cầu kéo về, fix conflict rồi push lại `feat/checkout-address-validation`. Working tree ban đầu sạch; fast-forward từ `68a0bd3` tới bản remote `78b501a` (đã ghép R1), rồi merge `origin/main` `ef6cd7f` (R2). Không rebase/force push, không merge ngược vào main hoặc deploy.
+- **Conflict:** giải 4 file `ContactAddressForm.tsx`, `CheckoutPage.tsx`, `docs/local-trial-m4.md`, `progress.md`. Giữ picker 34 tỉnh, chặn Enter với tỉnh chưa chọn, lỗi chỉ hiện sau thao tác, quận/huyện nhập tay và xóa khi đổi tỉnh; giữ R2 tự lấy báo giá, bản nháp qua điều hướng, link đơn và màn thành công. Giữ cả hai lịch sử tiến độ, bỏ marker và một dòng phân cách `=======` thừa.
+- **Test ghép:** giữ assertion của cả hai nhánh, chỉ bỏ bước bấm “Lấy báo giá” của 3 ca E2E/1 ca UI mới trên nhánh vì R2 tự lấy báo giá. Giữ tiêu đề form h2 của R2.
+- **Tương tác sau merge (RED → GREEN):** hai regression test mới trong `CheckoutPage.test.tsx` xác nhận chữ tìm tỉnh bị mất và lỗi server đã sửa hiện lại sau khi rời/quay về checkout. Giữ `provinceInput` tùy chọn trong `ContactDraft` ở bộ nhớ, form cập nhật nó qua draft; `OrderSubmissionProvider.updateDraft` xóa đúng lỗi trường đã đổi. Không đổi phase/key/body retry, không lưu PII vào storage; `useCreateOrder` dựng body tường minh nên không gửi metadata tìm tỉnh tới API.
+- **Kiểm tra bản cuối:** 83/83 test checkout + chi tiết đơn; typecheck toàn repo đạt; `./tools/npm.ps1 test` với `VITEST_MAX_WORKERS=4` đạt **10 tools + 74 backend + 540 frontend = 624 test**; `./tools/npm.ps1 run test:e2e:implemented` đạt **59/59 (5,0 phút)**, runner build backend/frontend và dọn DB riêng thành công. Review độc lập sau sửa không còn finding; diff/staged không còn marker conflict hoặc lỗi whitespace, quét mẫu credential trên 14 file merge không có phát hiện. Lượt full trước bổ sung hai regression đạt 10 tools + 74 backend + 538 frontend và 59/59 E2E, chỉ là bằng chứng bản ghép đầu. Còn cảnh báo Vite chunk >500 kB và pg deprecation có sẵn.
+- **Điểm dừng:** sau kiểm chứng tạo merge commit và push thường nhánh feature theo yêu cầu. Không đổi backend/schema/dependency hoặc chạy lại integration; test DB chỉ qua runner tạo và dọn DB local `_test` riêng. CI mới và nghiệm thu người dùng chưa được xác nhận.
+
+## Ngày 02/11/2026 — Git: push nhánh chỉnh form checkout
+
+- Người dùng yêu cầu push `feat/checkout-address-validation`, gồm M4.3.1 và phần sửa M4.3.1.1 bên dưới. Đã đọc diff và đối chiếu đúng 11 file frontend/test/tài liệu, gồm hai file mới; không sửa thêm code trong lượt Git.
+- Kiểm chứng mới trước commit: hai file test `ContactAddressForm.test.tsx` và `CheckoutPage.test.tsx` **27/27 đạt** với `--maxWorkers=2`; `./tools/npm.ps1 run typecheck` đạt; `git diff --check` đạt. Hai ca lỗi đã review (Enter gửi tỉnh cũ, lỗi server không mất sau chỉnh sửa) đã có bản sửa và kiểm thử trong cây hiện tại.
+- Đã kiểm tra remote, tác giả Git, file ignore và quét mẫu credential/conflict. Env thật, dependency, runtime, build và log không thuộc commit. Các kết quả full E2E/build/root test và giới hạn flake bên dưới là bằng chứng lượt triển khai trước, không chạy lại trong lượt Git này.
+- Push thường nhánh feature theo yêu cầu; không merge `main` hoặc deploy. Chưa xác nhận CI của commit mới và chưa nhận nghiệm thu người dùng.
+
+## Ngày 02/11/2026 — M4.3.1.1: chặn tỉnh cũ khi Enter, lỗi server tự mất, quận/huyện nhập tay cho mọi tỉnh
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch điều chỉnh ("oke") sau khi chạy thử M4.3.1. Tiếp tục trên nhánh `feat/checkout-address-validation`, cùng các thay đổi M4.3.1 chưa commit. **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu phần này.** Chỉ frontend + tài liệu; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/deploy.
+
+**Ba lỗi được sửa:**
+- Enter khi ô tỉnh/thành đang hiện chữ khác option đã chọn từng gửi tỉnh cũ. Nay submit so chữ đang hiện với `province` đã chốt; lệch thì chặn, báo `Chọn tỉnh/thành từ danh sách.`, focus ô tỉnh và không gửi tỉnh/quận cũ.
+- Lỗi trường do server trả còn nằm lại sau khi khách sửa đúng ô. Nay sửa ô nào thì lỗi server của ô đó biến mất; lần submit hợp lệ kế tiếp xóa trạng thái ẩn để lỗi mới vẫn hiện.
+- Quận/huyện từng chỉ hiện với Hà Nội/TP. Hồ Chí Minh. Nay là ô nhập tay, không bắt buộc, luôn hiện với **mọi** tỉnh/thành; đổi tỉnh thì xóa giá trị quận/huyện cũ.
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.tsx` | Giữ `provinceInput` riêng để không bị MUI khôi phục về option cũ khi blur; `validateContactDraft` nhận thêm chữ đang hiện và buộc khớp tỉnh đã chọn; bỏ điều kiện hiện quận/huyện; đổi tỉnh xóa `district`; ẩn lỗi server của trường vừa sửa và reset khi submit hợp lệ. |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.test.tsx` (mới) | 7 ca hành vi: form sạch, blur/sửa lỗi, submit trống focus ô đầu, chỉ nhận tỉnh chọn từ danh sách, chặn tỉnh cũ khi submit, quận/huyện nhập tay cho Cần Thơ, lỗi server tự mất theo từng ô. |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` | Ca trang: gõ đè tỉnh rồi submit không có `POST /orders` và không gửi district cũ; lỗi server của địa chỉ mất khi sửa, hiện lại ở lần submit lỗi sau rồi thành công. |
+| `apps/frontend/src/features/checkout/vietnam-provinces.ts` (mới) | Bỏ `districtAllowed`, `HANOI_PROVINCE`, `HO_CHI_MINH_PROVINCE`; vẫn giữ danh mục 34 tỉnh/thành, `isProvinceName` và tìm kiếm không dấu. |
+| `apps/frontend/e2e/order-creation.spec.ts` | Ca picker kiểm tra quận/huyện luôn hiện và bị xóa khi đổi sang Cần Thơ; ca mới gõ đè tỉnh rồi nhấn **Enter thật**, xác nhận không có request tạo đơn, có lỗi/focus, sau đó chọn Cần Thơ và nhập quận mới. |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md` | Chốt quận/huyện nhập tay cho mọi tỉnh, điều kiện chữ hiện khớp tỉnh đã chọn khi submit, lỗi server tự mất; cập nhật bước thử M4.3.1. |
+
+**Data flow:** khách gõ vào ô tỉnh → `handleProvinceInput` cập nhật `provinceInput` (bỏ qua blur/reset của MUI) → submit/Enter gọi `validateContactDraft(value, provinceInput)`; nếu chữ hiện không khớp `value.province`, form chặn trước khi gọi trang, focus ô tỉnh. Chọn một option → `chooseProvince` đặt cả chữ hiện và `province`, đồng thời xóa `district`. Khi sửa bất kỳ ô nào → `editedFields` ẩn lỗi server của đúng ô đó; submit hợp lệ reset danh sách ẩn rồi mới gọi `useCreateOrder` → `POST /api/v1/orders` như cũ.
+
+**Kiểm tra:**
+- **RED:** 2 file unit 6 fail / 21 pass trên code cũ (thiếu ô quận/huyện cho Cần Thơ, vẫn gửi tỉnh cũ, lỗi server còn lại).
+- **GREEN:** `ContactAddressForm.test.tsx` + `CheckoutPage.test.tsx` 27/27 đạt.
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt (backend + frontend).
+- **Build:** `./tools/npm.ps1 run build` đạt; chỉ còn cảnh báo Vite chunk >500 kB có sẵn.
+- **E2E địa chỉ:** `./tools/npm.ps1 run test:e2e -- order-creation.spec.ts` 6/6 đạt, gồm ca Enter thật với tỉnh cũ.
+- **E2E toàn bộ:** `./tools/npm.ps1 run test:e2e:implemented` 59/59 đạt (4,6 phút), DB `_test` riêng do runner tạo/dọn.
+- **Root test:** `./tools/npm.ps1 run test` hai lượt đều đạt 10 tool + 74 backend nhưng frontend 527/529 do flake ở file không liên quan: lượt 1 `App.test.tsx` + `AdminOrdersPage.test.tsx` (chạy riêng lần lượt 12/12, 14/14), lượt 2 `ProductsPage.test.tsx` (chạy riêng 8/8). Lượt thử `--maxWorkers=4` qua npm không giới hạn worker vì npm nuốt cờ và vẫn fail 1 ca `App.test.tsx`.
+- **Frontend đầy đủ với 4 worker:** đứng tại `apps/frontend`, chạy trực tiếp `node ../../node_modules/vitest/vitest.mjs run --config vite.config.ts --maxWorkers=4`: 41 file / 529 test đạt (92,45 giây).
+
+**Giới hạn:** backend vẫn nhận tỉnh/quận dạng text, không kiểm tra thuộc 34 đơn vị — theo phạm vi chỉ chặn ở FE. Flake của toàn bộ frontend khi chạy song song mặc định chưa xác định nguyên nhân gốc; các file liên quan đến M4.3.1.1 đều đạt khi chạy riêng và khi giới hạn worker. Chưa commit/push/deploy.
+
+**Còn lại:** người dùng chạy thử local theo `docs/local-trial-m4.md` § M4.3.1 (mục 1–2 đã cập nhật), đặc biệt gõ đè tỉnh rồi Enter và nhập quận/huyện cho Cần Thơ; phản hồi rồi mới chốt phần. Việc điều tra flake test song song nên tách thành phần riêng nếu người dùng muốn xử lý.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
+## Ngày 02/11/2026 — M4.3.1 (bổ sung): thời điểm báo lỗi và địa chỉ 34 tỉnh/thành
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("duyệt") sau khi chốt tạo nhánh mới `feat/checkout-address-validation` từ `origin/main` `42d8a38` (02/11/2026). **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu.** Chỉ frontend; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/deploy.
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/checkout/vietnam-provinces.ts` (mới) | Danh mục 34 đơn vị cấp tỉnh theo QĐ 19/2025/QĐ-TTg (mã + tên ngắn), hàm kiểm tra tên, `districtAllowed`, chuẩn hóa tìm kiếm không dấu. Đặt ở root feature vì `.gitignore` bỏ qua mọi thư mục `data/`. |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.tsx` | Lỗi chỉ hiện sau blur hoặc lần submit đầu; submit tự validate, focus ô lỗi đầu và không gọi trang nếu sai; tỉnh/thành dùng Autocomplete tìm không dấu, chỉ option được chọn mới hợp lệ; quận/huyện chỉ hiện với Hà Nội/TP. Hồ Chí Minh, xóa khi đổi tỉnh và không gửi khi ẩn; `noValidate` để nút luôn bấm được. |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.tsx` | Bỏ chặn nút theo tính hợp lệ; nút chỉ khóa khi đang gửi hoặc quote chưa hợp lệ. |
+| `apps/frontend/src/features/checkout/components/ContactAddressForm.test.tsx` (mới), `pages/CheckoutPage.test.tsx` | Test hành vi: form sạch, blur từng ô, submit trống focus ô đầu, picker không dấu/chỉ option hợp lệ, quận/huyện có điều kiện, body không chứa district ẩn. |
+| `apps/frontend/e2e/order-creation.spec.ts` | Helper chọn tỉnh thật; 2 ca mới: form sạch → submit trống báo lỗi/focus Họ tên; picker gõ không dấu, chọn bằng bàn phím, ẩn quận/huyện ngoài 2 thành phố. |
+| `apps/frontend/e2e/order-access.spec.ts`, `e2e/admin-orders.spec.ts` | Helper đặt COD dùng picker thay vì điền text tỉnh/thành. |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md` | Chốt hợp đồng địa chỉ và cập nhật bước thử M4.3.1. |
+
+**Data flow:** khách gõ/blur từng ô → form giữ `touched`, lỗi suy ra từ draft nên tự mất khi sửa đúng. Chọn tỉnh từ option → đổi `province`, xóa `district` cũ; quận/huyện chỉ render khi tỉnh là Hà Nội/TP. Hồ Chí Minh. Submit → form validate + focus ô lỗi đầu; chỉ khi hợp lệ mới gọi trang → `useCreateOrder` dựng body `contact`/`address` (district `''` nếu ẩn) → `POST /api/v1/orders` giữ nguyên.
+
+**Kiểm tra:**
+- **RED:** 2 file unit 17 fail / 9 pass trên code cũ (không có combobox, lỗi hiện ngay, nút bị khóa, quận/huyện luôn hiện).
+- **GREEN:** 2 file unit 26/26 đạt; `npx vitest run src/app/App.test.tsx` 12/12.
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt (backend + frontend). Trước đó backend lỗi do Prisma client sinh cũ thiếu model mới; đã chạy `npm run db:generate -w @clothing/backend` (không đổi schema/migration) rồi đạt.
+- **Build:** `npm.cmd run build --workspaces` đạt, cả hai workspace build xong. `./tools/npm.ps1 run build` trả 1 do wrapper dừng khi Vite ghi cảnh báo chunk >500 kB ra stderr; không phải lỗi build, chưa sửa wrapper ngoài phạm vi.
+- **Root test:** `npm.cmd run test` đạt: 10 tool + 74 backend + 528 frontend. Lần đầu có 1 flake `App.test.tsx` (protected routes) khi chạy song song; chạy riêng và chạy lại toàn bộ frontend/root đều đạt.
+- **E2E:** 3 spec liên quan 14/14 đạt; toàn bộ `npm run test:e2e:implemented` 58/58 đạt (4,2 phút), dùng DB test riêng do runner tạo và dọn.
+
+**Giới hạn:** backend vẫn nhận địa chỉ dạng text và không kiểm tra tỉnh thuộc 34 đơn vị — theo phạm vi đã duyệt, chỉ chặn ở FE; đơn cũ không bị ảnh hưởng. Quận/huyện nhập tay, chưa có dataset quận/huyện/phường. Danh mục tĩnh trong FE, không gọi dịch vụ địa chỉ khi đang gõ. Chưa commit/push/deploy.
+
+**Còn lại:** người dùng chạy thử local theo `docs/local-trial-m4.md` M4.3.1 (đặc biệt mục 1–2 mới), phản hồi lỗi/UX rồi mới chốt phần.
 ## Ngày 02/11/2026 — R2: luồng đặt hàng trên điện thoại
 
 **Phạm vi đã duyệt ("duyệt"):** nhánh `feat/r2-mobile-checkout` từ `main` `b803531`. Chỉ frontend; API, DB và luồng chống đặt trùng giữ nguyên. Bản nháp địa chỉ giữ trong bộ nhớ (không lưu vào trình duyệt) theo mặc định đã nêu. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy.**

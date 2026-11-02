@@ -45,11 +45,31 @@ const OrderSubmissionContext = createContext<OrderSubmissionContextValue | undef
 const emptyState: OrderSubmissionState = { phase: 'idle', key: null, body: null, result: null, error: null,
   fieldErrors: {}, cartHandled: false, cartCleared: false };
 
+const DRAFT_ERROR_FIELDS = [
+  ['contact.name', 'name'], ['contact.phone', 'phone'], ['contact.email', 'email'],
+  ['address.province', 'province'], ['address.district', 'district'], ['address.ward', 'ward'],
+  ['address.addressLine', 'addressLine'], ['note', 'note'],
+] as const;
+
 export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<OrderSubmissionState>(emptyState);
   const [draft, setDraft] = useState<ContactDraft>(EMPTY_CONTACT_DRAFT);
   const inFlightRef = useRef(false);
   const sequenceRef = useRef(0);
+
+  // Keep corrected server errors cleared across route changes, just like the draft itself.
+  const updateDraft = useCallback((next: ContactDraft) => {
+    setDraft(next);
+    const changedFields = DRAFT_ERROR_FIELDS.filter(([, field]) => draft[field] !== next[field]
+      || (field === 'province' && draft.provinceInput !== next.provinceInput));
+    if (!changedFields.length) return;
+    setState((current) => {
+      if (!changedFields.some(([path]) => current.fieldErrors[path])) return current;
+      const fieldErrors = { ...current.fieldErrors };
+      for (const [path] of changedFields) delete fieldErrors[path];
+      return { ...current, fieldErrors };
+    });
+  }, [draft]);
 
   const run = useCallback(async (key: string, body: CreateOrderBody, sequence: number, isRetry: boolean) => {
     setState((prev) => ({ ...prev, phase: 'pending', key, body, error: null, fieldErrors: {} }));
@@ -123,8 +143,8 @@ export function OrderSubmissionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', guard);
   }, [state.phase]);
 
-  const value = useMemo(() => ({ ...state, submit, retry, reset, dismiss, markCartHandled, draft, setDraft }),
-    [state, submit, retry, reset, dismiss, markCartHandled, draft]);
+  const value = useMemo(() => ({ ...state, submit, retry, reset, dismiss, markCartHandled, draft, setDraft: updateDraft }),
+    [state, submit, retry, reset, dismiss, markCartHandled, draft, updateDraft]);
   return <OrderSubmissionContext.Provider value={value}>{children}</OrderSubmissionContext.Provider>;
 }
 
