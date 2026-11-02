@@ -196,6 +196,21 @@ Test riêng: integration `test/order-lookup.integration.spec.ts` (trong `./tools
 
 Đơn riêng PENDING hoặc CONFIRMED giữ2×A: mở đúng link → Hủy kèm lý do. Mong đợi CANCELLED, reserved giảm2, onHand không tăng; gửi lại không giải phóng lần nữa. Đơn khác hoặc SHIPPED không hủy được. Khi bank có, thu tiền rồi hủy phải sinh nghĩa vụ đúng phần chưa xử lý, không hiển thị đã hoàn tiền.
 
+Đã triển khai (chờ người dùng thử). Cần migration của M4.10.1.1 nếu chưa chạy. Chưa có bank nên phần nghĩa vụ hoàn làm cùng M4.6.2.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD số lượng 2 ở cửa sổ ẩn danh, bấm "Xem đơn hàng"; xem trang Kho của SKU đó | Trang đơn có nút "Hủy đơn"; Đang giữ tăng 2 |
+| Bấm "Hủy đơn", rồi bấm "Hủy đơn" trong hộp thoại mà chưa nhập lý do | Báo "Nhập lý do từ 3 đến 500 ký tự.", đơn không đổi |
+| Nhập lý do, bấm "Hủy đơn" | Trạng thái "Đã hủy", lý do hiện trong lịch sử đơn, hết nút hủy; tải lại trang vẫn đúng |
+| Xem lại trang Kho | Đang giữ giảm 2, Tồn thực có không đổi; lịch sử kho ghi "Khách hủy đơn <mã>", không chép lý do |
+| Mở đơn trên `/admin/orders` | Thấy "Lý do hủy: …", người thao tác "Khách đặt hàng", hết nút thao tác |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách hủy đơn <mã> \| RMG Labels", có link đơn, không có lý do hay dữ liệu khách |
+| Đơn khác đã xác nhận: admin bấm đóng gói, rồi mở lại link của khách | Hết nút hủy, có hướng dẫn nhắn shop qua Instagram |
+| Mở link của khách trước, admin đóng gói ở tab khác, rồi khách mới bấm hủy | Khách thấy thông báo không hủy được và nút "Tải lại đơn"; đơn vẫn đang đóng gói |
+| DevTools → Offline trên trang của khách, bấm hủy | Báo lỗi kết nối, ô lý do bị khóa, có "Gửi lại"; bật mạng rồi bấm thì kho nhả đúng một lần |
+| Sửa một ký tự của token trong link rồi mở | Báo "Không tìm thấy đơn hàng…", không có nút hủy |
+
 ### M4.4.4 — Xin hủy khi PACKING
 
 Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu hủy. Mong đợi đơn vẫn PACKING, yêu cầu pending, gửi lại không trùng; việc hủy thực sự chờ M4.5.8. Không cho dùng API hủy trực tiếp để vượt bước.
@@ -371,6 +386,18 @@ Chỉ thử sau khi chủ shop chốt chính sách hoàn tiền/phí giao. Đơn
 ### M4.10.1 — Mail tạo đơn
 
 MAIL_MODE=preview; tạo đơn có email thử → xem mailbox local theo README, có thông tin/link đúng đơn nhưng không đưa link vào log/bằng chứng chia sẻ. Không có email vẫn đặt được và shop nhận thông báo theo cài đặt đã chốt. Giả lập mail lỗi trong test: đơn/giữ kho vẫn tồn tại, có delivery intent chờ xử lý, replay create không gửi thêm thư tùy tiện.
+
+Ngày 02/11/2026 tách làm hai phần: M4.10.1.1 thư báo shop (đã triển khai, chờ người dùng thử) và M4.10.1.2 thư cho khách (chờ có domain gửi thư).
+
+**M4.10.1.1.** Cần chạy `./tools/npm.ps1 run db:migrate` trước; mode `preview` mặc định không gửi thư thật.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Có một tài khoản ADMIN; đặt đơn COD ở cửa sổ ẩn danh, có nhập ghi chú và email khách | Trang xác nhận hiện ngay, không chờ thư |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Đơn mới <mã> \| RMG Labels"; có số sản phẩm, tổng tiền, "COD, chưa thu tiền" và link `/admin/orders/<id>`; không có tên, SĐT, địa chỉ, email khách, ghi chú |
+| Mở link đó khi đã đăng nhập admin | Đúng trang chi tiết đơn |
+| Mở link đó ở cửa sổ chưa đăng nhập | Không xem được đơn, bị yêu cầu đăng nhập |
+| Đếm thư có `to` là email khách trong mailbox | Không có thư đơn hàng nào cho khách ở phần này |
 
 ### M4.10.2 — Retry và mail trạng thái
 

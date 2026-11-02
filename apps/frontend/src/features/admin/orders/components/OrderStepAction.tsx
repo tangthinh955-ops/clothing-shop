@@ -1,6 +1,6 @@
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 import { useId, useState } from 'react';
-import { useOrderCommand } from '../hooks/useOrderCommand';
+import { useOrderCommand } from '../../../orders/hooks/useOrderCommand';
 
 interface OrderStepActionProps {
   label: string;

@@ -48,6 +48,13 @@ enum InventoryEffectSource {
   ORDER_SHIP
 }
 
+enum NotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
 enum TokenKind {
   VERIFY_EMAIL
   RESET_PASSWORD
@@ -271,6 +278,7 @@ model Order {
   items OrderItem[]
   history OrderStatusHistory[]
   notes OrderNote[]
+  notifications NotificationDelivery[]
   @@index([status, createdAt])
   @@index([phone])
   @@map("orders")
@@ -322,6 +330,24 @@ model OrderNote {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   @@index([orderId, createdAt])
   @@map("order_notes")
+}
+
+// A mail owed for an order event (M4.10.1.1): written in the order's transaction, sent after commit.
+// The body is rendered at send time and never stored; the unique key is what stops a duplicate.
+model NotificationDelivery {
+  id String @id @default(uuid()) @db.Uuid
+  event String @db.VarChar(64)
+  orderId String @db.Uuid
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recipient String @db.VarChar(254)
+  status NotificationStatus @default(PENDING)
+  attempts Int @default(0)
+  sentAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  @@unique([event, orderId, recipient])
+  @@index([status, createdAt])
+  @@map("notification_deliveries")
 }
 
 model IdempotencyRecord {

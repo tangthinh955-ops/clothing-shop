@@ -195,6 +195,42 @@ test('foreign, malformed and missing private access link fragment all fail unifo
   await expect(page.getByText(/Khách đặt hàng/)).toBeVisible();
 });
 
+// M4.4.3: the private link cancels its own order; the stock comes back and the link keeps showing why.
+test('a customer cancels their own order from the private link', async ({ page }, info) => {
+  test.setTimeout(60000);
+  const stock = () => db.inventory.findUniqueOrThrow({ where: { variantId }, select: { onHand: true, reserved: true } });
+  const before = await stock();
+  const captured = { token: '', code: '' };
+  trackCreatedOrder(page, captured);
+  await checkoutAndOrder(page, '0901234999');
+  trackedOrderCodes.push(captured.code);
+  expect(await stock()).toEqual({ onHand: before.onHand, reserved: before.reserved + 1 });
+
+  await page.goto(`/orders/${captured.code}#t=${captured.token}`);
+  await page.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+  await expect(dialog.getByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('customer-cancel-dialog-mobile.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  const reason = `Tôi đặt nhầm ${tag.slice(0, 8)}`;
+  await dialog.getByLabel(/Lý do hủy/).fill(reason);
+  await dialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Hủy đơn', exact: true })).toHaveCount(0);
+  await expect(page.getByText(new RegExp(reason))).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(new RegExp(reason))).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hủy đơn', exact: true })).toHaveCount(0);
+
+  expect(await stock()).toEqual(before);
+  const saved = await db.order.findUniqueOrThrow({ where: { code: captured.code }, select: { status: true, cancelReason: true } });
+  expect(saved).toEqual({ status: 'CANCELLED', cancelReason: reason });
+});
+
 test('a replay answer without a token never fabricates a private link', async ({ page }) => {
   await page.route('**/api/v1/orders', (route) => {
     if (route.request().method() !== 'POST') return route.fallback();

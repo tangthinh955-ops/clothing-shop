@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
@@ -104,6 +104,161 @@ function spyPerToken() {
 
 beforeEach(() => { window.history.replaceState(null, '/', '/'); });
 afterEach(() => vi.restoreAllMocks());
+
+describe('customer cancellation (M4.4.3)', () => {
+  const REASON = 'Tôi đặt nhầm size';
+  const cancelled = () => {
+    const current = view();
+    return { ...current, order: { ...current.order, status: 'CANCELLED' }, timeline: [...current.timeline,
+      { fromStatus: 'CONFIRMED', toStatus: 'CANCELLED', actorLabel: 'Khách đặt hàng', reason: REASON, version: 2, at: '2026-10-31T04:00:00.000Z' }] };
+  };
+  const transition = { code: CODE, status: 'CANCELLED', version: 2 };
+
+  type Answer = (path: string, options?: RequestOptions) => Promise<unknown>;
+
+  function serve(answer: Answer) {
+    const spy = vi.spyOn(client, 'request').mockImplementation((path: string, options?: RequestOptions) => answer(path, options));
+    return { spy, cancelCalls: () => spy.mock.calls.filter(([path]) => String(path).endsWith('/cancel')) };
+  }
+
+  // A small server: the order stays open until a cancellation is accepted.
+  function backend(onCancel: () => Promise<unknown> = () => Promise.resolve(transition)): Answer {
+    let current: unknown = view();
+    return async (_path, options) => {
+      if (options?.method !== 'POST') return current;
+      const answer = await onCancel();
+      current = cancelled();
+      return answer;
+    };
+  }
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Hủy đơn' }));
+    return screen.findByRole('dialog', { name: `Hủy đơn ${CODE}?` });
+  }
+
+  it.each(['PENDING', 'CONFIRMED'])('offers to cancel a %s order', async (status) => {
+    const current = view();
+    serve(() => Promise.resolve({ ...current, order: { ...current.order, status } }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    expect(await screen.findByRole('button', { name: 'Hủy đơn' })).toBeVisible();
+  });
+
+  it.each(['PACKING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'])('offers no cancellation for a %s order', async (status) => {
+    const current = view();
+    serve(() => Promise.resolve({ ...current, order: { ...current.order, status } }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it('points to the shop while the order is being packed, and only then', async () => {
+    const current = view();
+    serve(() => Promise.resolve({ ...current, order: { ...current.order, status: 'PACKING' } }));
+    const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    expect(await screen.findByRole('link', { name: '@rmglabels' })).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    first.unmount();
+    vi.restoreAllMocks();
+    serve(() => Promise.resolve(view()));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByRole('link', { name: '@rmglabels' })).not.toBeInTheDocument();
+  });
+
+  it('warns that this cannot be undone, and sends nothing when the customer backs out', async () => {
+    const user = userEvent.setup();
+    const { cancelCalls } = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    expect(within(dialog).getByText(/không mở lại được/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(cancelCalls()).toHaveLength(0);
+  });
+
+  it.each([['nothing', ''], ['too few characters', ' ab ']])('asks for a real reason when given %s', async (_label, typed) => {
+    const user = userEvent.setup();
+    const { cancelCalls } = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    if (typed) await user.type(within(dialog).getByLabelText(/Lý do hủy/), typed);
+    await user.click(within(dialog).getByRole('button', { name: 'Hủy đơn' }));
+    expect(await within(dialog).findByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+    expect(cancelCalls()).toHaveLength(0);
+  });
+
+  it('sends the trimmed reason, the version on screen, the token header and a key, then shows the cancelled order', async () => {
+    const user = userEvent.setup();
+    const { cancelCalls } = serve(backend());
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do hủy/), `  ${REASON}  `);
+    await user.click(within(dialog).getByRole('button', { name: 'Hủy đơn' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Hủy đơn' })).not.toBeInTheDocument());
+    const [call] = cancelCalls();
+    expect(call?.[0]).toBe(`/orders/${CODE}/cancel`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', orderToken: TOKEN, body: { expectedVersion: 1, reason: REASON } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    expect(await screen.findByText(new RegExp(REASON))).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('sends once while a cancellation is in flight', async () => {
+    const user = userEvent.setup();
+    let finish: (value: unknown) => void = () => undefined;
+    const { cancelCalls } = serve(backend(() => new Promise((resolve) => { finish = resolve; })));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do hủy/), REASON);
+    const send = within(dialog).getByRole('button', { name: 'Hủy đơn' });
+    await Promise.all([user.click(send), user.click(send)]);
+    expect(cancelCalls()).toHaveLength(1);
+    expect(send).toBeDisabled();
+    finish(transition);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('explains a conflict and reloads the order instead of retrying', async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    const current = view();
+    const { cancelCalls } = serve((_path, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('CONFLICT', 'Trạng thái đơn không cho phép thao tác này. Hãy tải lại đơn.', 409));
+      reads += 1;
+      return Promise.resolve(reads === 1 ? current : { ...current, order: { ...current.order, status: 'PACKING' } });
+    });
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do hủy/), REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Hủy đơn' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Trạng thái đơn không cho phép');
+    expect(within(dialog).queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
+    expect(await screen.findByRole('link', { name: '@rmglabels' })).toBeVisible();
+    expect(cancelCalls()).toHaveLength(1);
+  });
+
+  it('locks the reason after a lost response and resends the same key and content', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const { cancelCalls } = serve(backend(() => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : Promise.resolve(transition);
+    }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const dialog = await openDialog(user);
+    const field = within(dialog).getByLabelText(/Lý do hủy/);
+    await user.type(field, REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Hủy đơn' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    expect(field).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Hủy đơn' })).not.toBeInTheDocument());
+    const [first, second] = cancelCalls();
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+});
 
 describe('OrderDetailPage', () => {
   it('renders the server snapshot, the timeline and keeps the access fragment in the address', async () => {

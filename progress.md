@@ -2,6 +2,43 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.4.3: khách tự hủy đơn trước khi đóng gói
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.3 ("duyệt"), gồm thư báo shop khi khách hủy. Người dùng không chọn "commit trước", nên làm tiếp trên nhánh `feat/m4.10.1.1-shop-order-notice`, chung với M4.10.1.1 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/order-transition-runner.service.ts` (mới), `admin-order-transitions.service.ts` | Tách phần khóa đơn, kiểm tra, ghi lịch sử và chống trùng để admin và khách dùng chung; hành vi và dạng hash của lệnh admin không đổi |
+| `apps/backend/src/modules/orders/order-cancellation.service.ts` (mới), `dto/order-cancel.dto.ts` (mới), `orders.controller.ts`, `orders.module.ts` | `POST /orders/:code/cancel`, token kiểm tra cả trước và dưới khóa; rate 5/phút/IP; không trả id nội bộ |
+| `apps/backend/src/modules/orders/order-notifications.service.ts` | Thêm sự kiện `order.cancelled.shop`, thư không chứa lý do; admin tự hủy không gửi thư |
+| `apps/frontend/src/features/orders/hooks/useOrderCommand.ts`, `components/OrderInputAction.tsx` (chuyển từ `features/admin/orders/`), `components/OrderCancelAction.tsx` (mới) | Dùng chung cho admin và khách. Khác kế hoạch: chuyển cả `OrderInputAction`, để hộp thoại của khách chỉ là lớp bọc mỏng thay vì chép code |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `pages/OrderDetailPage.tsx`, `apps/frontend/src/features/admin/orders/components/OrderActions.tsx`, `OrderStepAction.tsx` | Hàm `cancel`; nút hủy theo trạng thái, hướng dẫn nhắn Instagram khi đang đóng gói; sửa đường dẫn import |
+| `apps/backend/test/order-cancellation.integration.spec.ts` (mới), `order-notifications.integration.spec.ts`, `apps/frontend/src/features/orders/pages/OrderDetailPage.test.tsx`, `apps/frontend/e2e/order-access.spec.ts` | 30 ca integration, 16 ca UI, 1 E2E; đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Chốt API và rate limit, hướng dẫn thử, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 499 frontend; `npm run test:integration` 278/278; spec hủy chạy lặp thêm 3 lần đều 25/25; `npm run test:e2e:implemented` 56/56. Đã xem ảnh hộp thoại trên mobile.
+
+**Giới hạn:** từ `PACKING` khách chỉ nhắn shop qua Instagram, chưa xin hủy được trên web (M4.4.4); chưa tạo nghĩa vụ hoàn tiền (M4.6.2); khách không nhận thư xác nhận hủy (M4.10.1.2); thư lỗi không tự gửi lại (M4.10.2). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.4.3. **Dừng chờ người dùng thử.**
+
+## Ngày 02/11/2026 — M4.10.1.1: email báo shop có đơn mới
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("duyệt, commit trước"): tách M4.10.1 thành M4.10.1.1 (thư báo shop) và M4.10.1.2 (thư cho khách, chờ domain); gửi tới các admin đang hoạt động; thư không có dữ liệu khách. Nhánh `feat/m4.10.1.1-shop-order-notice` từ `main` `0b93ae8`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử. Chưa từng gửi thư thật qua Resend.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `apps/backend/prisma/migrations/202611020001_m4_notification_deliveries/migration.sql` | Bảng `notification_deliveries`, duy nhất theo sự kiện, đơn và người nhận; chỉ thêm bảng và enum, không đổi bảng cũ |
+| `apps/backend/src/modules/orders/order-notifications.service.ts` (mới) | Ghi delivery trong transaction tạo đơn; sau commit nhận từng dòng rồi gửi, ghi `SENT` hoặc `FAILED`; log chỉ có mã đơn |
+| `apps/backend/src/modules/orders/order-creation.service.ts`, `orders.module.ts`, `order-creation.service.spec.ts` | Nối vào luồng tạo đơn; replay không gửi; khách không chờ thư |
+| `apps/backend/src/modules/mail/mail.service.ts` | Tách phần gửi dùng chung, thêm `sendOrderNotice`; hành vi thư xác minh và đặt lại mật khẩu không đổi |
+| `apps/backend/test/order-notifications.integration.spec.ts` (mới), `apps/frontend/e2e/admin-orders.spec.ts` | 10 ca integration và kiểm tra thư thật trong mailbox thử; đã quan sát test mới fail trước khi code |
+| `README.md`, `docs/local-trial-m4.md`, `docs/m4-implementation-plan.md`, `docs/plan.md` | Cách xem thư, hướng dẫn thử, tách phần, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 483 frontend; `npm run test:integration` 248/248; spec mới chạy lặp thêm 3 lần đều 10/10; `npm run test:e2e:implemented` 55/55.
+
+**Giới hạn:** thư lỗi ghi `FAILED` và không tự gửi lại; dòng còn `SENDING` khi máy chủ khởi động lại không được xử lý tiếp; cả hai thuộc M4.10.2. Khách chưa nhận thư (M4.10.1.2). Production dùng sender thử `onboarding@resend.dev`: agent hiểu rằng địa chỉ này chỉ gửi tới email của chính tài khoản Resend, nên email admin có thể phải trùng email đó; chưa xác minh trên production. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.10.1. **Dừng chờ người dùng thử.**
+
+**Trạng thái production và Git:** PR #29 (M4.5.5, M4.5.6) do `kangha23` merge vào `main` lúc 03:49:13Z, merge commit `0b93ae8`, sau khi CI của `20d3ae6` đạt. **Production chưa deploy bản này**: vẫn chạy `ci-20261102-0302-6e76f87`, `POST .../deliver` trả 404.
+
 ## Ngày 02/11/2026 — M4.5.6: admin ghi đơn đã giao thành công
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.6 ("duyệt"), gồm việc nhập thời điểm giao thực tế và cho khách thấy thời điểm đó, vì thời hạn đổi trả tính từ `deliveredAt`. Làm tiếp trên nhánh `feat/m4.5.5-admin-ship`, cùng phần M4.5.5 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**

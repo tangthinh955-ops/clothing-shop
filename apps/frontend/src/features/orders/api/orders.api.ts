@@ -206,4 +206,7 @@ export const ordersApi = {
     return parseOrderLookupResult(
       await request<unknown>('/orders/lookup', { method: 'POST', body: { code, phone: body.phone } }), code);
   },
+  /** M4.4.3 cancel before packing; the page reloads the order afterwards, so the answer needs no reading here. */
+  cancel: (code: string, token: string, expectedVersion: number, reason: string, idempotencyKey: string) =>
+    request<unknown>(`/orders/${encodeURIComponent(code)}/cancel`, { method: 'POST', orderToken: token, idempotencyKey, body: { expectedVersion, reason } }),
 };

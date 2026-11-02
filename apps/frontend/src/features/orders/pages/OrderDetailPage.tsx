@@ -1,14 +1,18 @@
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import { ApiError } from '../../../shared/api/client';
-import { ordersApi } from '../api/orders.api';
+import { seller } from '../../../shared/shop';
+import { ordersApi, type OrderStatus } from '../api/orders.api';
+import { OrderCancelAction } from '../components/OrderCancelAction';
 import { ORDER_STATUS_LABELS } from '../orderStatusLabels';
 import { sha256Hex } from '../token-tag';
 
 const ENTRY_TIME = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' });
+// Display only: the backend decides again under the order lock.
+const CUSTOMER_CANCELLABLE: readonly OrderStatus[] = ['PENDING', 'CONFIRMED'];
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/; // mirrors the server-side token envelope (order-access.guard.ts)
 
@@ -99,6 +103,15 @@ export function OrderDetailPage() {
         && <Typography sx={{ overflowWrap: 'anywhere' }}>Mã vận đơn: {query.data.order.trackingNumber}</Typography>}
       {query.data.order.deliveredAt
         && <Typography>Đã giao lúc: {ENTRY_TIME.format(new Date(query.data.order.deliveredAt))}</Typography>}
+      {CUSTOMER_CANCELLABLE.includes(query.data.order.status) && <Box>
+        {/* Remounts per version, so a finished action never carries its key or outcome into the next one. */}
+        <OrderCancelAction key={query.data.timeline.at(-1)!.version} code={query.data.order.code} token={token}
+          version={query.data.timeline.at(-1)!.version} onChanged={() => query.refetch()} />
+      </Box>}
+      {query.data.order.status === 'PACKING' && <Typography>
+        Đơn đang được đóng gói nên không tự hủy được nữa. Nếu cần hủy, hãy nhắn shop qua Instagram{' '}
+        <Link href={seller.instagram.url} target="_blank" rel="noopener noreferrer" underline="always">@{seller.instagram.handle}</Link>.
+      </Typography>}
       <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
         <Typography component="h2" variant="h6" sx={{ mb: 2 }}>Sản phẩm đặt mua</Typography>
         <Stack spacing={2}>
