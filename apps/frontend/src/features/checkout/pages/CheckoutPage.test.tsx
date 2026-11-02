@@ -566,6 +566,23 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(1);
   });
 
+  it('does not resurrect an edited ward server error when returning from cart edits after editing ward search text', async () => {
+    const failure = new client.ApiError('VALIDATION_ERROR', 'Thông tin chưa hợp lệ.', 400,
+      [{ field: 'address.ward', message: 'Phường/xã bị từ chối ở lần gửi trước.' }]);
+    const request = await acceptQuoteAndFillForm([quoteResponse(), failure, quoteResponse()]);
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt hàng COD' }));
+    expect(await screen.findByText('Phường/xã bị từ chối ở lần gửi trước.')).toBeVisible();
+    const ward = screen.getByRole('combobox', { name: 'Phường/xã/đặc khu' });
+    fireEvent.change(ward, { target: { value: 'Bến' } });
+    expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'đi-shop' }));
+    await userEvent.click(screen.getByRole('button', { name: 'về-checkout' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cập nhật báo giá' }));
+    expect(await screen.findByRole('combobox', { name: 'Phường/xã/đặc khu' })).toHaveValue('Bến');
+    expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument();
+    expect(request.mock.calls.filter(([path, options]) => path === '/orders' && options?.method === 'POST')).toHaveLength(1);
+  });
+
   it('never sends a stale province or ward when the search text is not selected', async () => {
     const request = await acceptQuoteAndFillForm([
       quoteResponse(),

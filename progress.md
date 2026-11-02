@@ -2,6 +2,41 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.3.2.1: Sửa lỗi P2 theo dõi wardInput khi xóa lỗi server và cập nhật hợp đồng địa chỉ
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("chạy đi"). Tiếp tục trên nhánh `feat/checkout-ward-picker` từ commit `b9152d4`. **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu.** Chỉ frontend + test/tài liệu; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/merge/deploy. Giữ nguyên key/body và cơ chế chống đặt trùng.
+
+**Chi tiết lỗi P2 và bản sửa:**
+- **Nguyên nhân:** trong `OrderSubmissionProvider.updateDraft`, danh sách `changedFields` chỉ so sánh `field === 'province' && draft.provinceInput !== next.provinceInput` mà bỏ sót `wardInput`. Khi server trả lỗi validation ở ô `address.ward`, việc khách hàng gõ chỉnh sửa chữ tìm kiếm phường/xã trong combobox làm thay đổi `wardInput` chứ chưa chọn option mới (`draft.ward` chưa đổi). Vì vậy lỗi `address.ward` không bị xóa khỏi `state.fieldErrors` trong provider. Khi khách hàng rời sang giỏ hàng/cửa hàng rồi quay lại checkout, component form mount lại và lỗi cũ từ provider tái xuất hiện.
+- **Bản sửa:** bổ sung `|| (field === 'ward' && draft.wardInput !== next.wardInput)` vào điều kiện lọc `changedFields` của `updateDraft`. Khi `wardInput` thay đổi, khóa `address.ward` bị xóa khỏi `fieldErrors` ngay lập tức.
+- **Regression test (RED → GREEN):**
+  - Thêm ca test mới trong `CheckoutPage.test.tsx`: `does not resurrect an edited ward server error when returning from cart edits after editing ward search text`.
+  - **RED:** Chạy test trên code commit `b9152d4` thất bại chính xác tại assertion `expect(screen.queryByText('Phường/xã bị từ chối ở lần gửi trước.')).not.toBeInTheDocument()` (phần tử lỗi vẫn còn tồn tại trong DOM sau khi đổi route).
+  - **GREEN:** Sau khi sửa `updateDraft`, test đạt (1.657ms). Toàn bộ 28/28 ca test trong `CheckoutPage.test.tsx` đạt.
+- **Tài liệu hợp đồng:** cập nhật mục Địa chỉ trong `docs/m4-contract.md` phản ánh đúng thiết kế picker 2 cấp (34 tỉnh/thành và 3.321 phường/xã/đặc khu), bỏ ô quận/huyện trên UI; không còn mô tả phường/xã nhập tay.
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/features/checkout/OrderSubmissionProvider.tsx` | Bổ sung `(field === 'ward' && draft.wardInput !== next.wardInput)` trong `updateDraft` để xóa `address.ward` khỏi `fieldErrors`. |
+| `apps/frontend/src/features/checkout/pages/CheckoutPage.test.tsx` | Regression test đổi route sau khi sửa chữ tìm kiếm phường/xã để xác nhận không phục hồi lỗi server cũ. |
+| `docs/m4-contract.md` | Cập nhật mục Địa chỉ khớp với picker tỉnh/phường 2 cấp và bỏ mô tả phường/xã nhập tay. |
+| `progress.md` | Ghi nhận tiến độ, bằng chứng RED → GREEN và kết quả kiểm tra thực tế. |
+
+**Data flow:** Server trả lỗi 400 kèm field error `address.ward` → lưu vào `state.fieldErrors` của `OrderSubmissionProvider` → Khách hàng gõ ký tự vào ô tìm kiếm phường/xã (`wardInput`) → `updateDraft` nhận biết `draft.wardInput !== next.wardInput` và xóa `address.ward` khỏi `fieldErrors` → Khách điều hướng sang giỏ hàng rồi quay lại checkout → provider cung cấp `fieldErrors` đã dọn sạch, form không còn hiện lỗi server cũ.
+
+**Kiểm tra:**
+- **Regression RED:** Vitest chạy riêng test mới fail đúng lỗi server còn trong DOM (code `b9152d4`).
+- **Regression GREEN:** Vitest chạy đạt 1/1 test mới sau khi sửa `OrderSubmissionProvider.tsx`.
+- **Checkout test:** 4 file / 43 test trong `src/features/checkout/` đạt 100% (trong đó `CheckoutPage.test.tsx` đạt 28/28).
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt 0 lỗi (cả backend và frontend).
+- **E2E:** `./tools/npm.ps1 run test:e2e -- order-creation.spec.ts` đạt 6/6 (1,4 phút), runner tự tạo và dọn DB `_test` riêng.
+
+**Giới hạn:** backend vẫn nhận text và schema DB giữ nguyên cột `district` (nullable trong DTO, DB lưu `""`), không ảnh hưởng đơn cũ. Chưa merge hoặc deploy.
+
+**Còn lại:** Người dùng mở trình duyệt kiểm tra thực tế kịch bản lỗi server ward không tái xuất hiện sau khi đổi route; phản hồi rồi mới chốt phần.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
 ## Ngày 02/11/2026 — Git/review: kiểm tra và push picker phường/xã
 
 - Người dùng yêu cầu kiểm tra lại và push nhánh `feat/checkout-ward-picker` từ `e9585da`. Kiểm tra đúng phần M4.3.2 do Antigravity triển khai: hai combobox tỉnh/phường đã nối dữ liệu; không tự chọn phường đầu tiên, đổi tỉnh xóa phường cũ, chữ tìm kiếm không phải lựa chọn, draft ở bộ nhớ và body API không có metadata picker. Không sửa code sản phẩm trong lượt review/push này.
