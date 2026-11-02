@@ -4,7 +4,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 02/11/2026 — M4.4.4: khách xin hủy khi đơn đang đóng gói
 
-**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.4 ("duyệt"), gồm shop xử lý yêu cầu bằng nút đã có (hủy là đồng ý, bàn giao là không đồng ý) và vẫn cho bàn giao khi có yêu cầu đang chờ, kèm cảnh báo. Nhánh `feat/m4.4.4-cancellation-request` từ `main` `a0f9d1d`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.4.4 ("duyệt"), gồm shop xử lý yêu cầu bằng nút đã có (hủy là đồng ý, bàn giao là không đồng ý) và vẫn cho bàn giao khi có yêu cầu đang chờ, kèm cảnh báo. Nhánh `feat/m4.4.4-cancellation-request` từ `main` `a0f9d1d`. **Đã commit, CI xanh, đã deploy production; PR #32 chưa merge; người dùng chưa nghiệm thu.**
 
 | File | Thay đổi |
 |---|---|
@@ -21,7 +21,12 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 **Giới hạn:** chưa có từ chối mà đơn vẫn `PACKING` (M4.5.8); mỗi đơn chỉ gửi được một yêu cầu; khách không nhận thư khi shop xử lý (M4.10.2.2). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.4.4. **Dừng chờ người dùng thử.**
 
-**Trạng thái production và Git:** PR #31 (M4.10.2.1) do `kangha23` merge vào `main` lúc 04:49:08Z, merge commit `a0f9d1d`. **Production chưa deploy bản này**: vẫn chạy `ci-20261102-0302-6e76f87`.
+**Trạng thái production và Git:**
+- **Commit và PR:** `dc1c4e6`, [PR #32](https://github.com/tangthinh955-ops/clothing-shop/pull/32), CI của commit xanh cả hai lượt (push và pull_request). PR còn mở lúc deploy.
+- **Deploy:** người dùng yêu cầu. Workflow Deploy production [run 41399470964](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41399470964), ref `dc1c4e6`, release `ci-20261102-0622-dc1c4e6`, thành công, áp dụng migration `202611020003_m4_cancellation_requests`. GitHub ghi `headSha` của run là `a0f9d1d` vì workflow chạy từ `main`; bản được đóng gói là `dc1c4e6`, theo tên release.
+- **Bản trước đó:** PR #31 (M4.10.2.1) do `kangha23` merge lúc 04:49:08Z, merge commit `a0f9d1d`; người dùng đã deploy qua [run 41391436026](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41391436026), release `ci-20261102-0459-a0f9d1d`. Bản này còn trên đĩa để rollback tay.
+- **Kiểm tra công khai sau deploy (agent, chỉ request đọc hoặc bị từ chối, không tạo dữ liệu):** `health/ready` `{"status":"ok"}`; `/`, `/shop`, `/checkout`, `/admin/orders` 200; 5 sản phẩm; `GET /admin/orders` không đăng nhập 401; `POST /orders/:code/cancellation-requests` và `POST /admin/orders/:id/deliver` không có CSRF đều 403, route không tồn tại 404; bundle có chữ "Xin hủy đơn". **Chưa thử bằng đơn thật và tài khoản admin thật, chưa xác nhận thư thật qua Resend.**
+- **Rủi ro vận hành:** `main` chưa có M4.4.4. Chạy workflow deploy với `main` trước khi merge PR #32 sẽ đưa code production về `a0f9d1d`, bảng `cancellation_requests` vẫn còn.
 
 ## Ngày 02/11/2026 — M4.10.2.1: tự gửi lại thư báo shop
 
