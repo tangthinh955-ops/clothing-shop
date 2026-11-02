@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError } from '../../../shared/api/client';
+import { pageTitle } from '../../../shared/shop';
 import { ordersApi } from '../api/orders.api';
 
 const NETWORK_ERROR = 'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.';
@@ -68,7 +69,7 @@ export function OrderLookupPage() {
   };
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 560, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <title>Tra cứu đơn hàng | Clothing Shop</title>
+    <title>{pageTitle('Tra cứu đơn hàng')}</title>
     <Typography component="h1" variant="h4" sx={{ fontWeight: 700 }}>Tra cứu đơn hàng</Typography>
     <Typography>
       Nhập mã đơn và số điện thoại đã dùng khi đặt hàng — shop sẽ cấp lại link xem đơn riêng tư.

@@ -116,7 +116,7 @@ describe('public product detail page', () => {
   it('lets the shopper order by messaging the shop on Instagram', async () => {
     renderDetail();
     const order = await screen.findByRole('link', { name: 'Nhắn shop qua Instagram để đặt' });
-    expect(order).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    expect(order).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
     expect(order).toHaveAttribute('target', '_blank');
     expect(order).toHaveAttribute('rel', 'noopener noreferrer');
     expect(within(screen.getByRole('main')).getByRole('link', { name: 'Bảng size' })).toHaveAttribute('href', '/size-guide');

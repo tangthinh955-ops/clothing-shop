@@ -10,7 +10,7 @@ Chạy `dev:backend` và `dev:frontend`, mở `/shop` rồi bấm một sản ph
 | Xem phần chọn | "Màu: …" với màu đầu đã chọn sẵn; "Size: chưa chọn" với các size của màu đó; size hết hàng bị gạch ngang |
 | Bấm một size | Giá đúng của size, "Còn N sản phẩm" (xanh) hoặc "Hết hàng" (đỏ), và "Mã sản phẩm: SKU" dưới nút đặt |
 | Đổi sang màu khác | Size đã chọn bị bỏ, danh sách size đổi theo màu; chọn lại size để thấy tồn |
-| Bấm "Nhắn shop qua Instagram để đặt" | Mở Instagram @rmglabels ở tab mới |
+| Bấm "Nhắn shop qua Instagram để đặt" | Mở Instagram @adecy.co ở tab mới |
 | Bấm "Giao hàng" / "Đổi & trả" | Mở ra nội dung chính sách thật (30.000đ, thời gian giao; đổi trả 7 ngày…) và link "Xem chính sách …" |
 | Điện thoại 390px | Ảnh vuốt ngang từng tấm, góc ảnh có "1 / N" đổi theo; thông tin nằm dưới ảnh; không có thanh cuộn ngang |
 | Mở `/products/khong-co` | "Không tìm thấy sản phẩm." và link "Quay lại bộ sưu tập" như trước |
@@ -36,14 +36,14 @@ Chạy `dev:backend` và `dev:frontend`, mở `http://127.0.0.1:5173/`. Cần í
 
 | Thao tác | Kết quả mong đợi |
 |---|---|
-| Mở `/` trên máy tính | Banner: khối đen "Bộ sưu tập mới" bên trái, ảnh sản phẩm mới nhất bên phải; bên dưới là "Danh mục" (4 ô một hàng) và "Hàng mới về" (tối đa 8 sản phẩm, 4 cột), cuối có "Xem tất cả sản phẩm"; tab trình duyệt "RMG Labels" |
+| Mở `/` trên máy tính | Banner: khối đen "Bộ sưu tập mới" bên trái, ảnh sản phẩm mới nhất bên phải; bên dưới là "Danh mục" (4 ô một hàng) và "Hàng mới về" (tối đa 8 sản phẩm, 4 cột), cuối có "Xem tất cả sản phẩm"; tab trình duyệt "ADECY" |
 | Bấm ảnh banner / "Xem bộ sưu tập" | Mở trang sản phẩm đó / sang `/shop` |
 | Bấm một ô danh mục | Sang `/shop?categoryId=…` đã lọc |
 | Bấm bất kỳ chỗ nào trên một card (ảnh hoặc tên) | Mở trang chi tiết sản phẩm |
 | Xem card | Giá đậm; chỉ có chữ "Từ" khi các size có giá khác nhau; dòng size dạng "S – XL", thêm "2 màu" nếu có nhiều màu |
 | Thu về 390px | Ảnh banner ở trên, khối chữ đen ở dưới; danh mục vuốt ngang; hàng mới 2 cột; không có thanh cuộn ngang |
 | Bấm logo RMG LABELS ở trang bất kỳ | Về trang chủ `/` |
-| Ẩn hết sản phẩm (hoặc dùng DB trống) rồi mở `/` | Banner chỉ còn khối chữ; "Shop đang chuẩn bị hàng mới." và link "Theo dõi @rmglabels" |
+| Ẩn hết sản phẩm (hoặc dùng DB trống) rồi mở `/` | Banner chỉ còn khối chữ; "Shop đang chuẩn bị hàng mới." và link "Theo dõi @adecy.co" |
 | Mở `/shop` | Card mới, nhưng lưới và bộ lọc giữ như cũ (đổi ở UI.3) |
 
 ## UI.1 — khung cửa hàng mới: font, header, footer
@@ -254,14 +254,14 @@ Kiểm tra tự động: `environment.spec.ts` (HOST, số hop proxy, thư mục
 
 ## M3.15 — cửa hàng mang thông tin thật, bỏ dấu vết demo
 
-Cửa hàng hiển thị tên **RMG Labels**, thông tin người bán (cá nhân kinh doanh, TP. Hồ Chí Minh, Instagram @rmglabels) và các chính sách thật đã được chủ shop duyệt. SĐT/Zalo và email chưa có nên chưa hiển thị; bổ sung trong `apps/frontend/src/shared/shop.ts` trước khi mở bán (M4.1 sẽ chuyển sang Cài đặt shop).
+Cửa hàng hiển thị tên **ADECY**, thông tin người bán (cá nhân kinh doanh, TP. Hồ Chí Minh, Instagram @adecy.co) và các chính sách thật đã được chủ shop duyệt. SĐT/Zalo và email chưa có nên chưa hiển thị; bổ sung trong `apps/frontend/src/shared/shop.ts` trước khi mở bán (M4.1 sẽ chuyển sang Cài đặt shop).
 
 | Thao tác | Kết quả mong đợi |
 |---|---|
 | Mở `/shop` | Đầu trang "RMG LABELS", không còn banner "BẢN DEMO · DỮ LIỆU GIẢ"; header chỉ có Bộ sưu tập, Bảng size (admin đã đăng nhập thấy thêm Quản trị) |
-| Kéo xuống chân trang | "Cá nhân kinh doanh · TP. Hồ Chí Minh", link Instagram @rmglabels mở tab mới; link Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật |
+| Kéo xuống chân trang | "Cá nhân kinh doanh · TP. Hồ Chí Minh", link Instagram @adecy.co mở tab mới; link Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật |
 | Mở `/shipping`, `/returns-policy`, `/payment`, `/privacy`, `/contact` | Nội dung thật: phí 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; COD/VietQR, hạn 2 giờ; dữ liệu thu và quyền của khách; thông tin người bán |
-| Tab trình duyệt | Tiêu đề dạng "Giao hàng \| RMG Labels" |
+| Tab trình duyệt | Tiêu đề dạng "Giao hàng \| ADECY" |
 | Mở `/login` | Không còn "Chưa có tài khoản? Đăng ký"; admin vẫn đăng nhập ở đây |
 | Chạy `seed:demo` với `NODE_ENV=production` | Báo "seed:demo chỉ dùng trên máy local…, không chạy trên production." và dừng, không ghi gì |
 

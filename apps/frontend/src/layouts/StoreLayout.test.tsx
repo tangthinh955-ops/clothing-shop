@@ -26,12 +26,12 @@ function renderStore(path: string, user: User | null, categories: CatalogCategor
 describe('store layout of the real shop', () => {
   it('shows the shop name and seller details with no demo wording or customer sign-in link', async () => {
     renderStore('/shipping', null);
-    expect(await screen.findByRole('link', { name: 'RMG LABELS' })).toHaveAttribute('href', '/');
+    expect(await screen.findByRole('link', { name: 'ADECY' })).toHaveAttribute('href', '/');
     expect(document.body.textContent).not.toMatch(/demo|dữ liệu giả|giả định/i);
     const footer = screen.getByRole('contentinfo');
     expect(within(footer).getByText(/Cá nhân kinh doanh/)).toBeVisible();
     expect(within(footer).getByText(/TP\. Hồ Chí Minh/)).toBeVisible();
-    expect(within(footer).getByRole('link', { name: 'Instagram @rmglabels' })).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    expect(within(footer).getByRole('link', { name: 'Instagram @adecy.co' })).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
     const policies = within(footer).getByRole('navigation', { name: 'Thông tin cửa hàng' });
     for (const name of ['Liên hệ', 'Giao hàng', 'Đổi & trả', 'Thanh toán', 'Bảo mật']) {
       expect(within(policies).getByRole('link', { name })).toBeVisible();
@@ -53,7 +53,7 @@ describe('store layout of the real shop', () => {
   it('names the shop in the page title', async () => {
     renderStore('/shipping', null);
     await screen.findByRole('heading', { name: 'Giao hàng', level: 1 });
-    expect(document.title).toBe('Giao hàng | RMG Labels');
+    expect(document.title).toBe('Giao hàng | ADECY');
   });
 
   it('announces nationwide delivery and its fee above the header', async () => {

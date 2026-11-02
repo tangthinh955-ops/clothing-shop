@@ -68,7 +68,7 @@ test('share link serves crawler HTML and lands on the product page', async ({ pa
   expect(html.status()).toBe(200);
   expect(html.headers()['content-type']).toContain('text/html');
   const body = await html.text();
-  expect(body).toContain(`<title>${name} | RMG Labels</title>`);
+  expect(body).toContain(`<title>${name} | ADECY</title>`);
   expect(body).toMatch(new RegExp(`<meta property="og:image" content="https?://[^"]+/api/v1/media/${assetId}" />`));
   expect(body).toContain(`<meta http-equiv="refresh" content="0; url=/products/${slug}" />`);
 });

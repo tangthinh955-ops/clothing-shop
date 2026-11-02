@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../config/environment.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { NotificationStatus } from '../../generated/prisma/enums.js';
+import { SHOP_NAME } from '../../config/shop.js';
 import { MailService } from '../mail/mail.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -107,19 +108,19 @@ export class OrderNotificationsService {
       const pieces = order.items.reduce((sum, item) => sum + item.quantity, 0);
       const payment = order.method === 'COD' ? 'COD, chưa thu tiền' : 'Chuyển khoản';
       return {
-        subject: `Đơn mới ${order.code} | RMG Labels`,
+        subject: `Đơn mới ${order.code} | ${SHOP_NAME}`,
         text: `Đơn mới ${order.code}\n\nSố sản phẩm: ${pieces}\nTổng tiền: ${MONEY.format(Number(order.totalVnd))} ₫\nThanh toán: ${payment}\n\n${link}`,
       };
     }
     if (event === ORDER_CANCELLED_SHOP) {
       return {
-        subject: `Khách hủy đơn ${order.code} | RMG Labels`,
+        subject: `Khách hủy đơn ${order.code} | ${SHOP_NAME}`,
         text: `Khách đã hủy đơn ${order.code}. Hàng đã được trả lại kho; nếu đang chuẩn bị đơn này, hãy dừng lại.\n\nLý do hủy xem trên trang đơn.\n\n${link}`,
       };
     }
     if (event === ORDER_CANCEL_REQUESTED_SHOP) {
       return {
-        subject: `Khách xin hủy đơn ${order.code} | RMG Labels`,
+        subject: `Khách xin hủy đơn ${order.code} | ${SHOP_NAME}`,
         text: `Khách xin hủy đơn ${order.code} đang đóng gói. Đơn chưa bị hủy và hàng vẫn đang giữ.\n\nĐồng ý: bấm "Hủy đơn". Không đồng ý: nhắn khách rồi "Bàn giao". Lý do xem trên trang đơn.\n\n${link}`,
       };
     }

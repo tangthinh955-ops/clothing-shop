@@ -65,6 +65,7 @@ describe('OrderLookupPage', () => {
   it('sends one lookup and opens the fresh private link with the token only in the fragment', async () => {
     const spy = vi.spyOn(client, 'request').mockResolvedValue(lookupAnswer());
     renderPage();
+    expect(document.title).toBe('Tra cứu đơn hàng | ADECY');
     await fill();
     await userEvent.click(screen.getByRole('button', { name: 'Tra cứu' }));
     expect(await screen.findByText(`đã chuyển: /orders/${CODE}#t=${TOKEN}`)).toBeInTheDocument();

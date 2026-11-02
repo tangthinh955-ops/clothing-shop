@@ -9,13 +9,13 @@ export interface SellerInfo {
   email: string | null;
 }
 
-export const SHOP_NAME = 'RMG Labels';
+export const SHOP_NAME = 'ADECY';
 
 export const seller: SellerInfo = {
   name: SHOP_NAME,
   owner: 'Cá nhân kinh doanh',
   city: 'TP. Hồ Chí Minh',
-  instagram: { handle: 'rmglabels', url: 'https://www.instagram.com/rmglabels/' },
+  instagram: { handle: 'adecy.co', url: 'https://www.instagram.com/adecy.co/' },
   phone: null,
   email: null,
 };

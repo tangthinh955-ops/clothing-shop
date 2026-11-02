@@ -43,6 +43,7 @@ async function findMailToken(email: string, kind: 'verify-email' | 'reset-passwo
   for (const filename of filenames.reverse()) {
     const mail = record(JSON.parse(await readFile(path.join(mailbox, filename), 'utf8')) as unknown);
     if (mail['to'] !== email || typeof mail['text'] !== 'string') continue;
+    expect(mail['text']).toContain('cho ADECY:');
     const url = mail['text'].split(/\s/).find((word) => word.startsWith(`${origin}/${kind}#`));
     if (url) {
       const token = new URLSearchParams(new URL(url).hash.slice(1)).get('token');

@@ -205,7 +205,7 @@ Test riêng: integration `test/order-lookup.integration.spec.ts` (trong `./tools
 | Nhập lý do, bấm "Hủy đơn" | Trạng thái "Đã hủy", lý do hiện trong lịch sử đơn, hết nút hủy; tải lại trang vẫn đúng |
 | Xem lại trang Kho | Đang giữ giảm 2, Tồn thực có không đổi; lịch sử kho ghi "Khách hủy đơn <mã>", không chép lý do |
 | Mở đơn trên `/admin/orders` | Thấy "Lý do hủy: …", người thao tác "Khách đặt hàng", hết nút thao tác |
-| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách hủy đơn <mã> \| RMG Labels", có link đơn, không có lý do hay dữ liệu khách |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách hủy đơn <mã> \| ADECY", có link đơn, không có lý do hay dữ liệu khách |
 | Đơn khác đã xác nhận: admin bấm đóng gói, rồi mở lại link của khách | Hết nút hủy, có hướng dẫn nhắn shop qua Instagram |
 | Mở link của khách trước, admin đóng gói ở tab khác, rồi khách mới bấm hủy | Khách thấy thông báo không hủy được và nút "Tải lại đơn"; đơn vẫn đang đóng gói |
 | DevTools → Offline trên trang của khách, bấm hủy | Báo lỗi kết nối, ô lý do bị khóa, có "Gửi lại"; bật mạng rồi bấm thì kho nhả đúng một lần |
@@ -223,7 +223,7 @@ Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu h�
 | Bấm "Xin hủy đơn", nhập lý do, gửi | Hiện "Đã gửi yêu cầu hủy lúc …" kèm lý do; hết nút xin hủy; tải lại trang vẫn đúng; trạng thái vẫn "Đang đóng gói" |
 | Xem trang Kho | Tồn thực có và Đang giữ không đổi |
 | Mở `/admin/orders` | Đơn có nhãn "Khách xin hủy" |
-| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách xin hủy đơn <mã> \| RMG Labels", có link đơn, không có lý do |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Khách xin hủy đơn <mã> \| ADECY", có link đơn, không có lý do |
 | Mở đơn đó trên admin | Khung cảnh báo có lý do, hướng dẫn đồng ý hoặc không đồng ý |
 | Bấm "Bàn giao" | Hộp thoại cảnh báo "không đồng ý yêu cầu hủy"; bấm "Để sau" |
 | Bấm "Hủy đơn", nhập lý do, gửi | Đơn "Đã hủy", kho nhả đúng lượng; mục "Yêu cầu hủy của khách" ghi "Đã đồng ý"; trang của khách thấy "Đã hủy" |
@@ -409,7 +409,7 @@ Ngày 02/11/2026 tách làm hai phần: M4.10.1.1 thư báo shop (đã triển k
 | Thao tác | Kết quả mong đợi |
 |---|---|
 | Có một tài khoản ADMIN; đặt đơn COD ở cửa sổ ẩn danh, có nhập ghi chú và email khách | Trang xác nhận hiện ngay, không chờ thư |
-| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Đơn mới <mã> \| RMG Labels"; có số sản phẩm, tổng tiền, "COD, chưa thu tiền" và link `/admin/orders/<id>`; không có tên, SĐT, địa chỉ, email khách, ghi chú |
+| Mở `.local/mailbox/mail-*.json` mới nhất có `to` là email admin | Tiêu đề "Đơn mới <mã> \| ADECY"; có số sản phẩm, tổng tiền, "COD, chưa thu tiền" và link `/admin/orders/<id>`; không có tên, SĐT, địa chỉ, email khách, ghi chú |
 | Mở link đó khi đã đăng nhập admin | Đúng trang chi tiết đơn |
 | Mở link đó ở cửa sổ chưa đăng nhập | Không xem được đơn, bị yêu cầu đăng nhập |
 | Đếm thư có `to` là email khách trong mailbox | Không có thư đơn hàng nào cho khách ở phần này |

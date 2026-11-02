@@ -36,6 +36,7 @@ describe('admin settings page', () => {
     });
     renderPage();
     const fee = await screen.findByLabelText('Phí giao hàng');
+    expect(document.title).toBe('Cài đặt | Quản trị | ADECY');
     await userEvent.clear(fee);
     await userEvent.type(fee, '51000');
     await userEvent.click(screen.getByRole('button', { name: 'Lưu cài đặt' }));

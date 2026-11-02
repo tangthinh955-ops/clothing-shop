@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { APP_CONFIG, type AppConfig } from '../../config/environment.js';
+import { SHOP_NAME } from '../../config/shop.js';
 
 @Injectable()
 export class MailService {
@@ -12,7 +13,7 @@ export class MailService {
   async sendAuth(to: string, kind: 'verify-email' | 'reset-password', token: string): Promise<void> {
     const title = kind === 'verify-email' ? 'Xác minh email' : 'Đặt lại mật khẩu';
     // Fragment keeps the bearer token out of frontend HTTP access logs/referrers.
-    const text = `${title} cho Clothing Shop:\n${this.config.appOrigin}/${kind}#token=${encodeURIComponent(token)}\n\nNếu bạn không yêu cầu, hãy bỏ qua thư này.`;
+    const text = `${title} cho ${SHOP_NAME}:\n${this.config.appOrigin}/${kind}#token=${encodeURIComponent(token)}\n\nNếu bạn không yêu cầu, hãy bỏ qua thư này.`;
     try {
       await this.deliver(to, title, text);
     } catch {

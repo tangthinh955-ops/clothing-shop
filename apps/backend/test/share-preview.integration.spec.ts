@@ -102,7 +102,7 @@ describe('M7.1.1 share preview', () => {
   it('serves crawler HTML with absolute og:image and a redirect to the SPA page', async () => {
     const result = await share(namedSlug).expect(200);
     expect(result.headers['content-type']).toContain('text/html');
-    expect(result.text).toContain(`<title>Áo share có ảnh | RMG Labels</title>`);
+    expect(result.text).toContain(`<title>Áo share có ảnh | ADECY</title>`);
     expect(result.text).toContain(`<meta property="og:image" content="${origin}/api/v1/media/${assetIds[0]}" />`);
     expect(result.text).toContain('<meta property="og:type" content="product" />');
     expect(result.text).toContain(`<meta property="og:url" content="${origin}/api/v1/share/products/${namedSlug}" />`);

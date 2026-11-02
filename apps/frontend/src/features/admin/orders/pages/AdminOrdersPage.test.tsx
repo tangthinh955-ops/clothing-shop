@@ -48,7 +48,7 @@ describe('admin order list', () => {
     expect(within(row).getByText(/3 sản phẩm/)).toBeVisible();
     expect(screen.getByText('1 đơn hàng')).toHaveAttribute('role', 'status');
     expect(request).toHaveBeenCalledWith('/admin/orders?page=1&pageSize=20');
-    expect(document.title).toBe('Đơn hàng | Quản trị | RMG Labels');
+    expect(document.title).toBe('Đơn hàng | Quản trị | ADECY');
   });
 
   it('marks only the order whose customer is asking to cancel (M4.4.4)', async () => {

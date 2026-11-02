@@ -316,7 +316,7 @@ describe('telling the shop about a request (M4.4.4)', () => {
     expect(rows[0]).toMatchObject({ status: 'SENT', attempts: 1 });
     const [to, subject, text] = notice.mock.calls[0]!;
     expect(to).toBe(adminEmail);
-    expect(subject).toContain(`Khách xin hủy đơn ${order.code}`);
+    expect(subject).toBe(`Khách xin hủy đơn ${order.code} | ADECY`);
     expect(text).toContain(`${origin}/admin/orders/${order.id}`);
     expect(`${subject}\n${text}`).not.toContain(REASON);
     expect(`${subject}\n${text}`).not.toContain('0987654321');

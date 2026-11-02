@@ -4,7 +4,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 02/11/2026 — M6.4: đổi domain sang `adecy.duckdns.org`
 
-**Phạm vi đã duyệt:** người dùng yêu cầu đổi domain và xóa hẳn domain cũ, không giữ chuyển hướng, vì web chưa hoạt động với bên ngoài. Nhánh `feat/m6.4-domain-adecy` từ `main` `7d5c857`. **Đang thực hiện: domain mới đã chạy trên VPS; chưa đổi `APP_ORIGIN`, chưa deploy, chưa xóa domain cũ.**
+**Phạm vi đã duyệt:** người dùng yêu cầu đổi domain và xóa hẳn domain cũ, không giữ chuyển hướng, vì web chưa hoạt động với bên ngoài. Nhánh `feat/m6.4-domain-adecy` từ `main` `7d5c857`. **Đã hoàn tất trên production, agent đã kiểm tra công khai; người dùng chưa nghiệm thu bằng tài khoản admin và đơn thật; chưa xóa `rmglabels` trên DuckDNS.**
 
 | File | Thay đổi |
 |---|---|
@@ -15,7 +15,32 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 **Kiểm tra:** `nslookup` cho thấy domain mới trỏ về `160.191.244.11`, cùng VPS với domain cũ; `bash -n deploy/deploy-release.sh` đạt. Pha 1 trên VPS đạt: sao lưu cấu hình, cấp chứng chỉ (hết hạn 31/01/2027), virtual host tạm; `health/ready` và `/shop` của domain mới 200, HTTP 301 sang HTTPS, domain cũ vẫn 200.
 
-**Vướng mắc:** lệnh SSH đọc cấu hình VPS của agent bị classifier chặn ([Production Reads]) khi chưa có lệnh cụ thể từ người dùng; pha 1 được chạy sau khi người dùng gửi đúng lệnh đó. Hook gia hạn cũ chỉ reload nginx cho `rmglabels.duckdns.org`, nên pha xóa domain cũ phải thay hook, nếu không nginx sẽ không nhận chứng chỉ gia hạn của domain mới.
+- **Deploy:** PR #33 do `kangha23` merge lúc 06:40:50Z, merge commit `1376515`. Đổi `APP_ORIGIN` trên VPS, rồi chạy [run 41402305925](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41402305925), release `ci-20261102-0649-1376515`, thành công, không có migration mới.
+- **Xóa domain cũ:** gỡ virtual host, xóa chứng chỉ `rmglabels.duckdns.org`, thay hook gia hạn bằng `rmg-adecy-reload-nginx.sh`, đã chạy thử hook; `certbot renew --dry-run` cho domain mới đạt.
+- **Kiểm tra công khai sau cùng (chỉ request đọc hoặc bị từ chối):** chứng chỉ đúng domain mới; `health/ready` ok; `/`, `/shop`, `/checkout` 200; 5 sản phẩm. Trước bước xóa: `/admin/orders` 200, API admin không đăng nhập 401, cookie `__Host-shop.sid` đủ thuộc tính; thao tác ghi từ domain mới qua CSRF (trả 400 vì body rỗng), từ domain cũ bị 403. Domain cũ giờ trả 404 trên HTTP và lỗi chứng chỉ trên HTTPS, vì rơi vào site mặc định của VPS.
+- **Đối chiếu:** nginx không còn nhắc domain cũ. `dreamtown239.duckdns.org` trả NXDOMAIN từ 8.8.8.8 và 1.1.1.1, nhưng gọi qua IP VPS vẫn 200; các bước này không đổi DNS, chưa rõ nguyên nhân và chưa rõ có từ trước không. Không kiểm tra các site khác.
+
+**Vướng mắc:** lệnh SSH của agent bị classifier chặn khi chưa có lệnh cụ thể từ người dùng ([Production Reads], [Remote Shell Writes]), lệnh deploy cũng vậy ([Production Deploy]); mỗi bước được chạy sau khi người dùng gửi đúng lệnh đó. Hook gia hạn cũ chỉ reload nginx cho `rmglabels.duckdns.org`, nên pha xóa domain cũ phải thay hook, nếu không nginx sẽ không nhận chứng chỉ gia hạn của domain mới.
+
+**Còn lại:** người dùng xóa `rmglabels` trên DuckDNS, đổi link Instagram, thử admin và đặt đơn trên domain mới. Bản sao lưu trên VPS (`/root/rmg-domain-backup-20261102-063912` chứa `backend.env` có secret, và `/root/rmg-domain-backup-20261102-065114-old-site`) cần xóa sau khi người dùng xác nhận domain mới ổn.
+
+## Ngày 02/11/2026 — M6.5: đổi tên shop thành ADECY
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("oke"). Nhánh `feat/m6.5-rename-adecy` từ `main` `1376515`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng xem thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/frontend/src/shared/shop.ts`, `apps/frontend/index.html` | Tên `ADECY`, Instagram `@adecy.co`, link `https://www.instagram.com/adecy.co/`; thẻ chia sẻ |
+| `CheckoutPage.tsx`, `OrderLookupPage.tsx`, `OrderDetailPage.tsx`, `SettingsPage.tsx` | Bỏ tiêu đề tab "Clothing Shop", dùng `pageTitle` |
+| `apps/backend/src/config/shop.ts` (mới), `products.service.ts`, `order-notifications.service.ts`, `mail.service.ts` | Một hằng tên shop cho email và trang xem trước khi chia sẻ |
+| Test frontend, `share-preview`, `auth`, `order-notifications`, `order-cancellation-requests` | Kỳ vọng theo tên và link mới; thêm kiểm tra tiêu đề tab và tiêu đề email; đã quan sát fail trước khi đổi code |
+| `docs/local-trial-m3.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Hướng dẫn thử và mốc M6.5 |
+
+**Giữ nguyên:** tên kỹ thuật trên VPS (`rmg-shop`, `rmglabels.conf`), tiền tố SKU `RMG`, Swagger, log khởi động và `.env.example` vì khách không thấy; các mục lịch sử trong tài liệu.
+
+**Kiểm tra (local, DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` backend 74/74, frontend 520/520; `npm run test:integration` 320/320; `npm run test:e2e:implemented` 56/56. Trước khi đổi code đã thấy 13 ca UI và 8 ca integration fail đúng vì tên cũ. Không tìm thấy tên cũ trong phần khách và admin nhìn thấy. Chưa xem giao diện bằng mắt, chưa chạy CI; không kiểm tra được dữ liệu sản phẩm trên production.
+
+**Dừng chờ người dùng xem thử.**
 
 ## Ngày 02/11/2026 — M4.4.4: khách xin hủy khi đơn đang đóng gói
 
