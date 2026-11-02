@@ -8,6 +8,7 @@ import { useCart } from '../CartProvider';
 import { useCartResolve } from '../hooks/useCartResolve';
 import type { CartAvailableResolvedItem, CartResolvedItem } from '../api/cart.api';
 import type { CartLine } from '../cart-store';
+import { pageTitle } from '../../../shared/shop';
 
 /** The committed quantity of one row: local text while typing, applied only once it parses. */
 function QuantityEditor({ line, name, soldOut }: {
@@ -61,7 +62,7 @@ function CartRow({ line, item, verified }: { line: CartLine; item: CartResolvedI
         : <Typography sx={{ fontWeight: 700, color: 'text.disabled' }}>{verified && item ? 'Sản phẩm không truy cập được' : 'Chưa có thông tin sản phẩm'}</Typography>}
       {!available && <Typography>{line.quantity} chiếc</Typography>}
       {verified && available && <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        {available.color} · size {available.size} · {available.sku}
+        {available.color} · size {available.size}
       </Typography>}
       {verified && available && <Typography>{formatMoney(available.price)} / chiếc</Typography>}
       {status && <Typography variant="caption" role="status" sx={{ fontWeight: 700, color: 'error.dark' }}>
@@ -91,6 +92,7 @@ export function CartPage() {
 
   if (cart.items.length === 0) {
     return <Stack spacing={2} sx={{ py: 6, textAlign: 'center' }}>
+      <title>{pageTitle('Giỏ hàng')}</title>
       {cart.storageWarning && <Alert severity="warning">{cart.storageWarning === 'corrupt'
         ? 'Giỏ hàng đã lưu trên thiết bị không đọc được nên đã được đặt lại trống.'
         : 'Thiết bị đang chặn lưu trữ nên giỏ chỉ còn trong tab mở này, sẽ mất khi đóng trang.'}</Alert>}
@@ -108,6 +110,7 @@ export function CartPage() {
   }, 0);
 
   return <Box sx={{ py: { xs: 2, md: 4 }, display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 820 }}>
+    <title>{pageTitle('Giỏ hàng')}</title>
     <Typography variant="h4" component="h1">Giỏ hàng của bạn</Typography>
     {cart.storageWarning && <Alert severity={cart.storageWarning === 'corrupt' ? 'warning' : 'info'}>
       {cart.storageWarning === 'corrupt'

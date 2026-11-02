@@ -31,7 +31,7 @@ export function AccountPage({ user }: { user: User }) {
     <Paper square elevation={0} sx={{ p: { xs: 3, md: 5 } }}><Stack spacing={3}>
       {error && <Alert severity="error">{error}</Alert>}{message && <Alert severity="success">{message}</Alert>}
       <Box><Typography variant="overline">ĐỊA CHỈ EMAIL</Typography><Typography>{user.email}</Typography></Box>
-      <Alert severity={user.emailVerified ? 'success' : 'info'}>{user.emailVerified ? 'Email đã được xác minh.' : 'Hãy xác minh email trước khi đặt hàng.'}</Alert>
+      <Alert severity={user.emailVerified ? 'success' : 'info'}>{user.emailVerified ? 'Email đã được xác minh.' : 'Hãy xác minh email để bảo vệ tài khoản.'}</Alert>
       {!user.emailVerified && <Button disabled={pending} onClick={() => { void action(async () => setMessage((await authApi.resend(user.email)).message)); }}>Gửi lại thư xác minh</Button>}
       <Box component="form" onSubmit={(event) => { void update(event); }}><Stack spacing={2}>
         <TextField key={user.name} name="name" label="Họ và tên" defaultValue={user.name} autoComplete="name"

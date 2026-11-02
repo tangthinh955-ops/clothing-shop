@@ -56,7 +56,7 @@ Chạy `dev:backend` và `dev:frontend` như thường lệ, mở `http://127.0.
 | Bấm một danh mục trên header | Sang `/shop?categoryId=…`, danh sách đã lọc, gạch chân chuyển sang danh mục đó |
 | Cuộn xuống | Dải đen trôi đi, header dính trên cùng |
 | Bấm kính lúp, gõ từ khóa rồi Enter (thử ở `/shipping`) | Sang `/shop?q=…` với kết quả tìm; ô tìm kiếm đóng. Esc hoặc nút X cũng đóng |
-| Thu về 390px, bấm ☰ | Menu trượt từ trái: Mua sắm (Tất cả sản phẩm + danh mục), Hỗ trợ khách hàng (Bảng size, Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật). Bấm một link → sang trang đó và menu đóng; Esc hoặc X cũng đóng |
+| Thu về 390px, bấm ☰ | Menu trượt từ trái: Mua sắm (Tất cả sản phẩm + danh mục), Hỗ trợ khách hàng (Hướng dẫn chọn size, Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật). Bấm một link → sang trang đó và menu đóng; Esc hoặc X cũng đóng |
 | Kéo xuống chân trang | Nền xám nhạt, 3 cột (1 cột trên điện thoại): người bán + Instagram, Hỗ trợ khách hàng, Mua sắm |
 | Đăng nhập admin, mở `/admin/products` | Header có thêm "Quản trị"; các khung trang admin có viền mảnh, thao tác như cũ |
 | Trang bất kỳ ở 390px | Không có thanh cuộn ngang |
@@ -260,7 +260,7 @@ Cửa hàng hiển thị tên **ADECY**, thông tin người bán (cá nhân kin
 |---|---|
 | Mở `/shop` | Đầu trang "RMG LABELS", không còn banner "BẢN DEMO · DỮ LIỆU GIẢ"; header chỉ có Bộ sưu tập, Bảng size (admin đã đăng nhập thấy thêm Quản trị) |
 | Kéo xuống chân trang | "Cá nhân kinh doanh · TP. Hồ Chí Minh", link Instagram @adecy.co mở tab mới; link Liên hệ, Giao hàng, Đổi & trả, Thanh toán, Bảo mật |
-| Mở `/shipping`, `/returns-policy`, `/payment`, `/privacy`, `/contact` | Nội dung thật: phí 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; COD/VietQR, hạn 2 giờ; dữ liệu thu và quyền của khách; thông tin người bán |
+| Mở `/shipping`, `/returns-policy`, `/payment`, `/privacy`, `/contact` | Nội dung thật: phí 30.000đ, TP.HCM 1–2 ngày/tỉnh 2–5 ngày, kiểm hàng COD; đổi trả 7 ngày, còn tag, khách trả phí đổi theo nhu cầu, shop chịu phí hàng lỗi; chỉ COD, được kiểm hàng trước khi trả tiền (cập nhật R1: VietQR chưa có nên không còn ghi); dữ liệu thu và quyền của khách; thông tin người bán |
 | Tab trình duyệt | Tiêu đề dạng "Giao hàng \| ADECY" |
 | Mở `/login` | Không còn "Chưa có tài khoản? Đăng ký"; admin vẫn đăng nhập ở đây |
 | Chạy `seed:demo` với `NODE_ENV=production` | Báo "seed:demo chỉ dùng trên máy local…, không chạy trên production." và dừng, không ghi gì |
