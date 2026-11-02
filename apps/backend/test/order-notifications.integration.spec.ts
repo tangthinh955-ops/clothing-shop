@@ -4,10 +4,11 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { hash } from 'argon2';
 import supertest, { type Agent } from 'supertest';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApplication } from '../dist/application.js';
 import { readEnvironment } from '../dist/config/environment.js';
 import { MailService } from '../dist/modules/mail/mail.service.js';
+import { OrderNotificationsService } from '../dist/modules/orders/order-notifications.service.js';
 import { PrismaService } from '../dist/modules/prisma/prisma.service.js';
 
 // M4.10.1.1 shop notice: a new order records one delivery per active admin inside its transaction and
@@ -324,5 +325,178 @@ describe('shop notice for a new order (M4.10.1.1)', () => {
     const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
     expect(logged).toContain(code);
     for (const secret of [adminA, adminB, RECIPIENT, order.body.contact.phone, CUSTOMER_EMAIL]) expect(logged).not.toContain(secret);
+  });
+});
+
+describe('retrying shop notices (M4.10.2.1)', () => {
+  const MINUTE = 60000;
+  const after = (from: Date, ms: number) => new Date(from.getTime() + ms);
+  const notices = () => app.get(OrderNotificationsService);
+
+  // Only this block's rows stay due, whatever earlier tests left behind in this run-owned database.
+  beforeEach(async () => {
+    await db.notificationDelivery.deleteMany({});
+  });
+
+  /** A real order whose first attempt failed for both admins, as a provider outage would leave it. */
+  async function failedOrder() {
+    const send = vi.spyOn(mail, 'sendOrderNotice').mockResolvedValue(false);
+    const order = await prepareOrder();
+    const response = await place(order);
+    expect(response.status).toBe(201);
+    await settled(codeOf(response));
+    send.mockReset();
+    return { code: codeOf(response), variantId: order.variantId, send };
+  }
+
+  it('schedules the next attempt a minute after the first failure', async () => {
+    const before = Date.now();
+    const { code } = await failedOrder();
+    for (const row of await deliveriesOf(code)) {
+      expect(row).toMatchObject({ status: 'FAILED', attempts: 1 });
+      expect(row.nextAttemptAt!.getTime()).toBeGreaterThanOrEqual(before + MINUTE);
+      expect(row.nextAttemptAt!.getTime()).toBeLessThanOrEqual(Date.now() + MINUTE);
+    }
+  });
+
+  it('leaves a failed delivery alone until it is due', async () => {
+    const { code, send } = await failedOrder();
+    await notices().processDue(new Date());
+    expect(send).not.toHaveBeenCalled();
+    for (const row of await deliveriesOf(code)) expect(row).toMatchObject({ status: 'FAILED', attempts: 1 });
+  });
+
+  it('resends on the same delivery once due, without creating another one', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    const ids = (await deliveriesOf(code)).map((row) => row.id);
+    await notices().processDue(after(new Date(), 2 * MINUTE));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0]![1]).toContain(code);
+    const rows = await deliveriesOf(code);
+    expect(rows.map((row) => row.id)).toEqual(ids);
+    for (const row of rows) {
+      expect(row).toMatchObject({ status: 'SENT', attempts: 2, nextAttemptAt: null });
+      expect(row.sentAt).toBeInstanceOf(Date);
+    }
+  });
+
+  it('follows the schedule, then gives up after five attempts and logs only the code', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(false);
+    let clock = new Date();
+    for (const [attempt, wait] of [[2, 5], [3, 30], [4, 120]] as const) {
+      clock = after(clock, 121 * MINUTE);
+      await notices().processDue(clock);
+      for (const row of await deliveriesOf(code)) {
+        expect(row).toMatchObject({ status: 'FAILED', attempts: attempt });
+        expect(row.nextAttemptAt!.getTime()).toBe(clock.getTime() + wait * MINUTE);
+      }
+    }
+    clock = after(clock, 121 * MINUTE);
+    await notices().processDue(clock);
+    for (const row of await deliveriesOf(code)) expect(row).toMatchObject({ status: 'FAILED', attempts: 5, nextAttemptAt: null });
+    send.mockClear();
+    await notices().processDue(after(clock, 1000 * MINUTE));
+    expect(send).not.toHaveBeenCalled();
+    const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(logged).toContain(`ORDER_NOTICE_GAVE_UP ${code}`);
+    for (const secret of [adminA, adminB, RECIPIENT, CUSTOMER_EMAIL]) expect(logged).not.toContain(secret);
+  });
+
+  it('picks up a delivery left behind by a restart, but not one that is merely recent', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    const [waiting, sending] = await deliveriesOf(code);
+    await db.notificationDelivery.update({ where: { id: waiting!.id }, data: { status: 'PENDING', attempts: 0, nextAttemptAt: null } });
+    await db.notificationDelivery.update({ where: { id: sending!.id }, data: { status: 'SENDING', nextAttemptAt: null } });
+    const now = new Date();
+    await notices().processDue(now);
+    expect(send).not.toHaveBeenCalled();
+    await notices().processDue(after(now, 10 * MINUTE));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: waiting!.id } })).toMatchObject({ status: 'SENT', attempts: 1 });
+    expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: sending!.id } })).toMatchObject({ status: 'SENT', attempts: 2 });
+  });
+
+  it('stops a delivery that crashed on its last attempt instead of sending a sixth', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    const [row] = await deliveriesOf(code);
+    await db.notificationDelivery.update({ where: { id: row!.id }, data: { status: 'SENDING', attempts: 5, nextAttemptAt: null } });
+    await db.notificationDelivery.deleteMany({ where: { orderId: row!.orderId, id: { not: row!.id } } });
+    await notices().processDue(after(new Date(), 10 * MINUTE));
+    expect(send).not.toHaveBeenCalled();
+    expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: row!.id } })).toMatchObject({ status: 'FAILED', attempts: 5, nextAttemptAt: null });
+  });
+
+  it('sends each delivery once when two runs overlap', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    const due = after(new Date(), 2 * MINUTE);
+    await Promise.all([notices().processDue(due), notices().processDue(due)]);
+    expect(send).toHaveBeenCalledTimes(2);
+    for (const row of await deliveriesOf(code)) expect(row).toMatchObject({ status: 'SENT', attempts: 2 });
+  });
+
+  it('changes nothing about the order or the stock', async () => {
+    const { code, variantId, send } = await failedOrder();
+    send.mockResolvedValue(false);
+    const order = () => db.order.findUniqueOrThrow({ where: { code }, select: { status: true, version: true, updatedAt: true } });
+    const stock = () => db.inventory.findUniqueOrThrow({ where: { variantId } });
+    const [orderBefore, stockBefore, historyBefore, movementsBefore] = [await order(), await stock(),
+      await db.orderStatusHistory.count(), await db.inventoryMovement.count()];
+    await notices().processDue(after(new Date(), 2 * MINUTE));
+    expect(await order()).toEqual(orderBefore);
+    expect(await stock()).toEqual(stockBefore);
+    expect(await db.orderStatusHistory.count()).toBe(historyBefore);
+    expect(await db.inventoryMovement.count()).toBe(movementsBefore);
+  });
+
+  it('keeps going when one delivery cannot be sent at all', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    const [first, second] = await deliveriesOf(code);
+    await db.notificationDelivery.update({ where: { id: first!.id }, data: { event: 'order.unknown.event' } });
+    await notices().processDue(after(new Date(), 2 * MINUTE));
+    expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: first!.id } })).toMatchObject({ status: 'FAILED', nextAttemptAt: null });
+    expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: second!.id } })).toMatchObject({ status: 'SENT' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a throwing provider like a refusal and still handles the next delivery', async () => {
+    const { code, send } = await failedOrder();
+    send.mockRejectedValueOnce(new Error('provider down')).mockResolvedValue(true);
+    await notices().processDue(after(new Date(), 2 * MINUTE));
+    expect(send).toHaveBeenCalledTimes(2);
+    const statuses = (await deliveriesOf(code)).map((row) => row.status).sort();
+    expect(statuses).toEqual(['FAILED', 'SENT']);
+  });
+
+  it('does not send to an admin who was disabled after the order', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(true);
+    await db.user.update({ where: { email: adminA }, data: { disabledAt: new Date() } });
+    try {
+      await notices().processDue(after(new Date(), 2 * MINUTE));
+      expect(send.mock.calls.map(([to]) => to)).toEqual([adminB]);
+      const rows = await deliveriesOf(code);
+      expect(rows.find((row) => row.recipient === adminA)).toMatchObject({ status: 'FAILED', nextAttemptAt: null });
+      expect(rows.find((row) => row.recipient === adminB)).toMatchObject({ status: 'SENT' });
+    } finally {
+      await db.user.update({ where: { email: adminA }, data: { disabledAt: null } });
+    }
+  });
+
+  it('retries a cancellation notice with its own wording', async () => {
+    const { code, send } = await failedOrder();
+    send.mockResolvedValue(false);
+    const [row] = await deliveriesOf(code);
+    await db.notificationDelivery.deleteMany({ where: { orderId: row!.orderId, id: { not: row!.id } } });
+    await db.notificationDelivery.update({ where: { id: row!.id }, data: { event: 'order.cancelled.shop' } });
+    await notices().processDue(after(new Date(), 2 * MINUTE));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]![1]).toContain('Khách hủy đơn');
   });
 });

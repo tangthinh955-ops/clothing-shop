@@ -403,6 +403,17 @@ Ngày 02/11/2026 tách làm hai phần: M4.10.1.1 thư báo shop (đã triển k
 
 Đổi trạng thái hợp lệ → delivery đúng event. Test delivery thất bại/retry/restart với provider giả hoặc preview: cùng event không tạo thêm order/stock/receipt, retry có giới hạn; không sửa mail auth hiện có để biến mọi lỗi thành thành công giả. Không dùng email khách thật khi thử.
 
+Ngày 02/11/2026 tách làm hai phần: M4.10.2.1 tự gửi lại thư báo shop (đã triển khai, chờ người dùng thử) và M4.10.2.2 thư trạng thái cho khách (chờ có domain gửi thư).
+
+**M4.10.2.1.** Cần chạy `./tools/npm.ps1 run db:migrate` trước. Phần này không có giao diện; có thể thử mất mail trên local như sau, chỉ với DB local.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Tắt backend ngay sau khi đặt đơn, rồi chạy lại (nếu kịp) | Thư đơn mới vẫn có trong `.local/mailbox` sau khi backend chạy lại khoảng 1 phút |
+| Đặt `MAIL_PREVIEW_DIR` trong `apps/backend/.env` thành đường dẫn tới một file có sẵn để việc ghi thư lỗi, chạy lại backend, đặt đơn | Đặt đơn vẫn thành công; log có `ORDER_NOTICE_DELIVERY_FAILED <mã đơn>`, không có email |
+| Trả `MAIL_PREVIEW_DIR` về như cũ, chạy lại backend, chờ tới 1–2 phút | Thư đơn đó xuất hiện trong `.local/mailbox`, chỉ một thư cho mỗi admin |
+| Để lỗi tiếp qua đủ 5 lần | Log có `ORDER_NOTICE_GAVE_UP <mã đơn>`; không gửi thêm (toàn bộ lịch này mất khoảng 2 giờ 36 phút, integration test đã kiểm tra bằng đồng hồ giả) |
+
 ### M4.11.1 — Nghiệm thu toàn luồng
 
 Chạy các kịch bản độc lập sau trên local/`_test`:

@@ -342,11 +342,14 @@ model NotificationDelivery {
   recipient String @db.VarChar(254)
   status NotificationStatus @default(PENDING)
   attempts Int @default(0)
+  // Set while a failed delivery waits for its next attempt (M4.10.2.1); null once it is finished or given up.
+  nextAttemptAt DateTime? @db.Timestamptz(6)
   sentAt DateTime? @db.Timestamptz(6)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
   @@unique([event, orderId, recipient])
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
   @@map("notification_deliveries")
 }
 
