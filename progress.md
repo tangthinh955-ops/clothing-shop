@@ -26,7 +26,7 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 ## Ngày 02/11/2026 — M6.5: đổi tên shop thành ADECY
 
-**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("oke"). Nhánh `feat/m6.5-rename-adecy` từ `main` `1376515`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng xem thử.**
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("oke"). Nhánh `feat/m6.5-rename-adecy` từ `main` `1376515`. **Đã deploy production, agent đã kiểm tra công khai; người dùng chưa nghiệm thu.**
 
 | File | Thay đổi |
 |---|---|
@@ -38,7 +38,11 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 
 **Giữ nguyên:** tên kỹ thuật trên VPS (`rmg-shop`, `rmglabels.conf`), tiền tố SKU `RMG`, Swagger, log khởi động và `.env.example` vì khách không thấy; các mục lịch sử trong tài liệu.
 
-**Kiểm tra (local, DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` backend 74/74, frontend 520/520; `npm run test:integration` 320/320; `npm run test:e2e:implemented` 56/56. Trước khi đổi code đã thấy 13 ca UI và 8 ca integration fail đúng vì tên cũ. Không tìm thấy tên cũ trong phần khách và admin nhìn thấy. Chưa xem giao diện bằng mắt, chưa chạy CI; không kiểm tra được dữ liệu sản phẩm trên production.
+**Kiểm tra (local, DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` backend 74/74, frontend 520/520; `npm run test:integration` 320/320; `npm run test:e2e:implemented` 56/56. Trước khi đổi code đã thấy 13 ca UI và 8 ca integration fail đúng vì tên cũ. Không tìm thấy tên cũ trong phần khách và admin nhìn thấy. Chưa xem giao diện bằng mắt.
+
+**Commit và deploy:** PR #34 (`929a1ff`), CI xanh, do `kangha23` merge lúc 07:08:42Z, merge commit `d0e8934`, CI xanh. Người dùng yêu cầu deploy: [run 41405139539](https://github.com/tangthinh955-ops/clothing-shop/actions/runs/41405139539), release `ci-20261102-0715-d0e8934`, thành công, không có migration mới.
+
+**Kiểm tra công khai sau deploy (agent, chỉ request đọc):** `health/ready` ok; `/`, `/shop`, `/checkout`, một trang chính sách 200; HTML có `<title>`, `og:title`, `og:site_name` là ADECY; bundle có link `instagram.com/adecy.co`, không còn `RMG Labels`, `instagram.com/rmglabels` hay `Clothing Shop`; trang xem trước khi chia sẻ có tiêu đề `| ADECY`; 5 sản phẩm, danh sách API không có chữ `RMG Labels`; API admin không đăng nhập 401. **Chưa kiểm tra:** chi tiết và ảnh sản phẩm có ghi tên cũ không, thư thật qua Resend, tài khoản admin thật.
 
 **Dừng chờ người dùng xem thử.**
 
