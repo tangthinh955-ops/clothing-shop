@@ -2,6 +2,19 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M7.2: nhập 7 mẫu ADECY vào cửa hàng
+
+**Phạm vi đã duyệt:** người dùng chọn đưa ảnh lookbook vào `/shop` thành sản phẩm, yêu cầu agent tự đặt dữ liệu giả và duyệt bảng dữ liệu ("duyệt"). **Đã nhập production, agent đã kiểm tra công khai; người dùng chưa nghiệm thu.** Không sửa code; dữ liệu nguồn ở `data/import-adecy` (ngoài Git) và `/srv/rmg-shop/import-data-adecy` trên VPS.
+
+**Dữ liệu trên production là giả:** giá 390.000–890.000đ, size S, M, L, XL, mỗi size tồn 10 đều do agent đặt, không phải số thật. Khách đặt được theo số liệu này cho tới khi người dùng sửa trong admin. SKU mới vẫn có tiền tố `RMG`. 5 sản phẩm `RMG…` giữ nguyên theo mặc định đã nêu.
+
+**Kiểm tra:**
+- **Local (`clothing_local`):** nhập 7 mẫu, 0 dòng lỗi; đã xem ảnh chụp trang chủ, `/shop` và chi tiết trên desktop, mobile: không có ảnh hỏng, không tràn ngang.
+- **Production (chỉ request đọc sau khi nhập):** 12 sản phẩm, đúng giá và danh mục; mỗi size của 7 mẫu mới báo tồn 10; 28 ảnh tải được, 0 lỗi; `health/ready` 200. Đã xem ảnh `/shop` trên desktop; các trang còn lại chỉ kiểm tra bằng script, không có ảnh hỏng hay tràn ngang.
+- **Chưa kiểm tra:** đặt đơn với mẫu mới, trang admin.
+
+**Còn lại:** thay giá, size, tồn bằng số thật; quyết định 5 sản phẩm `RMG…`; ảnh lookbook giữ nền và nếp gấp của ảnh gốc.
+
 ## Ngày 02/11/2026 — M6.4: đổi domain sang `adecy.duckdns.org`
 
 **Phạm vi đã duyệt:** người dùng yêu cầu đổi domain và xóa hẳn domain cũ, không giữ chuyển hướng, vì web chưa hoạt động với bên ngoài. Nhánh `feat/m6.4-domain-adecy` từ `main` `7d5c857`. **Đã hoàn tất trên production, agent đã kiểm tra công khai; người dùng chưa nghiệm thu bằng tài khoản admin và đơn thật; chưa xóa `rmglabels` trên DuckDNS.**
