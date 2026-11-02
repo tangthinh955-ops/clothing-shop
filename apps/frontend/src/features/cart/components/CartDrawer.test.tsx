@@ -103,7 +103,8 @@ describe('cart drawer', () => {
     await userEvent.click(screen.getByTestId('open'));
     const dialog = await screen.findByRole('dialog', { name: 'GIỎ HÀNG' });
     expect(within(dialog).getByRole('link', { name: 'Áo cotton' })).toHaveAttribute('href', '/products/ao-cotton');
-    expect(within(dialog).getByText('Đen · size M · CART-A-1')).toBeVisible();
+    expect(within(dialog).getByText('Đen · size M')).toBeVisible();
+    expect(within(dialog).queryByText(/CART-A-1/)).not.toBeInTheDocument();
     // Line total comes from the server price of the live row, not a client-side guess.
     expect(within(dialog).getByText(/^200\.000\s*₫ × 2 = 400\.000\s*₫$/)).toBeVisible();
     expect(within(dialog).getByText('Sản phẩm không truy cập được')).toBeVisible();

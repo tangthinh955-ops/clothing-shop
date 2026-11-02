@@ -24,8 +24,8 @@ function contactLines() {
 export const policyPages: readonly PolicyContent[] = [
   { path: 'size-guide', title: 'Hướng dẫn chọn size', sections: [
     { heading: 'Cách chọn size', paragraphs: [
-      'Đối chiếu số đo của bạn với bảng size riêng của từng sản phẩm.',
-      'Nếu chưa chắc chắn, hãy nhắn tin cho shop qua Instagram trước khi đặt hàng để được tư vấn.',
+      'Nhắn tin cho shop qua Instagram kèm chiều cao, cân nặng và dáng mặc bạn thích để được tư vấn size trước khi đặt hàng.',
+      'Nếu nhận hàng không vừa, bạn có thể đổi size theo chính sách Đổi & trả.',
     ] },
   ] },
   { path: 'contact', title: 'Liên hệ', sections: [
@@ -63,12 +63,11 @@ export const policyPages: readonly PolicyContent[] = [
   ] },
   { path: 'payment', title: 'Thanh toán', sections: [
     { heading: 'Hình thức thanh toán', paragraphs: [
-      'Thanh toán khi nhận hàng (COD).',
-      'Chuyển khoản ngân hàng bằng mã VietQR hiển thị sau khi đặt hàng, với nội dung chuyển khoản là mã đơn.',
+      'Thanh toán khi nhận hàng (COD): bạn trả tiền cho nhân viên giao hàng khi nhận đơn.',
+      'Bạn được kiểm hàng trước khi thanh toán.',
     ] },
-    { heading: 'Hạn chuyển khoản', paragraphs: [
-      'Đơn chuyển khoản được giữ hàng trong 2 giờ. Quá hạn mà shop chưa nhận được tiền, đơn tự hủy.',
-      'Shop xác nhận đơn khi đã nhận đủ tiền. Website không thu thông tin thẻ của bạn.',
+    { heading: 'An toàn thanh toán', paragraphs: [
+      'Website không thu thông tin thẻ của bạn.',
     ] },
   ] },
   { path: 'privacy', title: 'Chính sách bảo mật', sections: [

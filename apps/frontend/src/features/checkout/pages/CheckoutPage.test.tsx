@@ -127,6 +127,7 @@ describe('checkout quote page', () => {
         lookupToken: 'a'.repeat(32) },
     ]);
     expect(document.title).toBe('Đặt hàng COD | ADECY');
+    expect(screen.queryByText(/AO-A|JEAN-B/)).not.toBeInTheDocument(); // the quote names size and colour, not SKUs
     const button = screen.getByRole('button', { name: 'Đặt hàng COD' });
 expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock the submit
     await userEvent.click(button);
@@ -134,6 +135,7 @@ expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock 
     expect(screen.getByText('AB23456789CD')).toBeVisible();
     expect(screen.getByText(/Chờ xác nhận/)).toBeVisible();
     expect(screen.getByText(/chưa thu tiền/)).toBeVisible();
+    expect(screen.queryByText(/AO-A|JEAN-B/)).not.toBeInTheDocument();
     // The confirmation total and the leftover quote summary may both print 730.000.
     expect(screen.getAllByText(/730\.000/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('button', { name: 'Đặt hàng COD' })).not.toBeInTheDocument();

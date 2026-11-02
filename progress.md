@@ -72,6 +72,28 @@ Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật
 **Giới hạn:** backend vẫn nhận địa chỉ dạng text và không kiểm tra tỉnh thuộc 34 đơn vị — theo phạm vi đã duyệt, chỉ chặn ở FE; đơn cũ không bị ảnh hưởng. Quận/huyện nhập tay, chưa có dataset quận/huyện/phường. Danh mục tĩnh trong FE, không gọi dịch vụ địa chỉ khi đang gõ. Chưa commit/push/deploy.
 
 **Còn lại:** người dùng chạy thử local theo `docs/local-trial-m4.md` M4.3.1 (đặc biệt mục 1–2 mới), phản hồi lỗi/UX rồi mới chốt phần.
+=======
+## Ngày 02/11/2026 — Đánh giá chức năng và R1: sửa nội dung sai/cũ
+
+**Tạm dừng tính năng mới** theo yêu cầu người dùng; M4.6 (thanh toán trước) chờ người dùng chốt chỉ chuyển khoản hay cho chọn cả COD.
+
+**Đánh giá (chỉ đọc, chưa sửa):** chụp trang công khai production desktop/mobile; đặt thử đơn và mở trang admin trên local; hai agent rà code frontend và backend, agent kiểm lại các lỗi chính. Kết quả chia thành R1–R4 (xem `docs/plan.md`). Rủi ro backend chính: thứ tự khóa `variants FOR UPDATE` khi tạo đơn ngược với khóa `inventory` + FK khi bàn giao/hủy, có thể deadlock và runner trả 500 (đọc code, chưa tái hiện); đơn COD ảo có thể giữ hết kho vì quota chỉ theo SĐT (cần chủ shop chốt giới hạn).
+
+**R1, phạm vi đã duyệt ("duyệt"):** nhánh `feat/r1-content-fixes` từ `main` `42d8a38`. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy.**
+
+| File | Thay đổi |
+|---|---|
+| `features/information/content/policies.ts` | Trang Thanh toán chỉ còn COD, kiểm hàng, không thu thẻ; hướng dẫn size gửi khách sang Instagram kèm chiều cao, cân nặng |
+| `CartDrawer.tsx`, `CartPage.tsx`, `QuoteSummary.tsx`, `OrderConfirmation.tsx`, `OrderDetailPage.tsx` | Bỏ SKU khỏi phần khách nhìn thấy; trang giỏ có tên tab |
+| `AuthPage.tsx`, `AccountPage.tsx` | Bỏ chữ "theo dõi đơn hàng", "xác minh email trước khi đặt hàng" |
+| `VariantPicker.tsx`, `layouts/store/storeLinks.ts` | "Bảng size" thành "Hướng dẫn chọn size" |
+| `app/pages/NotFoundPage.tsx` | Tên tab |
+| Test `PolicyPage`, `CartPage`, `CartDrawer`, `CheckoutPage`, `OrderDetailPage`, `StoreLayout`, `ProductDetailPage` | Kỳ vọng mới; 12 ca fail trước khi sửa |
+| `docs/local-trial-m3.md`, `docs/plan.md` | Hướng dẫn thử, mốc R1–R4 |
+
+**Kiểm tra (local):** typecheck, build đạt; unit backend 74/74, frontend 525/525; E2E 56/56. Đã xem ảnh mobile của giỏ hàng, trang Thanh toán, trang sản phẩm: không còn SKU ở giỏ, không tràn ngang. Chưa chạy CI. Integration không chạy vì không đổi backend.
+
+**Giữ nguyên:** trang chi tiết sản phẩm vẫn hiện "Mã sản phẩm" sau khi chọn size, vì dòng hướng dẫn đặt qua Instagram dùng mã này; nằm ngoài danh sách file đã duyệt.
 
 ## Ngày 02/11/2026 — M7.2: nhập 7 mẫu ADECY vào cửa hàng
 

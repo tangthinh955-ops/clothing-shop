@@ -18,7 +18,8 @@ describe('real shop policies', () => {
   it.each([
     { path: '/shipping', title: 'Giao hàng', facts: [/30\.000đ/, /TP\. Hồ Chí Minh.*1–2 ngày/, /kiểm hàng/] },
     { path: '/returns-policy', title: 'Đổi & trả', facts: [/7 ngày/, /còn tag/, /khách trả phí vận chuyển hai chiều/, /shop chịu phí/] },
-    { path: '/payment', title: 'Thanh toán', facts: [/COD/, /VietQR/, /2 giờ/, /mã đơn/] },
+    { path: '/payment', title: 'Thanh toán', facts: [/COD/, /kiểm hàng/, /thẻ/] },
+    { path: '/size-guide', title: 'Hướng dẫn chọn size', facts: [/Instagram/, /chiều cao/, /cân nặng/] },
     { path: '/privacy', title: 'Chính sách bảo mật', facts: [/số điện thoại/, /đơn vị vận chuyển/, /không bán/, /xem hoặc xóa/] },
   ])('$path states the agreed policy', async ({ path, title, facts }) => {
     renderPolicy(path);
@@ -26,6 +27,18 @@ describe('real shop policies', () => {
     const main = screen.getByRole('main');
     for (const fact of facts) expect(main.textContent).toMatch(fact);
     expect(main.textContent).not.toMatch(/demo|giả định|chưa được shop duyệt/i);
+  });
+
+  it('describes only the payment method the shop offers today', async () => {
+    renderPolicy('/payment');
+    await screen.findByRole('heading', { name: 'Thanh toán', level: 1 });
+    expect(screen.getByRole('main').textContent).not.toMatch(/VietQR|chuyển khoản|2 giờ/);
+  });
+
+  it('does not send shoppers looking for a size chart that does not exist yet', async () => {
+    renderPolicy('/size-guide');
+    await screen.findByRole('heading', { name: 'Hướng dẫn chọn size', level: 1 });
+    expect(screen.getByRole('main').textContent).not.toMatch(/bảng size/i);
   });
 
   it('lists the seller on the contact page and only shows contact channels that exist', async () => {

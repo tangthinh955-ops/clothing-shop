@@ -37,7 +37,7 @@ function DrawerRow({ line, item, highlighted }: {
           sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{available.product.name}</Link>
         : <Typography sx={{ fontWeight: 700, color: 'text.disabled' }}>{item ? 'Sản phẩm không truy cập được' : 'Chưa có thông tin sản phẩm'}</Typography>}
       {available && <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        {available.color} · size {available.size} · {available.sku}
+        {available.color} · size {available.size}
       </Typography>}
       <Typography>
         {available
