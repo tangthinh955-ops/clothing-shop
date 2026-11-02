@@ -8,7 +8,9 @@ import { AdminOrderNotesService } from './admin-order-notes.service.js';
 import { AdminOrderTransitionsService } from './admin-order-transitions.service.js';
 import { AdminOrdersService } from './admin-orders.service.js';
 import { AdminOrderCancelDto } from './dto/admin-order-cancel.dto.js';
+import { AdminOrderDeliverDto } from './dto/admin-order-deliver.dto.js';
 import { AdminOrderNoteDto } from './dto/admin-order-note.dto.js';
+import { AdminOrderShipDto } from './dto/admin-order-ship.dto.js';
 import { AdminOrderTransitionDto } from './dto/admin-order-transition.dto.js';
 import { AdminOrdersQuery } from './dto/admin-orders-query.dto.js';
 
@@ -44,6 +46,20 @@ export class AdminOrdersController {
   pack(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
     @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderTransitionDto) {
     return this.transitions.pack(user.id, id, key, dto.expectedVersion);
+  }
+
+  @Post(':id/ship')
+  @HttpCode(200)
+  ship(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
+    @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderShipDto) {
+    return this.transitions.ship(user.id, id, key, dto.expectedVersion, dto.trackingNumber);
+  }
+
+  @Post(':id/deliver')
+  @HttpCode(200)
+  deliver(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
+    @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderDeliverDto) {
+    return this.transitions.deliver(user.id, id, key, dto.expectedVersion, dto.deliveredAt);
   }
 
   @Post(':id/cancel')

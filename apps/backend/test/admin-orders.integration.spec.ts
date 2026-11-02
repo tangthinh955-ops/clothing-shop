@@ -227,11 +227,7 @@ describe('GET /admin/orders/:id (M4.5.2)', () => {
 });
 
 describe('POST /admin/orders/:id/notes (M4.5.2)', () => {
-  async function postNote(agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey()) {
-    const csrf = (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
-    const request = agent.post(`/api/v1/admin/orders/${orderId}/notes`).set('Origin', origin).set('X-CSRF-Token', csrf);
-    return (key === undefined ? request : request.set('Idempotency-Key', key)).send(body as object);
-  }
+  const postNote = (agent: Agent, orderId: string, body: unknown, key?: string) => postTransition('notes', agent, orderId, body, key);
   const noteCount = (orderId: string) => db.orderNote.count({ where: { orderId } });
 
   it('refuses anonymous and non-admin callers, and a request without CSRF', async () => {
@@ -323,13 +319,7 @@ describe('POST /admin/orders/:id/confirm (M4.5.3)', () => {
     return { id: order.id, code };
   }
 
-  async function confirm(agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey(), withCsrf = true) {
-    const csrf = withCsrf ? (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string : undefined;
-    const request = agent.post(`/api/v1/admin/orders/${orderId}/confirm`).set('Origin', origin);
-    if (csrf) request.set('X-CSRF-Token', csrf);
-    if (key !== undefined) request.set('Idempotency-Key', key);
-    return request.send(body as object);
-  }
+  const confirm = (agent: Agent, orderId: string, body: unknown, key?: string, withCsrf?: boolean) => postTransition('confirm', agent, orderId, body, key, withCsrf);
 
   it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
     const { id } = await pendingOrder();
@@ -464,8 +454,18 @@ async function seedHoldingOrder(status: SeedStatus = 'PENDING', overrides: { met
   return { id: order.id, code };
 }
 
+// One token per session: fetching it per request would spend the app-wide request limit this long spec shares.
+const csrfTokens = new Map<Agent, string>();
+async function csrfOf(agent: Agent) {
+  const known = csrfTokens.get(agent);
+  if (known) return known;
+  const token = (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+  csrfTokens.set(agent, token);
+  return token;
+}
+
 async function postTransition(action: string, agent: Agent, orderId: string, body: unknown, key: string | undefined = noteKey(), withCsrf = true) {
-  const csrf = withCsrf ? (await agent.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string : undefined;
+  const csrf = withCsrf ? await csrfOf(agent) : undefined;
   const request = agent.post(`/api/v1/admin/orders/${orderId}/${action}`).set('Origin', origin);
   if (csrf) request.set('X-CSRF-Token', csrf);
   if (key !== undefined) request.set('Idempotency-Key', key);
@@ -568,6 +568,309 @@ describe('POST /admin/orders/:id/pack (M4.5.4)', () => {
     expect((await pack(admin, id, { expectedVersion: 0 })).status).toBe(200);
     const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
     expect((view.body as { order: { status: string } }).order.status).toBe('PACKING');
+    expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
+  });
+});
+
+describe('POST /admin/orders/:id/ship (M4.5.5)', () => {
+  const TRACKING = 'GHN-123.ABC_9';
+  const ship = (agent: Agent, orderId: string, body: unknown, key?: string, withCsrf?: boolean) => postTransition('ship', agent, orderId, body, key, withCsrf);
+  const shipments = (code: string) => db.inventoryMovement.findMany({ where: { source: 'ORDER_SHIP', reason: `Bàn giao đơn ${code}` } });
+  let ownVariants = 0;
+
+  /** A variant of its own, so a test can state the exact stock the handover must leave. */
+  async function ownVariant(onHand: number, reserved: number) {
+    const { productId } = await db.variant.findUniqueOrThrow({ where: { id: firstVariant } });
+    ownVariants += 1;
+    const variant = await db.variant.create({ data: { productId, sku: `SHP-${randomUUID()}`.toUpperCase().slice(0, 64), size: 'XL', color: `Màu ${ownVariants}`,
+      price: 200000, active: true, inventory: { create: { onHand, reserved } } } });
+    return variant.id;
+  }
+
+  it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
+    const { id } = await seedHoldingOrder('PACKING');
+    const before = await stockOf(firstVariant);
+    const body = { expectedVersion: 0, trackingNumber: TRACKING };
+    expect((await ship(guest, id, body)).status).toBe(401);
+    expect((await ship(customer, id, body)).status).toBe(403);
+    expect((await ship(admin, id, body, noteKey(), false)).status).toBe(403);
+    expect((await ship(admin, randomUUID(), body)).status).toBe(404);
+    expect((await orderOf(id)).status).toBe('PACKING');
+    expect(await stockOf(firstVariant)).toEqual(before);
+  });
+
+  it.each([
+    ['a missing tracking number', { expectedVersion: 0 }],
+    ['a tracking number shorter than 3 characters after trimming', { expectedVersion: 0, trackingNumber: '  ab  ' }],
+    ['a tracking number over 100 characters', { expectedVersion: 0, trackingNumber: 'x'.repeat(101) }],
+    ['a tracking number with spaces inside', { expectedVersion: 0, trackingNumber: 'GHN 123' }],
+    ['a tracking number with other characters', { expectedVersion: 0, trackingNumber: 'GHN<123>' }],
+    ['a missing version', { trackingNumber: TRACKING }],
+  ])('rejects %s without touching the order or the stock', async (_label, body) => {
+    const { id } = await seedHoldingOrder('PACKING');
+    const before = await stockOf(firstVariant);
+    expect((await ship(admin, id, body)).status).toBe(400);
+    expect(await orderOf(id)).toMatchObject({ status: 'PACKING', trackingNumber: null });
+    expect(await stockOf(firstVariant)).toEqual(before);
+  });
+
+  it('needs a valid Idempotency-Key', async () => {
+    const { id } = await seedHoldingOrder('PACKING');
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING }, 'short')).status).toBe(400);
+    const csrf = (await admin.get('/api/v1/auth/csrf').expect(200)).body.csrfToken as string;
+    await admin.post(`/api/v1/admin/orders/${id}/ship`).set('Origin', origin).set('X-CSRF-Token', csrf)
+      .send({ expectedVersion: 0, trackingNumber: TRACKING }).expect(400);
+    expect((await orderOf(id)).status).toBe('PACKING');
+  });
+
+  it('hands over a packed order: on-hand and reserved fall together, and the order keeps its tracking number', async () => {
+    const variant = await ownVariant(5, 2);
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    const response = await ship(admin, id, { expectedVersion: 0, trackingNumber: `  ${TRACKING}  ` });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ id, code, status: 'SHIPPED', version: 1 });
+    expect(await stockOf(variant)).toEqual({ onHand: 3, reserved: 0 });
+    expect(await orderOf(id)).toMatchObject({ status: 'SHIPPED', version: 1, trackingNumber: TRACKING, cancelReason: null, cancelledAt: null });
+    const history = await historyOf(id);
+    expect(history).toHaveLength(2);
+    expect(history[1]).toMatchObject({ fromStatus: 'PACKING', toStatus: 'SHIPPED', actorType: 'ADMIN', version: 1 });
+    const detail = await admin.get(`/api/v1/admin/orders/${id}`).expect(200);
+    expect(detail.body).toMatchObject({ status: 'SHIPPED', trackingNumber: TRACKING });
+    expect((detail.body as { history: Array<{ actorName: string }> }).history[1]).toMatchObject({ actorName: 'Admin đơn thử' });
+  });
+
+  it('ships every line of the order, and the movement carries the quantity but no customer data', async () => {
+    const [first, second] = [await ownVariant(5, 2), await ownVariant(7, 3)];
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: first, quantity: 2 }, { variantId: second, quantity: 3 }], holding: false });
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING })).status).toBe(200);
+    expect(await stockOf(first)).toEqual({ onHand: 3, reserved: 0 });
+    expect(await stockOf(second)).toEqual({ onHand: 4, reserved: 0 });
+    const movements = await shipments(code);
+    expect(movements.map((movement) => movement.delta).sort()).toEqual([-2, -3]);
+    for (const movement of movements) expect(movement).toMatchObject({ actorType: 'ADMIN', reason: `Bàn giao đơn ${code}` });
+  });
+
+  it.each(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'] as const)('refuses a %s order and changes nothing', async (status) => {
+    const { id, code } = await seedHoldingOrder(status);
+    const before = await stockOf(firstVariant);
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status, version: 0, trackingNumber: null });
+    expect(await stockOf(firstVariant)).toEqual(before);
+    expect(await shipments(code)).toHaveLength(0);
+  });
+
+  it('refuses a stale version without changing the order or the stock', async () => {
+    const { id } = await seedHoldingOrder('PACKING');
+    const before = await stockOf(firstVariant);
+    expect((await ship(admin, id, { expectedVersion: 7, trackingNumber: TRACKING })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'PACKING', version: 0, trackingNumber: null });
+    expect(await stockOf(firstVariant)).toEqual(before);
+  });
+
+  it('replays the same key once, and refuses that key with another tracking number', async () => {
+    const variant = await ownVariant(5, 2);
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    const key = noteKey();
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING }, key)).status).toBe(200);
+    const replay = await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING }, key);
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ id, code, status: 'SHIPPED', version: 1 });
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: 'MA-KHAC-999' }, key)).status).toBe(409);
+    expect(await stockOf(variant)).toEqual({ onHand: 3, reserved: 0 });
+    expect(await historyOf(id)).toHaveLength(2);
+    expect((await orderOf(id)).trackingNumber).toBe(TRACKING);
+  });
+
+  it('lets exactly one of two racing admins hand over, and ships once', async () => {
+    const variant = await ownVariant(5, 2);
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    const results = await Promise.all([ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING }),
+      ship(admin, id, { expectedVersion: 0, trackingNumber: 'MA-KHAC-999' })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(await stockOf(variant)).toEqual({ onHand: 3, reserved: 0 });
+    expect(await shipments(code)).toHaveLength(1);
+  });
+
+  it('ships once when the same key races', async () => {
+    const variant = await ownVariant(5, 2);
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    const key = noteKey();
+    const body = { expectedVersion: 0, trackingNumber: TRACKING };
+    const results = await Promise.all([ship(admin, id, body, key), ship(admin, id, body, key)]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    expect(await stockOf(variant)).toEqual({ onHand: 3, reserved: 0 });
+    expect(await shipments(code)).toHaveLength(1);
+  });
+
+  it('never both ships and cancels when the two race', async () => {
+    const variant = await ownVariant(5, 2);
+    const { id, code } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    const results = await Promise.all([ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING }),
+      postTransition('cancel', admin, id, { expectedVersion: 0, reason: 'Khách đổi ý' })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const shipped = results[0]!.status === 200;
+    expect(await orderOf(id)).toMatchObject(shipped
+      ? { status: 'SHIPPED', version: 1, trackingNumber: TRACKING, cancelReason: null, cancelledAt: null }
+      : { status: 'CANCELLED', version: 1, trackingNumber: null, cancelReason: 'Khách đổi ý' });
+    expect(await stockOf(variant)).toEqual(shipped ? { onHand: 3, reserved: 0 } : { onHand: 5, reserved: 0 });
+    expect(await shipments(code)).toHaveLength(shipped ? 1 : 0);
+  });
+
+  it('rolls everything back when the stock cannot ship', async () => {
+    const variant = await ownVariant(5, 0);
+    const { id } = await seedHoldingOrder('PACKING', { lines: [{ variantId: variant, quantity: 2 }], holding: false });
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'PACKING', version: 0, trackingNumber: null });
+    expect(await historyOf(id)).toHaveLength(1);
+    expect(await stockOf(variant)).toEqual({ onHand: 5, reserved: 0 });
+  });
+
+  it('can no longer be cancelled once handed over', async () => {
+    const { id } = await seedHoldingOrder('PACKING');
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING })).status).toBe(200);
+    const before = await stockOf(firstVariant);
+    expect((await postTransition('cancel', admin, id, { expectedVersion: 1, reason: 'Hủy sau bàn giao' })).status).toBe(409);
+    expect((await orderOf(id)).status).toBe('SHIPPED');
+    expect(await stockOf(firstVariant)).toEqual(before);
+  });
+
+  it('shows the customer the tracking number without naming the admin', async () => {
+    const token = 'H'.repeat(32);
+    const { id, code } = await seedHoldingOrder('PACKING', { token });
+    expect((await ship(admin, id, { expectedVersion: 0, trackingNumber: TRACKING })).status).toBe(200);
+    const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
+    expect((view.body as { order: Record<string, unknown> }).order).toMatchObject({ status: 'SHIPPED', trackingNumber: TRACKING });
+    expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
+  });
+});
+
+describe('POST /admin/orders/:id/deliver (M4.5.6)', () => {
+  const DAY_MS = 86400000;
+  const handedOver = new Date(Date.now() - 3 * DAY_MS);
+  const deliveredAt = new Date(Date.now() - DAY_MS).toISOString();
+  const deliver = (agent: Agent, orderId: string, body: unknown, key?: string, withCsrf?: boolean) => postTransition('deliver', agent, orderId, body, key, withCsrf);
+
+  /** A shipped order whose handover lies three days back, so a delivery time can fall after it. */
+  async function shippedOrder(token?: string) {
+    const order = await seedHoldingOrder('SHIPPED', { holding: false, ...(token ? { token } : {}) });
+    await db.orderStatusHistory.updateMany({ where: { orderId: order.id }, data: { createdAt: handedOver } });
+    return order;
+  }
+
+  it('refuses anonymous and non-admin callers, a missing CSRF token and an unknown order', async () => {
+    const { id } = await shippedOrder();
+    const body = { expectedVersion: 0, deliveredAt };
+    expect((await deliver(guest, id, body)).status).toBe(401);
+    expect((await deliver(customer, id, body)).status).toBe(403);
+    expect((await deliver(admin, id, body, noteKey(), false)).status).toBe(403);
+    expect((await deliver(admin, randomUUID(), body)).status).toBe(404);
+    expect((await orderOf(id)).status).toBe('SHIPPED');
+  });
+
+  it.each([
+    ['a missing time', { expectedVersion: 0 }],
+    ['text that is not a time', { expectedVersion: 0, deliveredAt: 'hôm qua' }],
+    ['a time without a timezone', { expectedVersion: 0, deliveredAt: '2026-10-30T10:00:00' }],
+    ['a number', { expectedVersion: 0, deliveredAt: 1761818400000 }],
+    ['a missing version', { deliveredAt }],
+  ])('rejects %s without touching the order', async (_label, body) => {
+    const { id } = await shippedOrder();
+    expect((await deliver(admin, id, body)).status).toBe(400);
+    expect(await orderOf(id)).toMatchObject({ status: 'SHIPPED', deliveredAt: null });
+  });
+
+  it.each([
+    ['in the future', () => new Date(Date.now() + DAY_MS).toISOString()],
+    ['before the handover', () => new Date(handedOver.getTime() - DAY_MS).toISOString()],
+  ])('rejects a delivery time %s without touching the order', async (_label, time) => {
+    const { id } = await shippedOrder();
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt: time() })).status).toBe(400);
+    expect(await orderOf(id)).toMatchObject({ status: 'SHIPPED', version: 0, deliveredAt: null });
+    expect(await historyOf(id)).toHaveLength(1);
+  });
+
+  it('accepts the very minute of the handover, since the field has no seconds', async () => {
+    const { id } = await shippedOrder();
+    const sameMinute = new Date(Math.floor(handedOver.getTime() / 60000) * 60000).toISOString();
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt: sameMinute })).status).toBe(200);
+    expect((await orderOf(id)).deliveredAt?.toISOString()).toBe(sameMinute);
+  });
+
+  it('records the delivery without touching stock', async () => {
+    const { id, code } = await shippedOrder();
+    const before = await stockOf(firstVariant);
+    const movements = await db.inventoryMovement.count();
+    const response = await deliver(admin, id, { expectedVersion: 0, deliveredAt });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ id, code, status: 'DELIVERED', version: 1 });
+    const saved = await orderOf(id);
+    expect(saved).toMatchObject({ status: 'DELIVERED', version: 1 });
+    expect(saved.deliveredAt?.toISOString()).toBe(deliveredAt);
+    const history = await historyOf(id);
+    expect(history).toHaveLength(2);
+    expect(history[1]).toMatchObject({ fromStatus: 'SHIPPED', toStatus: 'DELIVERED', actorType: 'ADMIN', reason: null, version: 1 });
+    expect(await stockOf(firstVariant)).toEqual(before);
+    expect(await db.inventoryMovement.count()).toBe(movements);
+    const detail = await admin.get(`/api/v1/admin/orders/${id}`).expect(200);
+    expect(detail.body).toMatchObject({ status: 'DELIVERED', deliveredAt });
+    expect((detail.body as { history: Array<{ actorName: string }> }).history[1]).toMatchObject({ actorName: 'Admin đơn thử' });
+  });
+
+  it('stores a Vietnam-time input as the same instant', async () => {
+    const { id } = await shippedOrder();
+    const instant = new Date(Date.now() - DAY_MS);
+    instant.setUTCSeconds(0, 0);
+    const vietnam = `${new Date(instant.getTime() + 7 * 3600000).toISOString().slice(0, 16)}:00+07:00`;
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt: vietnam })).status).toBe(200);
+    expect((await orderOf(id)).deliveredAt?.toISOString()).toBe(instant.toISOString());
+  });
+
+  it.each(['PENDING', 'CONFIRMED', 'PACKING', 'DELIVERED', 'CANCELLED', 'DELIVERY_FAILED', 'RETURNED_TO_SHOP'] as const)('refuses a %s order and changes nothing', async (status) => {
+    const { id } = await seedHoldingOrder(status, { holding: false });
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status, version: 0, deliveredAt: null });
+  });
+
+  it('refuses a stale version without changing the order', async () => {
+    const { id } = await shippedOrder();
+    expect((await deliver(admin, id, { expectedVersion: 7, deliveredAt })).status).toBe(409);
+    expect(await orderOf(id)).toMatchObject({ status: 'SHIPPED', version: 0, deliveredAt: null });
+  });
+
+  it('replays the same key once, and refuses that key with another time', async () => {
+    const { id, code } = await shippedOrder();
+    const key = noteKey();
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt }, key)).status).toBe(200);
+    const replay = await deliver(admin, id, { expectedVersion: 0, deliveredAt }, key);
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ id, code, status: 'DELIVERED', version: 1 });
+    const other = new Date(Date.now() - 2 * DAY_MS).toISOString();
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt: other }, key)).status).toBe(409);
+    expect(await historyOf(id)).toHaveLength(2);
+    expect((await orderOf(id)).deliveredAt?.toISOString()).toBe(deliveredAt);
+  });
+
+  it('lets exactly one of two racing admins win when their keys differ', async () => {
+    const { id } = await shippedOrder();
+    const results = await Promise.all([deliver(admin, id, { expectedVersion: 0, deliveredAt }), deliver(admin, id, { expectedVersion: 0, deliveredAt })]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(await historyOf(id)).toHaveLength(2);
+  });
+
+  it('applies once when the same key races', async () => {
+    const { id } = await shippedOrder();
+    const key = noteKey();
+    const results = await Promise.all([deliver(admin, id, { expectedVersion: 0, deliveredAt }, key), deliver(admin, id, { expectedVersion: 0, deliveredAt }, key)]);
+    expect(results.map((result) => result.status)).toEqual([200, 200]);
+    expect(await historyOf(id)).toHaveLength(2);
+  });
+
+  it('shows the customer the delivery time without naming the admin', async () => {
+    const token = 'J'.repeat(32);
+    const { id, code } = await shippedOrder(token);
+    expect((await deliver(admin, id, { expectedVersion: 0, deliveredAt })).status).toBe(200);
+    const view = await guest.get(`/api/v1/orders/${code}`).set('X-Order-Token', token).expect(200);
+    expect((view.body as { order: Record<string, unknown> }).order).toMatchObject({ status: 'DELIVERED', deliveredAt });
     expect(JSON.stringify(view.body)).not.toContain('Admin đơn thử');
   });
 });

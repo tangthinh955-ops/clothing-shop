@@ -18,7 +18,7 @@ const view = (): OrderDetailResult => ({
     createdAt: '2026-10-31T03:30:00.000Z',
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo xem chi tiết', sku: 'ACC-A',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
-    subtotal: 400000, shippingFee: 30000, total: 430000, recipient,
+    subtotal: 400000, shippingFee: 30000, total: 430000, recipient, trackingNumber: null, deliveredAt: null,
   },
   timeline: [
     { fromStatus: null, toStatus: 'PENDING', actorLabel: 'Khách đặt hàng', reason: null, version: 0,
@@ -32,6 +32,23 @@ describe('parseOrderDetailView', () => {
   it('accepts an exactly-shaped server view and keeps every customer-visible field', () => {
     const parsed = parseOrderDetailView(view());
     expect(parsed).toEqual(view());
+  });
+
+  it('keeps a real delivery time and refuses anything else', () => {
+    const withDelivery = (deliveredAt: unknown) => ({ ...view(), order: { ...view().order, deliveredAt } });
+    expect(parseOrderDetailView(withDelivery('2026-11-01T03:00:00.000Z')).order.deliveredAt).toBe('2026-11-01T03:00:00.000Z');
+    expect(() => parseOrderDetailView(withDelivery('hôm qua'))).toThrow();
+    expect(() => parseOrderDetailView(withDelivery(42))).toThrow();
+    expect(() => parseOrderDetailView(withDelivery(undefined))).toThrow();
+  });
+
+  it('keeps a tracking number up to the column limit and refuses anything else', () => {
+    const withTracking = (trackingNumber: unknown) => ({ ...view(), order: { ...view().order, trackingNumber } });
+    expect(parseOrderDetailView(withTracking('GHN-123.ABC_9')).order.trackingNumber).toBe('GHN-123.ABC_9');
+    expect(parseOrderDetailView(withTracking('T'.repeat(100))).order.trackingNumber).toBe('T'.repeat(100));
+    expect(() => parseOrderDetailView(withTracking('T'.repeat(101)))).toThrow();
+    expect(() => parseOrderDetailView(withTracking(42))).toThrow();
+    expect(() => parseOrderDetailView(withTracking(undefined))).toThrow();
   });
 
   it('accepts null email and note and a single-entry timeline', () => {

@@ -42,7 +42,7 @@ export type CustomerOrderStatus = 'PENDING' | 'CONFIRMED' | 'PACKING' | 'SHIPPED
 export interface OrderDetailView {
   code: string; status: CustomerOrderStatus; method: 'COD' | 'BANK_TRANSFER'; currency: 'VND'; createdAt: string;
   items: OrderDetailItemView[]; subtotal: number; shippingFee: number; total: number;
-  recipient: OrderDetailRecipientView;
+  recipient: OrderDetailRecipientView; trackingNumber: string | null; deliveredAt: string | null;
 }
 
 export interface OrderDetailTimelineView {
@@ -57,7 +57,7 @@ const ORDER_DETAIL_SELECT = {
   code: true, status: true, method: true, currency: true, createdAt: true,
   recipientName: true, phone: true, email: true, province: true, district: true, ward: true,
   addressLine: true, note: true,
-  subtotalVnd: true, shippingFeeVnd: true, totalVnd: true,
+  subtotalVnd: true, shippingFeeVnd: true, totalVnd: true, trackingNumber: true, deliveredAt: true,
   lookupTokenHash: true,
   items: { select: { variantId: true, productName: true, sku: true, size: true, color: true,
     unitPriceVnd: true, quantity: true, lineTotalVnd: true } },
@@ -81,6 +81,7 @@ function projectOrderDetail(order: OrderDetailRow): OrderDetailResult {
       subtotal: Number(order.subtotalVnd), shippingFee: Number(order.shippingFeeVnd), total: Number(order.totalVnd),
       recipient: { name: order.recipientName, phone: order.phone, email: order.email, province: order.province,
         district: order.district, ward: order.ward, addressLine: order.addressLine, note: order.note },
+      trackingNumber: order.trackingNumber, deliveredAt: order.deliveredAt?.toISOString() ?? null,
     },
     timeline: order.history.map((row) => ({ fromStatus: row.fromStatus as CustomerOrderStatus | null,
       toStatus: row.toStatus as CustomerOrderStatus, actorLabel: ACTOR_LABELS[row.actorType],

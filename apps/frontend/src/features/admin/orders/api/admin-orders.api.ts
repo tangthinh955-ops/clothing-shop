@@ -114,6 +114,16 @@ export const adminOrdersApi = {
     return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/pack`,
       { method: 'POST', body: { expectedVersion }, idempotencyKey });
   },
+  // POST /api/v1/admin/orders/:id/ship — PACKING to SHIPPED; takes the goods out of stock once; the customer sees the number.
+  ship(id: string, expectedVersion: number, trackingNumber: string, idempotencyKey: string) {
+    return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/ship`,
+      { method: 'POST', body: { expectedVersion, trackingNumber }, idempotencyKey });
+  },
+  // POST /api/v1/admin/orders/:id/deliver — SHIPPED to DELIVERED at the real delivery time; stock and money do not change.
+  deliver(id: string, expectedVersion: number, deliveredAt: string, idempotencyKey: string) {
+    return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/deliver`,
+      { method: 'POST', body: { expectedVersion, deliveredAt }, idempotencyKey });
+  },
   // POST /api/v1/admin/orders/:id/cancel — before handover only; releases held stock once; the customer sees the reason.
   cancel(id: string, expectedVersion: number, reason: string, idempotencyKey: string) {
     return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/cancel`,

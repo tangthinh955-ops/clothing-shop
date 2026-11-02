@@ -2,6 +2,45 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 02/11/2026 — M4.5.6: admin ghi đơn đã giao thành công
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.6 ("duyệt"), gồm việc nhập thời điểm giao thực tế và cho khách thấy thời điểm đó, vì thời hạn đổi trả tính từ `deliveredAt`. Làm tiếp trên nhánh `feat/m4.5.5-admin-ship`, cùng phần M4.5.5 chưa commit. **Đã viết, agent đã kiểm tra local; chưa commit, chưa deploy; chờ người dùng chạy thử.**
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Rule `DELIVER` (`SHIPPED` → `DELIVERED`) và `deliver()`; từ chối thời điểm trong tương lai (dung sai 5 phút) hoặc trước phút bàn giao; không đụng kho và tiền |
+| `apps/backend/src/modules/orders/dto/admin-order-deliver.dto.ts` (mới), `admin-orders.controller.ts` | `POST /admin/orders/:id/deliver`, `deliveredAt` phải có múi giờ |
+| `apps/backend/src/modules/orders/order-access.service.ts` | Thêm `deliveredAt` vào dữ liệu trả cho khách, gồm cả tra cứu đơn |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `pages/OrderDetailPage.tsx`, `apps/frontend/src/features/admin/orders/pages/AdminOrderDetailPage.tsx` | Khách và admin thấy "Đã giao lúc: …" |
+| `apps/frontend/src/features/admin/orders/deliveryTime.ts` (mới) | Đổi giờ Việt Nam và kiểm tra thời điểm. Khác kế hoạch: thêm file này; ô nhập luôn theo giờ Việt Nam thay vì múi giờ trình duyệt, để khớp với giờ hiển thị của shop |
+| `.../components/OrderInputAction.tsx`, `OrderActions.tsx`, `api/admin-orders.api.ts` | Ô nhập nhận loại và giá trị điền sẵn khi mở; nút "Giao thành công"; hàm `deliver` |
+| `apps/backend/test/admin-orders.integration.spec.ts`, `order-access.integration.spec.ts`, `order-lookup.integration.spec.ts` | 23 ca mới; helper xác nhận và ghi chú cũng dùng chung CSRF theo phiên |
+| `.../pages/AdminOrderDetailPage.test.tsx`, các test trong `apps/frontend/src/features/orders/`, `apps/frontend/e2e/admin-orders.spec.ts` | 16 ca UI; nối E2E bàn giao tới giao xong; đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 483 frontend; `npm run test:integration` 238/238; spec `admin-orders` chạy lặp thêm 3 lần đều 124/124; `npm run test:e2e:implemented` 55/55. E2E đối chiếu giờ trong ô với giá trị lưu trong DB theo +07:00. Đã xem ảnh hộp thoại trên mobile.
+
+**Giới hạn:** chưa ghi nhận tiền COD (M4.6.4). Đơn `DELIVERED` không hoàn tác được và thời điểm giao không sửa được. Chưa có đổi trả (M4.8), giao thất bại (M4.9), chưa gửi email (M4.10). **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.6. **Dừng chờ người dùng thử.**
+
+## Ngày 02/11/2026 — M4.5.5: admin bàn giao đơn, trừ kho
+
+**Phạm vi đã duyệt:** người dùng duyệt kế hoạch M4.5.5 ("duyệt"), gồm hai quyết định: bắt buộc nhập mã vận đơn, và khách thấy mã vận đơn. Nhánh mới `feat/m4.5.5-admin-ship` từ `main` `0ee8edb`, kèm hai commit tiến độ còn sót từ nhánh cũ. **Đã viết, agent đã kiểm tra local; chưa commit phần này, chưa push, chưa deploy; chờ người dùng chạy thử.** Người dùng chưa xác nhận đã chạy thử M4.5.1–M4.5.4 và M4.5.7.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | Rule `SHIP` (`PACKING` → `SHIPPED`), `ship()` trừ kho qua Inventory cùng transaction và lưu mã vận đơn; mã đưa vào hash chống trùng, dạng hash của confirm, pack, cancel giữ nguyên |
+| `apps/backend/src/modules/orders/dto/admin-order-ship.dto.ts` (mới), `admin-orders.controller.ts` | `POST /admin/orders/:id/ship`, mã 3–100 ký tự gồm chữ, số, `-`, `_`, `.` |
+| `apps/backend/src/modules/orders/order-access.service.ts` | Thêm `trackingNumber` vào dữ liệu trả cho khách, gồm cả tra cứu đơn |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `pages/OrderDetailPage.tsx` | Khách đọc và thấy mã vận đơn khi đã có |
+| `apps/frontend/src/features/admin/orders/components/OrderInputAction.tsx` (mới), `OrderActions.tsx`, `api/admin-orders.api.ts` | Gộp hộp thoại một ô nhập cho hủy và bàn giao; xóa `OrderCancelAction.tsx`; nội dung từng thao tác đặt ở `OrderActions` |
+| `apps/backend/test/admin-orders.integration.spec.ts`, `order-access.integration.spec.ts`, `order-lookup.integration.spec.ts` | 25 ca mới; dùng chung CSRF theo phiên vì spec dài đã chạm giới hạn 120 request/phút của ứng dụng (lỗi của test, không phải của code) |
+| `apps/frontend/src/features/admin/orders/pages/AdminOrderDetailPage.test.tsx`, `apps/frontend/src/features/orders/**/*.test.*`, `apps/frontend/e2e/admin-orders.spec.ts` | 17 ca UI và 1 E2E; đã quan sát test mới fail trước khi code |
+| `docs/m4-contract.md`, `docs/local-trial-m4.md`, `docs/plan.md` | Hợp đồng API, hướng dẫn thử, trạng thái mốc |
+
+**Kiểm tra (local, PostgreSQL thật qua DB `_test`):** `npm run typecheck`, `npm run build` đạt; `npm test` 10 công cụ + 69 backend + 467 frontend; `npm run test:integration` 215/215; spec `admin-orders` chạy lặp thêm 3 lần đều 101/101; `npm run test:e2e:implemented` 55/55. Đã xem ảnh hộp thoại trên mobile, rút ngắn thông báo lỗi vì bản cũ xuống dòng giữa `- _ .`; bản sửa đã qua các lượt test trên.
+
+**Giới hạn:** đơn dừng ở `SHIPPED` cho tới khi có M4.5.6; giao thất bại và nhận hàng về thuộc M4.9. Bàn giao nhầm không hoàn tác được và mã vận đơn đã lưu không sửa được. Chưa gửi email cho khách (M4.10), chưa lưu tên đơn vị vận chuyển. **Chạy thử:** [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.5. **Dừng chờ người dùng thử.**
+
 ## Ngày 02/11/2026 — Commit và deploy production M4.5.7, M4.5.4
 
 - **Yêu cầu:** người dùng đồng ý đề xuất commit và deploy ("oke"). Lệnh deploy của agent bị hệ thống phân quyền chặn, nên người dùng tự chạy lệnh deploy.

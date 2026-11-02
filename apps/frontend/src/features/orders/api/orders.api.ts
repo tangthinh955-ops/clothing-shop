@@ -40,6 +40,8 @@ export interface OrderDetailView {
   shippingFee: number;
   total: number;
   recipient: OrderDetailRecipient;
+  trackingNumber: string | null;
+  deliveredAt: string | null;
 }
 
 export interface OrderDetailTimelineEntry {
@@ -115,7 +117,9 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
     || !integer(order['subtotal']) || (order['subtotal'] as number) !== subtotal || (order['subtotal'] as number) > MAX_TOTAL_VND
     || !integer(order['shippingFee']) || (order['shippingFee'] as number) < 0 || (order['shippingFee'] as number) > MAX_FEE_VND
     || !integer(order['total']) || (order['total'] as number) !== (order['subtotal'] as number) + (order['shippingFee'] as number)
-    || (order['total'] as number) > MAX_TOTAL_VND) {
+    || (order['total'] as number) > MAX_TOTAL_VND
+    || !nullableText(order['trackingNumber'], 100)
+    || !(order['deliveredAt'] === null || iso(order['deliveredAt']))) {
     throw malformed();
   }
   if (typeof order['recipient'] !== 'object' || order['recipient'] === null || Array.isArray(order['recipient']))
@@ -155,6 +159,8 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
         email: recipientRow['email'] as string | null, province: recipientRow['province'] as string,
         district: recipientRow['district'] as string, ward: recipientRow['ward'] as string,
         addressLine: recipientRow['addressLine'] as string, note: recipientRow['note'] as string | null },
+      trackingNumber: order['trackingNumber'] as string | null,
+      deliveredAt: order['deliveredAt'] as string | null,
     },
     timeline,
   };

@@ -148,10 +148,10 @@ describe('POST /orders/lookup (M4.4.2 guest order lookup)', () => {
     expect(TOKEN_PATTERN.test(token as string)).toBe(true);
     expect(token).not.toBe(TOKEN_A); // a genuinely new 192-bit token, not a re-release
     const order = body.order as Record<string, unknown>;
-    expect(Object.keys(order).sort()).toEqual(['code', 'createdAt', 'currency', 'items', 'method', 'recipient',
-      'shippingFee', 'status', 'subtotal', 'total']);
+    expect(Object.keys(order).sort()).toEqual(['code', 'createdAt', 'currency', 'deliveredAt', 'items', 'method', 'recipient',
+      'shippingFee', 'status', 'subtotal', 'total', 'trackingNumber']);
     expect(order).toMatchObject({ code: CODE_A, status: 'CONFIRMED', method: 'COD', currency: 'VND',
-      subtotal: 400000, shippingFee: 30000, total: 430000 });
+      subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null, deliveredAt: null });
     expect((order.recipient as Record<string, unknown>).note).toBe(NOTE_500);
     expect(Array.isArray(body.timeline)).toBe(true);
     // The stored form is the SHA-256 of the new token only — never the plaintext token.

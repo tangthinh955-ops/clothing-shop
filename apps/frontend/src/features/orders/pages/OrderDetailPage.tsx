@@ -95,6 +95,10 @@ export function OrderDetailPage() {
           ? 'Thanh toán khi nhận hàng (COD)' : query.data.order.method}
         {query.data.order.status === 'PENDING' && <> — <strong>chưa thu tiền</strong></>}
       </Typography>
+      {query.data.order.trackingNumber
+        && <Typography sx={{ overflowWrap: 'anywhere' }}>Mã vận đơn: {query.data.order.trackingNumber}</Typography>}
+      {query.data.order.deliveredAt
+        && <Typography>Đã giao lúc: {ENTRY_TIME.format(new Date(query.data.order.deliveredAt))}</Typography>}
       <Paper square elevation={0} sx={{ p: { xs: 2.5, sm: 4 } }}>
         <Typography component="h2" variant="h6" sx={{ mb: 2 }}>Sản phẩm đặt mua</Typography>
         <Stack spacing={2}>

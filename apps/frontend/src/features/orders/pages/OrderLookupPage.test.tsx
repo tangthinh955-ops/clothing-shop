@@ -23,7 +23,7 @@ const lookupAnswer = (token = TOKEN, code = CODE) => ({
     createdAt: '2026-10-31T03:30:00.000Z',
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo tra cứu', sku: 'LKA',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
-    subtotal: 400000, shippingFee: 30000, total: 430000,
+    subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null, deliveredAt: null,
     recipient: { name: 'Nguyễn Thử', phone: PHONE, email: null, province: 'TP. Hồ Chí Minh',
       district: '', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ', note: null },
   },

@@ -271,9 +271,35 @@ CONFIRMED → Đóng gói → PACKING. Khách giờ chỉ gửi yêu cầu hủy
 
 Với đơn2×A trước ship onHand5/reserved2: nhập tracking theo DTO → Bàn giao → SHIPPED, kho3/0. Gửi lại cùng key không xuống1/-2. Integration cancel/ship đồng thời phải có một kết quả hợp lệ, không đơn hủy mà vẫn xuất hoặc ngược lại.
 
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Thao tác này không hoàn tác được, chỉ thử trên dữ liệu local.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD số lượng 2, xác nhận rồi đóng gói; ghi lại Tồn thực có và Đang giữ ở trang Kho | Đang giữ đã tăng 2; đơn có nút "Bàn giao" và "Hủy đơn" |
+| Bấm "Bàn giao", để trống hoặc nhập `GHN 123` rồi bấm "Bàn giao" trong hộp thoại | Báo "Chỉ gồm chữ, số, - _ . (3–100 ký tự).", đơn không đổi |
+| Nhập `GHN-123.ABC_9`, bấm "Bàn giao" | Trạng thái "Đã bàn giao vận chuyển", hiện "Mã vận đơn: GHN-123.ABC_9", hết nút thao tác; Lịch sử có tên admin; tải lại trang vẫn đúng |
+| Xem lại trang Kho | Tồn thực có và Đang giữ cùng giảm 2; lịch sử kho ghi "Bàn giao đơn <mã>" |
+| Mở link xem đơn của khách | Thấy "Đã bàn giao vận chuyển" và mã vận đơn, người thao tác hiện "Cửa hàng", không có tên admin |
+| Mở đơn "Đang đóng gói" khác ở hai tab, bàn giao ở tab 1, rồi bàn giao ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; kho chỉ trừ một lần |
+| DevTools → Offline, bấm "Bàn giao" | Báo lỗi kết nối, ô mã bị khóa, có "Gửi lại"; bật mạng rồi bấm thì kho trừ đúng một lần |
+
 ### M4.5.6 — Giao thành công
 
 SHIPPED → Giao thành công → DELIVERED, có deliveredAt. Kho vẫn3/0, không trừ thêm. COD vẫn chưa thu cho tới khi admin đối soát ở6.4; giao thành công không phải bằng chứng tiền đã nhận.
+
+Đã triển khai (chờ người dùng thử). Không cần migration mới. Thời điểm giao luôn hiểu theo giờ Việt Nam, kể cả khi máy đặt múi giờ khác.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đưa một đơn tới "Đã bàn giao vận chuyển"; ghi lại số ở trang Kho | Có nút "Giao thành công", không có nút hủy |
+| Bấm "Giao thành công" | Hộp thoại nói tiền COD chưa được ghi nhận; ô thời điểm điền sẵn giờ Việt Nam hiện tại; bấm "Để sau" thì không có gì đổi |
+| Chọn giờ trong tương lai, hoặc xóa trống, rồi bấm "Giao thành công" | Báo lỗi tương ứng, đơn không đổi |
+| Chọn ngày trước lúc bàn giao | Báo "Thời điểm giao không được trước lúc bàn giao.", đơn không đổi |
+| Giữ giờ điền sẵn hoặc chọn giờ sau lúc bàn giao, bấm "Giao thành công" | Trạng thái "Đã giao", hiện "Đã giao lúc: …" đúng giờ đã chọn, hết nút thao tác; Lịch sử có tên admin; tải lại trang vẫn đúng |
+| Xem lại trang Kho | Tồn thực có và Đang giữ không đổi so với lúc bàn giao, không có dòng lịch sử kho mới |
+| Mở link xem đơn của khách | Thấy "Đã giao" và thời điểm giao, người thao tác hiện "Cửa hàng", không có tên admin |
+| Mở đơn đã bàn giao ở hai tab, ghi giao ở tab 1, rồi ghi giao ở tab 2 | Tab 2 báo "Đơn đã thay đổi…" và nút "Tải lại đơn"; Lịch sử chỉ có một dòng |
+| DevTools → Offline, bấm "Giao thành công" | Báo lỗi kết nối, ô thời điểm bị khóa, có "Gửi lại"; bật mạng rồi bấm thì áp dụng đúng một lần |
 
 ### M4.5.7 — Admin hủy
 
