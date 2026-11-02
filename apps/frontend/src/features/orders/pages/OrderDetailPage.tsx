@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { formatMoney } from '../../catalog/catalogFormat';
 import { ApiError } from '../../../shared/api/client';
-import { seller } from '../../../shared/shop';
+import { pageTitle, seller } from '../../../shared/shop';
 import { ordersApi, type OrderStatus } from '../api/orders.api';
 import { OrderCancelAction } from '../components/OrderCancelAction';
 import { OrderCancelRequestAction } from '../components/OrderCancelRequestAction';
@@ -86,7 +86,7 @@ export function OrderDetailPage() {
   const verified = query.isSuccess && verifiedHash === tokenHash;
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <title>Đơn hàng | Clothing Shop</title>
+    <title>{pageTitle('Đơn hàng')}</title>
     {!token && <AccessError message={UNIFORM_ACCESS_ERROR} />}
     {token && query.isError && <AccessError message={safeMessage(query.error)} />}
     {/* Every branch below requires a live token; without one nothing is ever sent. */}

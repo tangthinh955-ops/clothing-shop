@@ -7,6 +7,7 @@ import { OrderConfirmation } from '../components/OrderConfirmation';
 import { describeQuoteChanges, QuoteSummary } from '../components/QuoteSummary';
 import { cartMatchesQuote, useCreateOrder, type ContactDraft } from '../hooks/useCreateOrder';
 import { useCheckoutQuote } from '../hooks/useCheckoutQuote';
+import { pageTitle } from '../../../shared/shop';
 
 function expiryLine(remainingMs: number | null): string {
   if (remainingMs === null) return 'Đang xác định thời hạn báo giá.';
@@ -41,7 +42,7 @@ export function CheckoutPage() {
   // shopper must resolve it through Gửi lại before anything else happens on this page.
   if (submitPhase === 'unknown') {
     return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <title>Đặt hàng COD | Clothing Shop</title>
+      <title>{pageTitle('Đặt hàng COD')}</title>
       <Typography variant="h4" component="h1">Đặt hàng — thanh toán khi nhận hàng</Typography>
       <Alert severity="warning">
         {submitError ?? 'Không nhận được kết quả đặt hàng.'}
@@ -77,7 +78,7 @@ export function CheckoutPage() {
   const serverFieldErrors = submitPhase === 'failed' ? fieldErrors : {};
 
   return <Box sx={{ py: { xs: 2, md: 4 }, maxWidth: 820, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <title>Đặt hàng COD | Clothing Shop</title>
+    <title>{pageTitle('Đặt hàng COD')}</title>
     <Typography variant="h4" component="h1">Đặt hàng — thanh toán khi nhận hàng</Typography>
     <Typography sx={{ color: 'text.secondary' }}>
       Bước xem báo giá và nhập thông tin nhận hàng. Phương thức hiện tại: thanh toán khi nhận hàng (COD).

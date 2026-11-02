@@ -113,8 +113,9 @@ describe('checkout quote page', () => {
         items: quoteResponse().items, subtotal: 700000, shippingFee: 30000, total: 730000 },
         lookupToken: 'a'.repeat(32) },
     ]);
+    expect(document.title).toBe('Đặt hàng COD | ADECY');
     const button = screen.getByRole('button', { name: 'Đặt hàng COD' });
-    expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock the submit
+expect(button).toBeEnabled(); // the filled draft and the accepted quote unlock the submit
     await userEvent.click(button);
     expect(await screen.findByText(/Đã tạo đơn hàng COD/)).toBeVisible();
     expect(screen.getByText('AB23456789CD')).toBeVisible();

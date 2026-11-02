@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { SHOP_NAME } from '../../config/shop.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { conflict, databaseError, publishRuleConflict } from '../../common/database-errors.js';
@@ -49,7 +50,7 @@ export class ProductsService {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const price = `${Number(row.priceFrom).toLocaleString('vi-VN')}đ`;
     const description = row.description !== '' ? row.description : `Giá từ ${price} — đặt hàng online, giao hàng toàn quốc.`;
-    const title = `${row.name} | RMG Labels`;
+    const title = `${row.name} | ${SHOP_NAME}`;
     const image = row.images[0];
     const imageTag = image ? `\n    <meta property="og:image" content="${escape(`${origin}/api/v1/media/${image.assetId}`)}" />` : '';
     return `<!doctype html>

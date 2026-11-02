@@ -50,7 +50,7 @@ describe('admin order detail', () => {
     const request = renderPage(() => Promise.resolve(order));
     expect(await screen.findByRole('heading', { name: 'ABCD2345EFGH', level: 1 })).toBeVisible();
     expect(request).toHaveBeenCalledWith(`/admin/orders/${ORDER_ID}`);
-    expect(document.title).toBe('Đơn ABCD2345EFGH | Quản trị | RMG Labels');
+    expect(document.title).toBe('Đơn ABCD2345EFGH | Quản trị | ADECY');
     const recipient = within(screen.getByRole('region', { name: 'Người nhận' }));
     expect(recipient.getByText('Nguyễn Thử')).toBeVisible();
     expect(recipient.getByRole('link', { name: '0901234567' })).toHaveAttribute('href', 'tel:0901234567');

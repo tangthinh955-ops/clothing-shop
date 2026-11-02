@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError } from '../../../../shared/api/client';
+import { pageTitle } from '../../../../shared/shop';
 import { settingsApi, settingsKey, type AdminSettings, type SettingsUpdateInput } from '../api/settings.api';
 import { SettingsForm } from '../components/SettingsForm';
 
@@ -48,7 +49,7 @@ export function SettingsPage() {
   }
 
   return <Box sx={{ maxWidth: 760, mx: 'auto', py: { xs: 4, md: 6 } }}>
-    <title>Cài đặt | Quản trị Clothing Shop</title>
+    <title>{pageTitle('Cài đặt | Quản trị')}</title>
     <Button component={Link} to="/admin" sx={{ mb: 2 }}>Về quản trị</Button>
     <Typography component="h1" variant="h3" sx={{ mb: 3 }}>Cài đặt cửa hàng</Typography>
     {settings.isPending && <Typography role="status">Đang tải cài đặt…</Typography>}

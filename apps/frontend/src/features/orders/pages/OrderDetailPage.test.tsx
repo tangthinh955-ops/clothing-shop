@@ -157,13 +157,14 @@ describe('customer cancellation (M4.4.3)', () => {
     const current = view();
     serve(() => Promise.resolve({ ...current, order: { ...current.order, status: 'PACKING' } }));
     const first = renderDetail(`/orders/${CODE}#t=${TOKEN}`);
-    expect(await screen.findByRole('link', { name: '@rmglabels' })).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    expect(await screen.findByRole('link', { name: '@adecy.co' })).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
+    expect(document.title).toBe('Đơn hàng | ADECY');
     first.unmount();
     vi.restoreAllMocks();
     serve(() => Promise.resolve(view()));
     renderDetail(`/orders/${CODE}#t=${TOKEN}`);
     await screen.findByRole('heading', { name: CODE, level: 1 });
-    expect(screen.queryByRole('link', { name: '@rmglabels' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '@adecy.co' })).not.toBeInTheDocument();
   });
 
   it('warns that this cannot be undone, and sends nothing when the customer backs out', async () => {
@@ -235,7 +236,7 @@ describe('customer cancellation (M4.4.3)', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Trạng thái đơn không cho phép');
     expect(within(dialog).queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
-    expect(await screen.findByRole('link', { name: '@rmglabels' })).toBeVisible();
+    expect(await screen.findByRole('link', { name: '@adecy.co' })).toBeVisible();
     expect(cancelCalls()).toHaveLength(1);
   });
 

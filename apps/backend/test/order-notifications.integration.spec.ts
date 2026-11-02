@@ -132,9 +132,9 @@ describe('shop notice for a new order (M4.10.1.1)', () => {
     const code = codeOf(response);
     await settled(code);
     const [, subject, text] = send.mock.calls[0]!;
-    expect(subject).toContain(code);
+    expect(subject).toBe(`Đơn mới ${code} | ADECY`);
     expect(text).toContain(code);
-    expect(text).toContain('Số sản phẩm: 2');
+expect(text).toContain('Số sản phẩm: 2');
     expect(text).toMatch(/430\.000/);
     expect(text).toContain('COD');
     expect(text).toContain(`${origin}/admin/orders/${await orderIdOf(code)}`);
@@ -497,6 +497,6 @@ describe('retrying shop notices (M4.10.2.1)', () => {
     await db.notificationDelivery.update({ where: { id: row!.id }, data: { event: 'order.cancelled.shop' } });
     await notices().processDue(after(new Date(), 2 * MINUTE));
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]![1]).toContain('Khách hủy đơn');
+    expect(send.mock.calls[0]![1]).toBe(`Khách hủy đơn ${code} | ADECY`);
   });
 });

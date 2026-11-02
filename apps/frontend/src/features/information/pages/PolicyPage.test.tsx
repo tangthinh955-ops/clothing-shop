@@ -32,10 +32,10 @@ describe('real shop policies', () => {
     renderPolicy('/contact');
     expect(await screen.findByRole('heading', { name: 'Liên hệ', level: 1 })).toBeVisible();
     const main = screen.getByRole('main');
-    expect(main.textContent).toMatch(/RMG Labels/);
+    expect(main.textContent).toMatch(/ADECY/);
     expect(main.textContent).toMatch(/Cá nhân kinh doanh/);
     expect(main.textContent).toMatch(/TP\. Hồ Chí Minh/);
-    expect(screen.getAllByRole('link', { name: 'Instagram @rmglabels' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Instagram @adecy.co' }).length).toBeGreaterThan(0);
     expect(main.textContent).not.toMatch(/sẽ được bổ sung|đang cập nhật/i);
   });
 });

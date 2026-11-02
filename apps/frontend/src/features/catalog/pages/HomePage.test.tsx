@@ -41,7 +41,7 @@ describe('home page', () => {
     expect(await within(hero).findByRole('img', { name: 'Sản phẩm 2' })).toHaveAttribute('src', '/api/v1/media/i2');
     expect(within(hero).getByRole('link', { name: 'Xem bộ sưu tập' })).toHaveAttribute('href', '/shop');
     expect(request).toHaveBeenCalledWith({ q: '', page: 1, sort: 'newest' });
-    expect(document.title).toBe('RMG Labels');
+    expect(document.title).toBe('ADECY');
   });
 
   it('links each active category to the filtered collection', async () => {
@@ -63,7 +63,7 @@ describe('home page', () => {
     const hero = await screen.findByRole('region', { name: 'Bộ sưu tập mới' });
     expect(await screen.findByText(/Shop đang chuẩn bị hàng mới/)).toBeVisible();
     expect(within(hero).queryByRole('img')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Theo dõi @rmglabels' })).toHaveAttribute('href', 'https://www.instagram.com/rmglabels/');
+    expect(screen.getByRole('link', { name: 'Theo dõi @adecy.co' })).toHaveAttribute('href', 'https://www.instagram.com/adecy.co/');
   });
 
   it('explains a failed load and retries on request', async () => {
