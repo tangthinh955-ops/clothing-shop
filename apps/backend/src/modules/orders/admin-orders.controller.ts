@@ -13,6 +13,8 @@ import { AdminOrderNoteDto } from './dto/admin-order-note.dto.js';
 import { AdminOrderShipDto } from './dto/admin-order-ship.dto.js';
 import { AdminOrderTransitionDto } from './dto/admin-order-transition.dto.js';
 import { AdminOrdersQuery } from './dto/admin-orders-query.dto.js';
+import { AdminCancellationDecisionDto } from './dto/cancellation-decision.dto.js';
+import { OrderCancellationRequestsService } from './order-cancellation-requests.service.js';
 
 @Controller('admin/orders')
 @UseGuards(SessionGuard, RolesGuard)
@@ -22,6 +24,7 @@ export class AdminOrdersController {
     @Inject(AdminOrdersService) private readonly orders: AdminOrdersService,
     @Inject(AdminOrderNotesService) private readonly notes: AdminOrderNotesService,
     @Inject(AdminOrderTransitionsService) private readonly transitions: AdminOrderTransitionsService,
+    @Inject(OrderCancellationRequestsService) private readonly cancellationRequests: OrderCancellationRequestsService,
   ) {}
 
   @Get()
@@ -67,6 +70,16 @@ export class AdminOrdersController {
   cancel(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
     @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminOrderCancelDto) {
     return this.transitions.cancel(user.id, id, key, dto.expectedVersion, dto.reason);
+  }
+
+  // M4.5.8: refusing the waiting cancellation request keeps the order PACKING; the request row holds
+  // the reason, the time and the deciding admin, and the customer reads the reason on their order.
+  @Post(':id/cancellation-decisions')
+  @HttpCode(200)
+  decideCancellation(@CurrentUser() user: UserIdentity, @Param('id', ParseUUIDPipe) id: string,
+    @Headers('idempotency-key') key: string | undefined, @Body() dto: AdminCancellationDecisionDto) {
+    return this.cancellationRequests.reject({ orderId: id, requestId: dto.requestId, actorId: user.id,
+      key, expectedVersion: dto.expectedVersion, reason: dto.reason });
   }
 
   @Post(':id/notes')

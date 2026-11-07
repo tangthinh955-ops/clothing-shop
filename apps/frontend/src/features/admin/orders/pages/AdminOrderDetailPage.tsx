@@ -46,7 +46,7 @@ function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: (
     {waiting && <Alert severity="warning" role="status" aria-label="Khách xin hủy đơn" sx={{ overflowWrap: 'anywhere' }}>
       <Typography sx={{ fontWeight: 600 }}>Khách xin hủy đơn lúc {formatOrderTime(waiting.createdAt)}</Typography>
       <Typography sx={{ whiteSpace: 'pre-line' }}>Lý do: {waiting.reason}</Typography>
-      <Typography variant="body2" sx={{ mt: 1 }}>Đồng ý: bấm “Hủy đơn”. Không đồng ý: nhắn khách rồi “Bàn giao”.</Typography>
+      <Typography variant="body2" sx={{ mt: 1 }}>Đồng ý: bấm “Hủy đơn”. Không đồng ý: bấm “Từ chối yêu cầu hủy” rồi nhập lý do, khách sẽ thấy; hàng vẫn gửi đi thì bấm “Bàn giao”.</Typography>
     </Alert>}
     {/* Remounts per version, so a finished action never carries its key or outcome into the next one. */}
     <OrderActions key={order.version} order={order} onChanged={onChanged} />
@@ -94,6 +94,14 @@ function OrderView({ order, onChanged }: { order: AdminOrderDetail; onChanged: (
           <Typography variant="body2" color="text.secondary">
             {request.status === 'APPROVED' ? 'Đã đồng ý' : 'Không đồng ý'} · Khách gửi {formatOrderTime(request.createdAt)}
           </Typography>
+          {/* A refusal keeps its reason, time and decider on the request row (M4.5.8); older rows have none. */}
+          {request.status === 'REJECTED' && (request.decisionReason || request.decidedAt) && <Box sx={{ mt: 0.5 }}>
+            {request.decisionReason && <Typography variant="body2">Lý do từ chối: {request.decisionReason}</Typography>}
+            <Typography variant="body2" color="text.secondary">
+              {[request.decidedAt ? `Đã phản hồi ${formatOrderTime(request.decidedAt)}` : '', request.decidedByName ?? '']
+                .filter(Boolean).join(' · ')}
+            </Typography>
+          </Box>}
         </Box>)}
       </Stack>
     </Section>}

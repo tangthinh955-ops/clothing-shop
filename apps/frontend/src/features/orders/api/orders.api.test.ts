@@ -19,6 +19,7 @@ const view = (): OrderDetailResult => ({
     items: [{ variantId: '17bfecab-9df4-4de4-bd91-3c11116fca5b', productName: 'Áo xem chi tiết', sku: 'ACC-A',
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
     subtotal: 400000, shippingFee: 30000, total: 430000, recipient, trackingNumber: null, deliveredAt: null, cancellationRequest: null,
+    cancellationDecision: null,
   },
   timeline: [
     { fromStatus: null, toStatus: 'PENDING', actorLabel: 'Khách đặt hàng', reason: null, version: 0,
@@ -42,6 +43,21 @@ describe('parseOrderDetailView', () => {
     expect(() => parseOrderDetailView(withRequest({ ...request, reason: 'R'.repeat(501) }))).toThrow();
     expect(() => parseOrderDetailView(withRequest({ ...request, createdAt: 'hôm qua' }))).toThrow();
     expect(() => parseOrderDetailView(withRequest(undefined))).toThrow();
+  });
+
+  // M4.5.8: the refusal reaches the customer with its reason and time only — never staff identity,
+  // which the allowlist projection keeps behind the admin login.
+  it('keeps a well-formed refusal decision and refuses anything else', () => {
+    const withDecision = (cancellationDecision: unknown) => ({ ...view(), order: { ...view().order, cancellationDecision } });
+    const refusal = { status: 'REJECTED', reason: 'Mẫu đặt riêng, không thể hủy', decidedAt: '2026-11-01T04:00:00.000Z' };
+    expect(parseOrderDetailView(withDecision(refusal)).order.cancellationDecision).toEqual(refusal);
+    expect(() => parseOrderDetailView(withDecision({ ...refusal, status: 'APPROVED' }))).toThrow();
+    expect(() => parseOrderDetailView(withDecision({ ...refusal, reason: '' }))).toThrow();
+    expect(() => parseOrderDetailView(withDecision({ ...refusal, decidedAt: 'chiều nay' }))).toThrow();
+    expect(() => parseOrderDetailView(withDecision({ ...refusal, decidedById: '2f0c2c02-0000-4000-8000-000000000000' }))).not.toThrow();
+    expect(parseOrderDetailView(withDecision({ ...refusal, decidedById: 'x' })).order.cancellationDecision).toEqual(refusal);
+    expect(() => parseOrderDetailView(withDecision(undefined))).toThrow();
+    expect(() => parseOrderDetailView(withDecision('từ chối'))).toThrow();
   });
 
   it('keeps a real delivery time and refuses anything else', () => {

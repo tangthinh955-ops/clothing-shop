@@ -23,6 +23,11 @@ export function OrderActions({ order, onChanged }: OrderActionsProps) {
   const canDeliver = order.status === 'SHIPPED';
   const canCancel = CANCELLABLE.includes(order.status);
   const customerWaiting = order.cancellationRequests.some((request) => request.status === 'PENDING');
+  // Only a packing order with the exact waiting request can be refused (M4.5.8): the dialog carries
+  // that request's id, so an ask opened after this page loaded can never be decided in its place.
+  const waitingRequest = customerWaiting && canShip
+    ? order.cancellationRequests.find((request) => request.status === 'PENDING')
+    : undefined;
   if (!canConfirm && !canPack && !canShip && !canDeliver && !canCancel) return null;
 
   return <Stack direction="row" useFlexGap sx={{ gap: 1, flexWrap: 'wrap' }}>
@@ -36,6 +41,11 @@ export function OrderActions({ order, onChanged }: OrderActionsProps) {
       description={`${customerWaiting ? 'Khách đang xin hủy đơn này: bàn giao nghĩa là không đồng ý yêu cầu hủy. ' : ''}Kho sẽ trừ số hàng của đơn này. Đơn đã bàn giao không hủy được và không quay lại được; mã vận đơn không sửa được sau khi lưu. Khách sẽ thấy mã này.`}
       validate={(value) => (TRACKING_PATTERN.test(value) ? '' : 'Chỉ gồm chữ, số, - _ . (3–100 ký tự).')}
       perform={(value, key) => adminOrdersApi.ship(order.id, order.version, value, key)} onChanged={onChanged} />}
+    {waitingRequest && <OrderInputAction label="Từ chối yêu cầu hủy" title={`Từ chối yêu cầu hủy đơn ${order.code}?`} fieldLabel="Lý do từ chối" maxLength={MAX_REASON_LENGTH} multiline danger
+      description="Đơn vẫn ở “Đang đóng gói”, kho và tiền không đổi, và khách sẽ thấy lý do này. Khách vẫn có thể gửi yêu cầu hủy mới. Không đồng ý mà hàng vẫn gửi đi thì dùng “Bàn giao”."
+      validate={(value) => (value.length < MIN_REASON_LENGTH ? `Nhập lý do từ ${MIN_REASON_LENGTH} đến ${MAX_REASON_LENGTH} ký tự.` : '')}
+      perform={(value, key) => adminOrdersApi.rejectCancellationRequest(order.id, waitingRequest.id, order.version, value, key)}
+      onChanged={onChanged} />}
     {canDeliver && <OrderInputAction label="Giao thành công" title={`Ghi đơn ${order.code} đã giao?`} fieldLabel="Thời điểm giao (giờ Việt Nam)" inputType="datetime-local"
       description="Đơn chuyển sang “Đã giao” và không quay lại được. Kho không đổi; tiền COD vẫn chưa được ghi nhận. Thời hạn đổi trả tính từ thời điểm này, và khách sẽ thấy nó."
       initialValue={() => toVietnamInput(new Date())}

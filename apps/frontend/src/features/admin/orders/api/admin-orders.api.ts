@@ -62,6 +62,10 @@ export interface AdminCancellationRequest {
   reason: string;
   createdAt: string;
   decidedAt: string | null;
+  // M4.5.8: the shop's refusal carries its reason and decider; staff identity stays admin-only.
+  decisionReason: string | null;
+  decidedById: string | null;
+  decidedByName: string | null;
 }
 
 export interface AdminOrderDetail {
@@ -95,6 +99,15 @@ export interface AdminOrderTransition {
   code: string;
   status: OrderStatus;
   version: number;
+}
+
+// M4.5.8: refusing a request never moves the status, so the answer names the request and the
+// order's new version instead of a transition view.
+export interface AdminCancellationDecision {
+  requestId: string;
+  decision: 'REJECTED';
+  decidedAt: string;
+  order: { id: string; code: string; status: OrderStatus; version: number };
 }
 
 export const ADMIN_ORDERS_PAGE_SIZE = 20;
@@ -138,6 +151,12 @@ export const adminOrdersApi = {
   cancel(id: string, expectedVersion: number, reason: string, idempotencyKey: string) {
     return request<AdminOrderTransition>(`/admin/orders/${encodeURIComponent(id)}/cancel`,
       { method: 'POST', body: { expectedVersion, reason }, idempotencyKey });
+  },
+  // POST /api/v1/admin/orders/:id/cancellation-decisions — refuse the waiting request: the order stays
+  // PACKING, the customer reads the reason, and a stale version or decided request answers 409.
+  rejectCancellationRequest(id: string, requestId: string, expectedVersion: number, reason: string, idempotencyKey: string) {
+    return request<AdminCancellationDecision>(`/admin/orders/${encodeURIComponent(id)}/cancellation-decisions`,
+      { method: 'POST', body: { requestId, expectedVersion, decision: 'REJECTED', reason }, idempotencyKey });
   },
   // POST /api/v1/admin/orders/:id/notes — append-only internal note; the key makes a resend safe.
   addNote(id: string, body: string, idempotencyKey: string) {

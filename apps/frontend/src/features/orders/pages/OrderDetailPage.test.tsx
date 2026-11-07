@@ -41,6 +41,7 @@ const view = (name = 'Nguyễn Thử Đơn A', note = 'Giao giờ hành chính')
       size: 'M', color: 'Đen', unitPriceVnd: 400000, quantity: 1, lineTotalVnd: 400000 }],
     subtotal: 400000, shippingFee: 30000, total: 430000, trackingNumber: null as string | null, deliveredAt: null as string | null,
     cancellationRequest: null as { status: string; reason: string; createdAt: string } | null,
+    cancellationDecision: null as { status: string; reason: string; decidedAt: string } | null,
     recipient: { name, phone: '0901230001', email: 'viewer-a@example.test', province: 'TP. Hồ Chí Minh',
       district: '', ward: 'Phường Bến Nghé', addressLine: '12 Nguyễn Huệ', note },
   },
@@ -401,6 +402,73 @@ describe('asking to cancel while packing (M4.4.4)', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument());
     expect(calls()).toHaveLength(1);
+  });
+});
+
+// M4.5.8: when the shop refuses, the customer reads the reason while the order still packs, and a new
+// ask replaces the refusal as the current state — the old answer never poses as the new attempt's result.
+describe('reading the shop refusal (M4.5.8)', () => {
+  const REASON = 'Tôi đổi ý rồi';
+  const REFUSAL = { status: 'REJECTED', reason: 'Mẫu đặt riêng, không thể hủy giữa chừng', decidedAt: '2026-11-01T06:00:00.000Z' };
+  const answer = { status: 'PENDING', reason: REASON, createdAt: '2026-10-31T05:00:00.000Z' };
+
+  const packing = (overrides: { cancellationRequest?: typeof answer | null; cancellationDecision?: typeof REFUSAL | null } = {}) => {
+    const current = view();
+    return { ...current, order: { ...current.order, status: 'PACKING',
+      cancellationRequest: overrides.cancellationRequest ?? null,
+      cancellationDecision: overrides.cancellationDecision ?? null } };
+  };
+
+  type Answer = (path: string, options?: RequestOptions) => Promise<unknown>;
+
+  function serve(respond: Answer) {
+    const spy = vi.spyOn(client, 'request').mockImplementation((path: string, options?: RequestOptions) => respond(path, options));
+    return () => spy.mock.calls.filter(([path]) => String(path).endsWith('/cancellation-requests'));
+  }
+
+  it('shows the refusal with its reason and time while packing, and still offers a new ask', async () => {
+    const calls = serve(() => Promise.resolve(packing({ cancellationDecision: REFUSAL })));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    const alert = await screen.findByText('Shop chưa đồng ý hủy đơn này.').then((heading) => heading.closest('[role="status"]'));
+    expect(alert).toHaveTextContent(REFUSAL.reason);
+    expect(screen.getByRole('button', { name: 'Xin hủy đơn' })).toBeVisible();
+    // No staff identity may leak into the customer view even if a payload smuggled it in.
+    expect(document.body.textContent).not.toContain('decidedByName');
+  });
+
+  it('lets the customer ask again: the new ask becomes the waiting state and the refusal steps aside', async () => {
+    const user = userEvent.setup();
+    let current = packing({ cancellationDecision: REFUSAL });
+    const calls = serve(async (_path, options) => {
+      if (options?.method !== 'POST') return current;
+      current = packing({ cancellationRequest: answer });
+      return answer;
+    });
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await user.click(await screen.findByRole('button', { name: 'Xin hủy đơn' }));
+    const dialog = screen.getByRole('dialog', { name: `Xin hủy đơn ${CODE}?` });
+    await user.type(within(dialog).getByLabelText(/Lý do xin hủy/), REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Xin hủy đơn' }));
+    expect(await screen.findByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    expect(screen.queryByText('Shop chưa đồng ý hủy đơn này.')).not.toBeInTheDocument();
+    expect(calls()).toHaveLength(1);
+    expect(calls()[0]?.[1]?.idempotencyKey).toEqual(expect.any(String));
+  });
+
+  it('hides the refusal once a newer ask is waiting', async () => {
+    serve(() => Promise.resolve(packing({ cancellationRequest: answer, cancellationDecision: REFUSAL })));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByText(/Đã gửi yêu cầu hủy/);
+    expect(screen.queryByText('Shop chưa đồng ý hủy đơn này.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Xin hủy đơn' })).not.toBeInTheDocument();
+  });
+
+  it('never shows the refusal once the order moved past packing', async () => {
+    const shipped = view();
+    serve(() => Promise.resolve({ ...shipped, order: { ...shipped.order, status: 'SHIPPED', cancellationDecision: REFUSAL } }));
+    renderDetail(`/orders/${CODE}#t=${TOKEN}`);
+    await screen.findByRole('heading', { name: CODE, level: 1 });
+    expect(screen.queryByText('Shop chưa đồng ý hủy đơn này.')).not.toBeInTheDocument();
   });
 });
 

@@ -43,6 +43,8 @@ export interface OrderDetailView {
   trackingNumber: string | null;
   deliveredAt: string | null;
   cancellationRequest: { status: 'PENDING'; reason: string; createdAt: string } | null;
+  // The shop's latest refusal (M4.5.8), only while the order still packs and no newer ask is waiting.
+  cancellationDecision: { status: 'REJECTED'; reason: string; decidedAt: string } | null;
 }
 
 export interface OrderDetailTimelineEntry {
@@ -129,6 +131,14 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
     const asked = waiting as Record<string, unknown>;
     if (asked['status'] !== 'PENDING' || !text(asked['reason']) || !iso(asked['createdAt'])) throw malformed();
   }
+  const decision = order['cancellationDecision'];
+  if (decision !== null) {
+    if (typeof decision !== 'object' || Array.isArray(decision)) throw malformed();
+    const refused = decision as Record<string, unknown>;
+    // Rebuilt field by field: whatever extra a payload carries (staff identity, debugging data)
+    // never reaches the view the customer renders.
+    if (refused['status'] !== 'REJECTED' || !text(refused['reason']) || !iso(refused['decidedAt'])) throw malformed();
+  }
   if (typeof order['recipient'] !== 'object' || order['recipient'] === null || Array.isArray(order['recipient']))
     throw malformed();
   const recipientRow = order['recipient'] as Record<string, unknown>;
@@ -169,6 +179,10 @@ export function parseOrderDetailView(value: unknown): OrderDetailResult {
       trackingNumber: order['trackingNumber'] as string | null,
       deliveredAt: order['deliveredAt'] as string | null,
       cancellationRequest: waiting as OrderDetailView['cancellationRequest'],
+      cancellationDecision: decision === null ? null : {
+        status: 'REJECTED', reason: (decision as Record<string, unknown>)['reason'] as string,
+        decidedAt: (decision as Record<string, unknown>)['decidedAt'] as string,
+      },
     },
     timeline,
   };

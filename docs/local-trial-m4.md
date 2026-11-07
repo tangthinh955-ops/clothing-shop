@@ -218,9 +218,9 @@ Test riêng: integration `test/order-lookup.integration.spec.ts` (trong `./tools
 
 ### M4.4.4 — Xin hủy khi PACKING
 
-Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu hủy. Mong đợi đơn vẫn PACKING, yêu cầu pending, gửi lại không trùng; việc hủy thực sự chờ M4.5.8. Không cho dùng API hủy trực tiếp để vượt bước.
+Sau M4.5.4, admin chuyển đơn thử tới PACKING; khách gửi yêu cầu hủy. Mong đợi đơn vẫn PACKING, yêu cầu pending, gửi lại không trùng; shop trả lời bằng "Hủy đơn" (đồng ý) hoặc từ M4.5.8 "Từ chối yêu cầu hủy"/"Bàn giao". Không cho dùng API hủy trực tiếp để vượt bước.
 
-Đã triển khai (chờ người dùng thử). Cần chạy `./tools/npm.ps1 run db:migrate` trước. Khác mô tả trên theo kế hoạch đã duyệt: shop xử lý yêu cầu ngay bằng nút "Hủy đơn" (đồng ý) hoặc "Bàn giao" (không đồng ý), không phải chờ M4.5.8.
+Đã triển khai (chờ người dùng thử). Cần chạy `./tools/npm.ps1 run db:migrate` trước (migration `202611050001_m4_cancellation_decisions`). Khác mô tả trên theo kế hoạch đã duyệt: shop xử lý yêu cầu ngay bằng nút "Hủy đơn" (đồng ý), "Từ chối yêu cầu hủy" (M4.5.8) hoặc "Bàn giao" (không đồng ý).
 
 | Thao tác | Kết quả mong đợi |
 |---|---|
@@ -356,6 +356,22 @@ Tạo các đơn riêng PENDING/CONFIRMED/PACKING để hủy có lý do. Reserv
 ### M4.5.8 — Duyệt/từ chối yêu cầu hủy
 
 Mở yêu cầu từ4.4.4: từ chối thì đơn vẫn PACKING, có lý do; dùng đơn khác để duyệt thì CANCELLED và giải phóng giữ. Integration duyệt hủy/ship cùng lúc, replay quyết định và version cũ phải giữ nhất quán.
+
+**Đã triển khai M4.5.8 (chờ người dùng thử).** Cần chạy `./tools/npm.ps1 run db:migrate` trước (migration `202611050001_m4_cancellation_decisions` thêm metadata quyết định và `occurrenceKey` cho thư). Đơn dữ liệu cũ đọc bình thường: yêu cầu bị từ chối trước M4.5.8 không có lý do từ chối và không hiện cảnh báo mới cho khách.
+
+| Thao tác | Kết quả mong đợi |
+|---|---|
+| Đặt đơn COD, admin xác nhận rồi đóng gói; khách bấm "Xin hủy đơn" và gửi lý do | Trạng thái vẫn "Đang đóng gói"; admin thấy khung "Khách xin hủy đơn" và ba nút: "Hủy đơn", "Từ chối yêu cầu hủy", "Bàn giao" |
+| Admin bấm "Từ chối yêu cầu hủy", gửi khi chưa nhập lý do | Báo "Nhập lý do từ 3 đến 500 ký tự.", chưa gọi API |
+| Admin nhập lý do từ chối (3–500 ký tự) và gửi | Đơn vẫn "Đang đóng gói" (không có dòng "Đang đóng gói → Đang đóng gói" trong lịch sử); mục "Yêu cầu hủy của khách" ghi "Không đồng ý" kèm "Lý do từ chối", thời điểm và tên admin; kho không đổi |
+| Mở `.local/mailbox/mail-*.json` sau khi từ chối | Không có thư mới cho lần từ chối; thư xin hủy vẫn chỉ có 1 |
+| Khách tải lại trang đơn | Thấy "Shop chưa đồng ý hủy đơn này." kèm lý do và thời điểm phản hồi, vẫn còn nút "Xin hủy đơn"; không thấy tên hay ID nhân viên |
+| Khách gửi yêu cầu hủy mới (lý do khác) | Khách thấy "Đã gửi yêu cầu hủy lúc …" mới, mất cảnh báo từ chối cũ; admin tải lại thấy yêu cầu chờ mới; mailbox có thêm thư "Khách xin hủy đơn" thứ hai |
+| Bấm "Từ chối yêu cầu hủy" trên đơn không có yêu cầu chờ (hoặc đã xử lý) | Không có nút; gọi API trực tiếp với requestId đã xử lý nhận 409 |
+| Admin giữ hộp thoại từ chối mở, tab khác bấm "Bàn giao" cùng lúc | Chỉ một lệnh thắng; bên kia nhận "Đơn đã thay đổi…" và nút "Tải lại đơn"; kho chỉ đổi đúng hiệu ứng bên thắng |
+| DevTools → Offline, bấm "Từ chối yêu cầu hủy" | Báo lỗi kết nối, ô lý do bị khóa, có "Gửi lại"; bật mạng rồi bấm gửi lại đúng key/nội dung, từ chối ghi đúng một lần |
+| Đơn khác: admin bấm "Hủy đơn" khi khách đang xin hủy | Yêu cầu thành "Đã đồng ý", đơn "Đã hủy", kho nhả giữ một lần |
+| Mở trang đơn admin ở khung 390px | Không tràn ngang khi hộp thoại từ chối mở |
 
 ### M4.6.1 — Đơn bank và VietQR
 

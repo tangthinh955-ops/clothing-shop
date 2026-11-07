@@ -63,7 +63,7 @@ export class AdminOrderTransitionsService {
     return this.apply('ship', SHIP, actorId, { orderId, key, expectedVersion, details: [trackingNumber], effect: async (tx, order) => {
       await this.inventory.ship(tx, `order:${orderId}:ship`, await this.runner.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Bàn giao đơn ${order.code}`);
       // Handing over while a customer waits is the shop's refusal: the goods have left.
-      await this.cancellationRequests.closePending(tx, orderId, 'REJECTED');
+      await this.cancellationRequests.closePending(tx, orderId, 'REJECTED', actorId);
       return { trackingNumber };
     } });
   }
@@ -85,7 +85,7 @@ export class AdminOrderTransitionsService {
     return this.apply('cancel', CANCEL, actorId, { orderId, key, expectedVersion, details: [reason], reason, effect: async (tx, order) => {
       // The movement carries a fixed reason: what the admin typed belongs to the order, not the stock log.
       await this.inventory.release(tx, `order:${orderId}:release`, await this.runner.linesOf(tx, orderId), { type: 'ADMIN', id: actorId }, `Hủy đơn ${order.code}`);
-      await this.cancellationRequests.closePending(tx, orderId, 'APPROVED');
+      await this.cancellationRequests.closePending(tx, orderId, 'APPROVED', actorId);
       return { cancelledAt: new Date(), cancelReason: reason };
     } });
   }

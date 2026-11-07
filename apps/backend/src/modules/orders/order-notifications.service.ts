@@ -56,8 +56,9 @@ export class OrderNotificationsService {
     return this.enqueue(tx, ORDER_CANCELLED_SHOP, orderId);
   }
 
-  enqueueCancelRequested(tx: Prisma.TransactionClient, orderId: string) {
-    return this.enqueue(tx, ORDER_CANCEL_REQUESTED_SHOP, orderId);
+  /** Each cancellation request owns its notice (M4.5.8), so asking twice is delivered twice. */
+  enqueueCancelRequested(tx: Prisma.TransactionClient, orderId: string, occurrenceKey: string) {
+    return this.enqueue(tx, ORDER_CANCEL_REQUESTED_SHOP, orderId, occurrenceKey);
   }
 
   dispatchCancelRequested(code: string) {
@@ -121,15 +122,15 @@ export class OrderNotificationsService {
     if (event === ORDER_CANCEL_REQUESTED_SHOP) {
       return {
         subject: `Khách xin hủy đơn ${order.code} | ${SHOP_NAME}`,
-        text: `Khách xin hủy đơn ${order.code} đang đóng gói. Đơn chưa bị hủy và hàng vẫn đang giữ.\n\nĐồng ý: bấm "Hủy đơn". Không đồng ý: nhắn khách rồi "Bàn giao". Lý do xem trên trang đơn.\n\n${link}`,
+        text: `Khách xin hủy đơn ${order.code} đang đóng gói. Đơn chưa bị hủy và hàng vẫn đang giữ.\n\nĐồng ý: bấm "Hủy đơn". Không đồng ý: bấm "Từ chối yêu cầu hủy" và nhập lý do, khách sẽ thấy; hàng vẫn gửi đi thì bấm "Bàn giao". Lý do xem trên trang đơn.\n\n${link}`,
       };
     }
     return null;
   }
 
-  private async enqueue(tx: Prisma.TransactionClient, event: string, orderId: string): Promise<void> {
+  private async enqueue(tx: Prisma.TransactionClient, event: string, orderId: string, occurrenceKey = 'order'): Promise<void> {
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', disabledAt: null }, select: { email: true } });
-    await tx.notificationDelivery.createMany({ data: admins.map(({ email }) => ({ event, orderId, recipient: email })) });
+    await tx.notificationDelivery.createMany({ data: admins.map(({ email }) => ({ event, orderId, recipient: email, occurrenceKey })) });
   }
 
   /** Runs detached from the request after commit, so it answers nothing and must never reject. */

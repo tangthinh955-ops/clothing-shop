@@ -24,7 +24,8 @@ const order = {
     { id: 'h2', fromStatus: 'PENDING', toStatus: 'CONFIRMED', actorName: 'Admin Thử', reason: 'Đã gọi khách', version: 1, createdAt: '2026-11-01T03:40:00.000Z' },
   ],
   notes: [] as Array<typeof note>,
-  cancellationRequests: [] as Array<{ id: string; status: string; reason: string; createdAt: string; decidedAt: string | null }>,
+  cancellationRequests: [] as Array<{ id: string; status: string; reason: string; createdAt: string; decidedAt: string | null;
+    decisionReason: string | null; decidedById: string | null; decidedByName: string | null }>,
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -422,7 +423,8 @@ describe('packing an order', () => {
 });
 
 describe('a customer request to cancel (M4.4.4)', () => {
-  const waiting = { id: 'r1', status: 'PENDING', reason: 'Tôi đổi ý rồi', createdAt: '2026-11-01T05:00:00.000Z', decidedAt: null };
+  const waiting = { id: 'r1', status: 'PENDING', reason: 'Tôi đổi ý rồi', createdAt: '2026-11-01T05:00:00.000Z', decidedAt: null,
+    decisionReason: null, decidedById: null, decidedByName: null };
   const packing = { ...order, status: 'PACKING', version: 2, cancellationRequests: [waiting] };
 
   it('stands out with its reason and what each button means', async () => {
@@ -430,7 +432,8 @@ describe('a customer request to cancel (M4.4.4)', () => {
     const notice = await screen.findByRole('status', { name: 'Khách xin hủy đơn' });
     expect(notice).toHaveTextContent('Tôi đổi ý rồi');
     expect(notice).toHaveTextContent(/Đồng ý: bấm “Hủy đơn”/);
-    expect(notice).toHaveTextContent(/Không đồng ý: nhắn khách rồi “Bàn giao”/);
+    expect(notice).toHaveTextContent(/Không đồng ý: bấm “Từ chối yêu cầu hủy”/);
+    expect(notice).toHaveTextContent(/hàng vẫn gửi đi thì bấm “Bàn giao”/);
   });
 
   it('warns before handing over that this refuses the request', async () => {
@@ -460,6 +463,130 @@ describe('a customer request to cancel (M4.4.4)', () => {
     expect(record.getByText('Tôi đổi ý rồi')).toBeVisible();
     expect(record.getByText(new RegExp(label))).toBeVisible();
     expect(screen.queryByRole('status', { name: 'Khách xin hủy đơn' })).not.toBeInTheDocument();
+  });
+});
+
+// M4.5.8: refusing the waiting request keeps the order packing — the dialog carries the exact request
+// id and the viewed version, and the record afterwards shows the refusal with its decider.
+describe('refusing a cancellation request (M4.5.8)', () => {
+  const REJECT_REASON = 'Mẫu đặt riêng, không thể hủy giữa chừng';
+  const waiting = { id: 'r1', status: 'PENDING', reason: 'Tôi đổi ý rồi', createdAt: '2026-11-01T05:00:00.000Z', decidedAt: null,
+    decisionReason: null, decidedById: null, decidedByName: null };
+  const packing = { ...order, status: 'PACKING', version: 2, cancellationRequests: [waiting] };
+  const decision = { requestId: waiting.id, decision: 'REJECTED', decidedAt: '2026-11-01T06:00:00.000Z',
+    order: { id: ORDER_ID, code: order.code, status: 'PACKING', version: 3 } };
+  const refused = { ...packing, version: 3, cancellationRequests: [{ ...waiting, status: 'REJECTED',
+    decidedAt: decision.decidedAt, decisionReason: REJECT_REASON, decidedById: 'admin-1', decidedByName: 'Admin Thử' }] };
+
+  function server(): Answer {
+    let current: unknown = packing;
+    return (_url, options) => {
+      if (options?.method !== 'POST') return Promise.resolve(current);
+      current = refused;
+      return Promise.resolve(decision);
+    };
+  }
+  const decisionCalls = (request: ReturnType<typeof renderPage>) =>
+    request.mock.calls.filter(([url]) => String(url).endsWith('/cancellation-decisions'));
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Từ chối yêu cầu hủy' }));
+    return screen.findByRole('dialog', { name: `Từ chối yêu cầu hủy đơn ${order.code}?` });
+  }
+
+  it('offers the refusal only for a packing order with a waiting request', async () => {
+    renderPage(() => Promise.resolve(packing));
+    await screen.findByRole('status', { name: 'Khách xin hủy đơn' });
+    expect(screen.getByRole('button', { name: 'Từ chối yêu cầu hủy' })).toBeVisible();
+  });
+
+  it.each([
+    ['a CONFIRMED', { ...packing, status: 'CONFIRMED' }],
+    ['an order without a waiting request', { ...packing, cancellationRequests: [] }],
+    ['a SHIPPED', { ...packing, status: 'SHIPPED' }],
+  ] as const)('offers no refusal for %s order', async (_label, fixture) => {
+    renderPage(() => Promise.resolve(fixture));
+    await screen.findByRole('heading', { name: order.code, level: 1 });
+    expect(screen.queryByRole('button', { name: 'Từ chối yêu cầu hủy' })).not.toBeInTheDocument();
+  });
+
+  it('says what refusing means, and sends nothing when the admin backs out', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    expect(within(dialog).getByText(/kho và tiền không đổi/)).toBeVisible();
+    expect(within(dialog).getByText(/khách sẽ thấy lý do này/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Để sau' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(decisionCalls(request)).toHaveLength(0);
+  });
+
+  it('asks for a real reason', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do từ chối/), 'ab');
+    await user.click(within(dialog).getByRole('button', { name: 'Từ chối yêu cầu hủy' }));
+    expect(await within(dialog).findByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+    expect(decisionCalls(request)).toHaveLength(0);
+  });
+
+  it('sends the trimmed reason with the exact request id and version, then records the refusal', async () => {
+    const user = userEvent.setup();
+    const request = renderPage(server());
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do từ chối/), `  ${REJECT_REASON}  `);
+    await user.click(within(dialog).getByRole('button', { name: 'Từ chối yêu cầu hủy' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const [call] = decisionCalls(request);
+    expect(call?.[0]).toBe(`/admin/orders/${ORDER_ID}/cancellation-decisions`);
+    expect(call?.[1]).toMatchObject({ method: 'POST', body: { requestId: waiting.id, expectedVersion: 2, decision: 'REJECTED', reason: REJECT_REASON } });
+    expect(call?.[1]?.idempotencyKey).toEqual(expect.any(String));
+    // The order is packing again with no waiting notice; the record holds the refusal and its decider.
+    expect(await screen.findByText(`Lý do từ chối: ${REJECT_REASON}`)).toBeVisible();
+    expect(screen.getByText(/Đã phản hồi .* · Admin Thử/)).toBeVisible();
+    expect(screen.queryByRole('status', { name: 'Khách xin hủy đơn' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bàn giao' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Từ chối yêu cầu hủy' })).not.toBeInTheDocument();
+  });
+
+  it('locks the reason after a lost response and resends the same key and content', async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const request = renderPage((_url, options) => {
+      if (options?.method !== 'POST') return Promise.resolve(packing);
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new client.ApiError('NETWORK_ERROR', 'Không thể kết nối.', 0)) : Promise.resolve(decision);
+    });
+    const dialog = await openDialog(user);
+    const field = within(dialog).getByLabelText(/Lý do từ chối/);
+    await user.type(field, REJECT_REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Từ chối yêu cầu hủy' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Không thể kết nối.');
+    expect(field).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Gửi lại' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const [first, second] = decisionCalls(request);
+    expect(second?.[1]?.idempotencyKey).toBe(first?.[1]?.idempotencyKey);
+    expect(second?.[1]?.body).toEqual(first?.[1]?.body);
+  });
+
+  it('explains a stale version and reloads the order instead of retrying', async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    const request = renderPage((_url, options) => {
+      if (options?.method === 'POST') return Promise.reject(new client.ApiError('CONFLICT', 'Yêu cầu hủy không còn chờ xử lý hoặc không thuộc đơn này. Hãy tải lại đơn.', 409));
+      reads += 1;
+      return Promise.resolve(reads === 1 ? packing : refused);
+    });
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByLabelText(/Lý do từ chối/), REJECT_REASON);
+    await user.click(within(dialog).getByRole('button', { name: 'Từ chối yêu cầu hủy' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Yêu cầu hủy không còn chờ xử lý');
+    expect(within(dialog).queryByRole('button', { name: 'Gửi lại' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Tải lại đơn' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(decisionCalls(request)).toHaveLength(1);
   });
 });
 

@@ -83,6 +83,7 @@ model User {
   orders Order[]
   orderHistory OrderStatusHistory[]
   orderNotes OrderNote[]
+  cancellationDecisions CancellationRequest[]
   @@map("users")
 }
 
@@ -341,7 +342,8 @@ model OrderNote {
 
 // A customer asking to cancel while the order is being packed (M4.4.4). It never changes Order.version or
 // status by itself: the shop answers by cancelling or handing over, which closes it in the same transaction.
-// One PENDING per order is enforced under the order row lock.
+// One PENDING per order is enforced under the order row lock. A refusal (M4.5.8) is decided here too: it
+// keeps the order PACKING and bumps Order.version once, with the reason and decider stored on the row.
 model CancellationRequest {
   id String @id @default(uuid()) @db.Uuid
   orderId String @db.Uuid
@@ -349,6 +351,10 @@ model CancellationRequest {
   reason String @db.VarChar(500)
   status CancellationRequestStatus @default(PENDING)
   decidedAt DateTime? @db.Timestamptz(6)
+  // The shop's answer to a refused request; the customer sees it, only while it is the latest state (M4.5.8).
+  decisionReason String? @db.VarChar(500)
+  decidedById String? @db.Uuid
+  decidedBy User? @relation(fields: [decidedById], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   @@index([orderId, status])
   @@index([status, createdAt])
@@ -357,11 +363,14 @@ model CancellationRequest {
 
 // A mail owed for an order event (M4.10.1.1): written in the order's transaction, sent after commit.
 // The body is rendered at send time and never stored; the unique key is what stops a duplicate.
+// occurrenceKey separates repeated events on one order (M4.5.8): the plain order events stay "order"
+// while each cancellation request owns its id, so a second request gets its own notice.
 model NotificationDelivery {
   id String @id @default(uuid()) @db.Uuid
   event String @db.VarChar(64)
   orderId String @db.Uuid
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  occurrenceKey String @default("order") @db.VarChar(64)
   recipient String @db.VarChar(254)
   status NotificationStatus @default(PENDING)
   attempts Int @default(0)
@@ -370,7 +379,9 @@ model NotificationDelivery {
   sentAt DateTime? @db.Timestamptz(6)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  @@unique([event, orderId, recipient])
+  // The explicit short name stays under PostgreSQL's 63-byte identifier limit; the generated default
+  // for these four columns is 65 bytes and gets truncated in the database, which reads as drift.
+  @@unique([event, orderId, recipient, occurrenceKey], map: "notification_deliveries_event_order_recipient_occurrence_key")
   @@index([status, createdAt])
   @@index([status, nextAttemptAt])
   @@map("notification_deliveries")

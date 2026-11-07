@@ -347,6 +347,132 @@ test('an admin packs a confirmed order and can still cancel it', async ({ page, 
   }
 });
 
+// M4.5.8: the shop refuses the waiting request without moving the order; the customer reads why,
+// asks again, and each ask carries its own shop notice.
+test('an admin refuses a cancellation request, the customer reads why and asks again', async ({ page, browser }, info) => {
+  test.setTimeout(90000);
+  const held = () => db.inventory.findFirstOrThrow({ where: { variant: { productId } }, select: { onHand: true, reserved: true } });
+  const before = await held();
+  const code = await placeCodOrder(page);
+  const orderLink = await page.getByRole('link', { name: 'Xem đơn hàng' }).getAttribute('href');
+  if (!orderLink) throw new Error('The confirmation screen did not link to the order.');
+  const noticeCount = async () => {
+    const directory = path.resolve('../../.local/test-mailbox');
+    const files = await readdir(directory).catch(() => [] as string[]);
+    let count = 0;
+    for (const filename of files) {
+      if (!filename.endsWith('.json')) continue;
+      const value: unknown = await readFile(path.join(directory, filename), 'utf8').then((raw) => JSON.parse(raw) as unknown).catch(() => null);
+      if (value && typeof value === 'object' && 'to' in value && value.to === adminEmail
+        && 'text' in value && typeof value.text === 'string' && value.text.includes(code)) count += 1;
+    }
+    return count;
+  };
+
+  const adminContext = await browser.newContext({ baseURL: info.project.use.baseURL ?? 'http://127.0.0.1:5174',
+    extraHTTPHeaders: info.project.use.extraHTTPHeaders ?? {} });
+  const admin = await adminContext.newPage();
+  try {
+    await login(admin, adminEmail);
+    await admin.goto(`/admin/orders?q=${code}`);
+    await admin.getByRole('link', { name: code, exact: true }).click();
+    await admin.getByRole('button', { name: 'Xác nhận đơn' }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Xác nhận', exact: true }).click();
+    await admin.getByRole('button', { name: 'Đóng gói', exact: true }).click();
+    await admin.getByRole('dialog').getByRole('button', { name: 'Đóng gói', exact: true }).click();
+    await expect(admin.getByRole('region', { name: 'Lịch sử trạng thái' })).toContainText('Đã xác nhận → Đang đóng gói');
+
+    // R1: the customer asks while the order packs.
+    await page.goto(orderLink);
+    await page.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    const askDialog = page.getByRole('dialog');
+    const firstAsk = `Xin hủy lần một ${tag.slice(0, 8)}`;
+    await askDialog.getByLabel(/Lý do xin hủy/).fill(firstAsk);
+    await askDialog.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    await expect(page.getByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    // Two mails so far: the new-order notice and this first ask.
+    await expect.poll(noticeCount, { timeout: 10000 }).toBe(2);
+
+    // The shop refuses instead of handing over: the order stays packing, goods and money untouched.
+    await admin.reload();
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toContainText(firstAsk);
+    await admin.getByRole('button', { name: 'Từ chối yêu cầu hủy', exact: true }).click();
+    const dialog = admin.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Từ chối yêu cầu hủy', exact: true }).click();
+    await expect(dialog.getByText('Nhập lý do từ 3 đến 500 ký tự.')).toBeVisible();
+    await admin.setViewportSize({ width: 390, height: 844 });
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await admin.screenshot({ path: info.outputPath('admin-refuse-dialog-mobile.png'), animations: 'disabled' });
+    await admin.setViewportSize({ width: 1280, height: 720 });
+
+    const refusal = `Mẫu đặt riêng ${tag.slice(0, 8)}`;
+    await dialog.getByLabel(/Lý do từ chối/).fill(refusal);
+    await dialog.getByRole('button', { name: 'Từ chối yêu cầu hủy', exact: true }).click();
+    await expect(admin.getByText(`Lý do từ chối: ${refusal}`)).toBeVisible();
+    const record = admin.getByRole('region', { name: 'Yêu cầu hủy của khách' });
+    await expect(record.getByText(/Không đồng ý/)).toBeVisible();
+    await expect(record.getByText(/Admin đơn thử/)).toBeVisible();
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toHaveCount(0);
+    const history = admin.getByRole('region', { name: 'Lịch sử trạng thái' });
+    await expect(history).not.toContainText('Đang đóng gói → Đang đóng gói');
+    await admin.reload();
+    await expect(admin.getByText(`Lý do từ chối: ${refusal}`)).toBeVisible();
+    expect(await held()).toEqual({ onHand: before.onHand, reserved: before.reserved + 2 });
+    const [refusedRow] = await db.cancellationRequest.findMany({ where: { order: { code } }, orderBy: { createdAt: 'asc' } });
+    expect(refusedRow).toMatchObject({ status: 'REJECTED', decisionReason: refusal });
+    expect(refusedRow.decidedById).toBeTruthy();
+    const refusedOrder = await db.order.findFirstOrThrow({ where: { code }, select: { status: true, version: true, totalVnd: true } });
+    expect({ status: refusedOrder.status, version: refusedOrder.version, totalVnd: Number(refusedOrder.totalVnd) })
+      .toEqual({ status: 'PACKING', version: 3, totalVnd: 430000 });
+    expect(await noticeCount()).toBe(2); // a refusal mails nobody
+
+    // The customer reads the refusal and may ask again; the new ask replaces it as the current state.
+    await page.reload();
+    await expect(page.getByText('Shop chưa đồng ý hủy đơn này.')).toBeVisible();
+    await expect(page.getByText(refusal)).toBeVisible();
+    await page.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    const againDialog = page.getByRole('dialog');
+    const secondAsk = `Xin hủy lần hai ${tag.slice(0, 8)}`;
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath('customer-reask-after-refusal-mobile.png'), animations: 'disabled' });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await againDialog.getByLabel(/Lý do xin hủy/).fill(secondAsk);
+    await againDialog.getByRole('button', { name: 'Xin hủy đơn', exact: true }).click();
+    await expect(page.getByText(/Đã gửi yêu cầu hủy/)).toBeVisible();
+    await expect(page.getByText('Shop chưa đồng ý hủy đơn này.')).toHaveCount(0);
+
+    // R2 stands alone: its own waiting notice on the admin page and its own mail row.
+    await admin.reload();
+    await expect(admin.getByRole('status', { name: 'Khách xin hủy đơn' })).toContainText(secondAsk);
+    await expect.poll(noticeCount, { timeout: 10000 }).toBe(3);
+    const rows = await db.cancellationRequest.findMany({ where: { order: { code } }, orderBy: { createdAt: 'asc' } });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ status: 'REJECTED', decisionReason: refusal });
+    expect(rows[1]).toMatchObject({ status: 'PENDING', reason: secondAsk, decisionReason: null });
+    const notices = await db.notificationDelivery.findMany({ where: { order: { code }, event: 'order.cancel-requested.shop' } });
+    expect(notices.map((row) => row.occurrenceKey).sort()).toEqual([rows[0]!.id, rows[1]!.id].sort());
+    await expect.poll(() => Promise.all(notices.map(async (row) =>
+      (await db.notificationDelivery.findUniqueOrThrow({ where: { id: row.id }, select: { status: true } })).status)), { timeout: 10000 })
+      .toEqual(['SENT', 'SENT']);
+
+    // The full circle: this time the shop agrees, cancelling through the second request (M4.5.7 path).
+    await admin.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    const cancelDialog = admin.getByRole('dialog');
+    await cancelDialog.getByLabel(/Lý do hủy/).fill(`Đồng ý lần hai ${tag.slice(0, 8)}`);
+    await cancelDialog.getByRole('button', { name: 'Hủy đơn', exact: true }).click();
+    await expect(history).toContainText('Đang đóng gói → Đã hủy');
+    expect(await held()).toEqual(before);
+    const [approved] = await db.cancellationRequest.findMany({ where: { order: { code }, status: 'APPROVED' } });
+    expect(approved).toMatchObject({ id: rows[1]!.id, decisionReason: null });
+    expect(approved.decidedById).toBeTruthy();
+    await page.reload();
+    await expect(page.getByText('Đã hủy').first()).toBeVisible();
+  } finally {
+    await adminContext.close();
+  }
+});
+
 // M4.5.5: handing over takes the goods out of stock once, ends the way to cancel and tells the customer the tracking number.
 test('an admin hands a packed order over, which takes it out of stock', async ({ page, browser }, info) => {
   test.setTimeout(60000);

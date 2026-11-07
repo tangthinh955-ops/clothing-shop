@@ -118,7 +118,17 @@ export function OrderDetailPage() {
             Đã gửi yêu cầu hủy lúc {ENTRY_TIME.format(new Date(query.data.order.cancellationRequest.createdAt))}. Đơn chưa bị hủy, shop sẽ xử lý yêu cầu này.
             <Typography variant="body2">Lý do: {query.data.order.cancellationRequest.reason}</Typography>
           </Alert>
-          : <OrderCancelRequestAction code={query.data.order.code} token={token} onChanged={() => query.refetch()} />}
+          : <>
+            {/* The refusal shows only while it is the latest answer; asking again replaces it (M4.5.8). */}
+            {query.data.order.cancellationDecision && <Alert severity="warning" role="status" sx={{ width: '100%', overflowWrap: 'anywhere' }}>
+              <Typography sx={{ fontWeight: 600 }}>Shop chưa đồng ý hủy đơn này.</Typography>
+              <Typography sx={{ whiteSpace: 'pre-line' }}>Lý do: {query.data.order.cancellationDecision.reason}</Typography>
+              <Typography variant="body2">
+                Phản hồi lúc {ENTRY_TIME.format(new Date(query.data.order.cancellationDecision.decidedAt))}. Đơn vẫn đang được đóng gói; nếu vẫn muốn hủy, bạn có thể gửi yêu cầu mới.
+              </Typography>
+            </Alert>}
+            <OrderCancelRequestAction code={query.data.order.code} token={token} onChanged={() => query.refetch()} />
+          </>}
         <Typography variant="body2">
           Đơn đang được đóng gói nên không tự hủy được nữa. Nếu cần gấp, hãy nhắn shop qua Instagram{' '}
           <Link href={seller.instagram.url} target="_blank" rel="noopener noreferrer" underline="always">@{seller.instagram.handle}</Link>.

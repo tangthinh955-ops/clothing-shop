@@ -55,13 +55,14 @@ export class AdminOrdersService {
           actor: { select: { name: true } } }, orderBy: [{ createdAt: 'asc' }, { version: 'asc' }] },
         notes: { select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-        cancellationRequests: { select: { id: true, status: true, reason: true, createdAt: true, decidedAt: true },
+        cancellationRequests: { select: { id: true, status: true, reason: true, createdAt: true, decidedAt: true,
+          decisionReason: true, decidedById: true, decidedBy: { select: { id: true, name: true } } },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
       },
     });
     if (!order) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Không tìm thấy đơn hàng.' });
     const { recipientName, phone, email, province, district, ward, addressLine, note, subtotalVnd, shippingFeeVnd, totalVnd,
-      items, history, notes, ...rest } = order;
+      items, history, notes, cancellationRequests, ...rest } = order;
     return {
       ...rest,
       recipient: { name: recipientName, phone, email },
@@ -73,6 +74,9 @@ export class AdminOrdersService {
       items: items.map((item) => ({ ...item, unitPriceVnd: Number(item.unitPriceVnd), lineTotalVnd: Number(item.lineTotalVnd) })),
       history: history.map(({ actor, actorType, ...entry }) => ({ ...entry, actorName: actor?.name ?? ACTOR_FALLBACK_NAMES[actorType] })),
       notes: notes.map(({ author, ...entry }) => ({ ...entry, authorName: author.name })),
+      // Only the admin sees who decided a cancellation request; the customer view never carries this.
+      cancellationRequests: cancellationRequests.map(({ decidedBy, ...request }) => ({
+        ...request, decidedByName: decidedBy?.name ?? null })),
     };
   }
 

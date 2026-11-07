@@ -2,6 +2,97 @@
 
 Kế hoạch: [docs/plan.md](docs/plan.md). Cập nhật theo kết quả thật, không ghi pass cho việc chưa chạy.
 
+## Ngày 07/11/2026 — M4.5.8.1: Sửa hai lỗi P2 sau review M4.5.8
+
+**Phạm vi đã duyệt:** người dùng giao sửa hai lỗi P2 nêu ở mục review 05/11, giữ nguyên thay đổi M4.5.8. Tiếp tục nhánh `feat/m4.5.8-cancellation-decisions`. **Đã sửa, agent đã kiểm tra local; đã commit và push theo yêu cầu người dùng.**
+
+**Lỗi 1 — test tranh chấp kỳ vọng cứng `REJECTED` (dòng 244, review tái hiện "expected REJECTED, received APPROVED", hai spec 53/54):** assertion trạng thái yêu cầu giờ suy từ bên thắng thật — từ chối thắng hoặc bàn giao thắng → `REJECTED`; hủy thắng → `APPROVED`. Bổ sung kiểm kho theo lệnh thắng: từ chối thắng → kho nguyên `{onHand:5, reserved:2}`, 0 biến động kho; bàn giao thắng → `{onHand:3, reserved:0}`, 1 biến động; hủy thắng → `{onHand:5, reserved:0}`, 1 biến động. Không sleep/không phụ thuộc scheduler: bên thắng do khóa hàng quyết định, assertion suy từ kết quả quan sát; ba kết quả đóng yêu cầu (APPROVED, REJECTED qua bàn giao, REJECTED qua từ chối) vẫn được phủ deterministic ở các test tuần tự khác. Giữ nguyên: cùng expectedVersion chỉ một lệnh 200, bên kia 409; version đúng +1; không còn PENDING.
+
+**Lỗi 2 — drift tên index thông báo:** tên generated cho unique `(event, orderId, recipient, occurrenceKey)` dài 65 byte, vượt giới hạn định danh 63 byte của PostgreSQL nên DB lưu tên cắt cụt `notification_deliveries_event_orderId_recipient_occurrenceKey_k` trong khi schema mong tên đầy đủ — `migrate diff` báo lệch vĩnh viễn. Bản sửa theo phương án đã thống nhất: `schema.prisma` đặt `map: "notification_deliveries_event_order_recipient_occurrence_key"` (tên ngắn tường minh); migration mới `202611050002_fix_cancellation_notice_index` chỉ `ALTER INDEX ... RENAME` từ tên bị cắt sang tên map; **không sửa** migration `202611050001` đã áp dụng. Cột, dữ liệu, trạng thái thư và bộ đếm retry không đổi.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/test/order-cancellation-decisions.integration.spec.ts` | Assertion tranh chấp theo bên thắng + kiểm kho/biến động kho theo lệnh thắng; nhận xét giải thích |
+| `apps/backend/prisma/schema.prisma` | `@@unique` 4 cột đặt `map` tên ngắn dưới 63 byte |
+| `apps/backend/prisma/migrations/202611050002_fix_cancellation_notice_index/migration.sql` (mới) | Đổi tên index sang tên map; không đụng nội dung migration cũ |
+
+**Kiểm tra (lượt mới sau sửa):**
+- Hai spec quyết định + xin hủy qua DB `_test` mới do runner tự tạo và xóa: **54/54** (25 + 29) — thay thế kết quả 53/54 của review.
+- Probe `.local/probe-m4581/probe.mjs` (ngoài Git, không commit) trên DB `_test` run-owned mới: áp đủ 8 migration → `prisma migrate diff --from-config-datasource --to-schema` **"No difference detected"** (exit 0); đường nâng cấp từ trạng thái trước migration đổi tên (index cắt cụt 63 byte + một dòng thông báo thử `attempts=2`): dòng và bộ đếm giữ nguyên, index thành tên map, unique vẫn chặn trùng `occurrenceKey` (23505) và vẫn cho occurrence khác. DB test do runner dọn sạch.
+- DB local `clothing_local`: `db:migrate` áp `202611050002`; `pg_indexes` xác nhận index đã mang tên map.
+- `./tools/npm.ps1 run typecheck` 0 lỗi; `./tools/npm.ps1 run build` đạt (cả hai workspace).
+
+**Giới hạn:** không đổi code sản phẩm hay nghiệp vụ; hai khoảng trống test review nêu (nâng migration trên dữ liệu có sẵn đã phủ bằng probe; retry worker theo occurrence và lookup sau quyết định vẫn chưa có ca chuyên biệt mới — ngoài phạm vi M4.5.8.1). Chưa chạy CI/deploy; đã commit và push theo yêu cầu người dùng.
+
+**Còn lại:** người dùng chạy thử lại luồng M4.5.8 nếu muốn; DB đã chạy `db:migrate` hôm 05/11 không cần migrate lại (migration đổi tên đã áp trong phần này). Nhánh `feat/m4.5.8-cancellation-decisions` đã push lên remote. Phản hồi rồi mới chuyển phần tiếp theo.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
+## Ngày 05/11/2026 — Review M4.5.8: còn hai lỗi P2
+
+- Phạm vi: review toàn bộ thay đổi chưa commit trên `feat/m4.5.8-cancellation-decisions`, nền `54ac283`, đối chiếu yêu cầu đã duyệt và tiêu chuẩn repo. Không sửa code sản phẩm, migration hoặc test trong lượt review; không commit/push.
+- **P2 — test tranh chấp sai kỳ vọng:** `apps/backend/test/order-cancellation-decisions.integration.spec.ts:244` luôn đòi request thành `REJECTED`, trong khi lệnh `cancel` thắng phải đóng yêu cầu thành `APPROVED`. Test chấp nhận hai bên tranh chấp thắng tại phần kiểm status nhưng assertion cuối loại bỏ một kết quả hợp lệ; có thể làm CI lỗi theo lịch lấy khóa. Đã tái hiện trên PostgreSQL thật: expected REJECTED, received APPROVED.
+- **P2 — tên index migration gây schema drift:** tên literal ở `apps/backend/prisma/migrations/202611050001_m4_cancellation_decisions/migration.sql:12` dài 65 byte; PostgreSQL lưu `notification_deliveries_event_orderId_recipient_occurrenceKey_k`, Prisma schema mong `notification_deliveries_event_orderId_recipient_occurrenceK_key`. Đã áp toàn bộ migration vào DB run-owned `_test` mới và chạy `migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --script`: sinh `ALTER INDEX ... RENAME TO ...`, xác nhận drift. Cần thống nhất tên ngắn giữa schema/migration và xác định migration đã áp ở đâu trước khi chọn cách sửa lịch sử.
+- **Kiểm tra mới:** frontend qua `./tools/npm.ps1 -NpmArguments @('run','test','--workspace=@clothing/frontend','--','src/features/orders','src/features/admin/orders','--maxWorkers=2')` đạt **6 file / 185 test**; `./tools/npm.ps1 run typecheck` đạt cả hai workspace. Integration hai spec `order-cancellation-decisions` + `order-cancellation-requests` qua script npm backend đạt **53/54**: spec mới **24/25**, spec cũ **29/29**, lỗi đúng assertion race nêu trên. Backend được build lại trước integration; không chạy lại E2E/full suite trong lượt review này. Kết quả cũ trong mục triển khai bên dưới không thay thế kết quả review mới.
+- Review độc lập chưa thấy lỗi nghiệp vụ mới khác trong kiểm quyền, khóa/version, replay, giữ kho/tiền hoặc allowlist danh tính nhân viên. Còn khoảng trống test: nâng migration trên dữ liệu có sẵn, retry worker theo từng occurrence và lookup sau quyết định chưa có ca mới chuyên biệt. DB review và DB integration đã được runner dọn; script/SQL kiểm chứng tạm ngoài Git đã gỡ.
+- **Điểm dừng:** bàn giao hai lỗi P2 để sửa trong M4.5.8, chưa chốt phần hoặc bắt đầu phần tiếp theo.
+
+## Ngày 05/11/2026 — M4.5.8: Admin từ chối yêu cầu hủy khi đơn đang đóng gói
+
+**Phạm vi đã duyệt:** người dùng giao triển khai M4.5.8 trực tiếp với phạm vi chi tiết trong chat (không cần duyệt lại kế hoạch đã duyệt ngày 04/11). Nhánh mới `feat/m4.5.8-cancellation-decisions` từ `origin/main` `54ac283`, giữ nguyên thay đổi progress.md chưa commit của người dùng. **Đã viết code, agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu; chưa commit/push.**
+
+**Các thay đổi chính:**
+- Endpoint `POST /admin/orders/:id/cancellation-decisions` (session ADMIN + CSRF + `Idempotency-Key`, body `{requestId, expectedVersion, decision:"REJECTED", reason}` 3–500 ký tự sau trim): dưới khóa hàng `FOR UPDATE` kiểm `expectedVersion`, trạng thái `PACKING` và `requestId` phải thuộc đúng đơn còn `PENDING`, rồi ghi `REJECTED` + `decisionReason` + `decidedAt` + `decidedById` lên `CancellationRequest`, tăng `Order.version` một lần — không đổi trạng thái, không dòng lịch sử `PACKING → PACKING`, kho/tiền không đổi. Lệnh này nằm trong `OrderCancellationRequestsService` (vòng đời yêu cầu), không đi qua `OrderTransitionRunner`; scope `orders.cancellation-decision`, replay lưu response, cùng key khác nội dung → 409.
+- `closePending` (hủy/bàn giao đóng yêu cầu) giờ ghi thêm `decidedById` của admin.
+- View khách (`GET /orders/:code`, lookup): thêm `cancellationDecision` `{status:"REJECTED",reason,decidedAt}` cho lần từ chối mới nhất, chỉ khi đơn còn `PACKING` và chưa có yêu cầu chờ mới; parser dựng tường minh từng trường nên danh tính nhân viên không thể lọt. View admin thêm `decisionReason`, `decidedById`, `decidedByName` trên từng yêu cầu.
+- Thư báo shop: `notification_deliveries` thêm `occurrenceKey` (mặc định `order`; thư xin hủy dùng id yêu cầu) vào khóa unique — mỗi lần xin hủy có thư riêng, replay/retry cùng yêu cầu không nhân đôi; nội dung thư xin hủy nhắc nút "Từ chối yêu cầu hủy".
+- UI admin: nút "Từ chối yêu cầu hủy" chỉ hiện khi đơn PACKING có yêu cầu PENDING, dùng lại `OrderInputAction` (chống gửi lặp, khóa nội dung khi mất mạng, gửi lại cùng key), gửi đúng `requestId`/`version`; mục "Yêu cầu hủy của khách" hiện lý do từ chối, thời điểm, người quyết.
+- UI khách: cảnh báo "Shop chưa đồng ý hủy đơn này." kèm lý do/thời điểm khi bị từ chối, vẫn cho "Xin hủy đơn" lại; khi có yêu cầu chờ mới, cảnh báo cũ ẩn.
+
+| File | Thay đổi |
+|---|---|
+| `apps/backend/prisma/schema.prisma`, `apps/backend/prisma/migrations/202611050001_m4_cancellation_decisions/migration.sql` (mới) | Thêm `decisionReason`, `decidedById` (FK users) trên `cancellation_requests`; `occurrenceKey` trên `notification_deliveries` + đổi unique sang 4 cột (DROP INDEX rồi tạo lại vì unique cũ là index thuần). Migration mới, không sửa migration cũ |
+| `apps/backend/src/modules/orders/dto/cancellation-decision.dto.ts` (mới) | DTO: `requestId` UUID, `decision` chỉ nhận `REJECTED`, `reason` 3–500, kế thừa `expectedVersion` |
+| `apps/backend/src/modules/orders/order-cancellation-requests.service.ts` | Thêm lệnh `reject` (transaction riêng: idempotency → khóa đơn → kiểm version/trạng thái/yêu cầu → ghi quyết định + tăng version + ghi idempotency); `submit` truyền `occurrenceKey` = id yêu cầu khi enqueue thư; `closePending` nhận `decidedById` |
+| `apps/backend/src/modules/orders/admin-orders.controller.ts` | Kết nối endpoint mới, controller chỉ xử lý HTTP |
+| `apps/backend/src/modules/orders/admin-order-transitions.service.ts` | `cancel`/`ship` truyền `actorId` vào `closePending` để audit người quyết |
+| `apps/backend/src/modules/orders/order-notifications.service.ts` | `enqueue` nhận `occurrenceKey` (mặc định `order`); cập nhật thư xin hủy nhắc thao tác từ chối |
+| `apps/backend/src/modules/orders/order-access.service.ts` | Projection khách thêm `cancellationDecision` (allowlist, dựng tường minh, giấu nhân viên) |
+| `apps/backend/src/modules/orders/admin-orders.service.ts` | Projection admin thêm metadata quyết định (`decisionReason`, `decidedById`, `decidedByName`) |
+| `apps/frontend/src/features/orders/api/orders.api.ts`, `orders.api.test.ts` | Kiểu + parser runtime cho `cancellationDecision` (từ chối payload thiếu/sai trường, không echo trường lạ) + test |
+| `apps/frontend/src/features/orders/pages/OrderDetailPage.tsx`, `OrderDetailPage.test.tsx`, `OrderLookupPage.test.tsx` | Cảnh báo từ chối + xin hủy lại; test hiển thị/ẩn đúng trạng thái; fixture tra cứu thêm `cancellationDecision: null` theo view mới |
+| `apps/frontend/src/features/admin/orders/api/admin-orders.api.ts` | Kiểu metadata quyết định + `rejectCancellationRequest` |
+| `apps/frontend/src/features/admin/orders/components/OrderActions.tsx` | Nút "Từ chối yêu cầu hủy" với điều kiện đúng trạng thái/yêu cầu |
+| `apps/frontend/src/features/admin/orders/pages/AdminOrderDetailPage.tsx`, `AdminOrderDetailPage.test.tsx` | Cảnh báo chờ xử lý nhắc nút mới; lịch sử yêu cầu hiện lý do từ chối + người quyết; test mới cho M4.5.8 |
+| `apps/frontend/e2e/admin-orders.spec.ts` | E2E vòng đầy đủ: R1 → từ chối (kho/tiền/kiểm DB) → khách thấy lý do → R2 → 2 thư riêng occurrenceKey → admin đồng ý R2 |
+| `apps/backend/test/order-cancellation-decisions.integration.spec.ts` (mới) | 25 ca: quyền/CSRF/validation, sai trạng thái/yêu cầu, idempotency + replay, reject×2/reject×ship/reject×cancel đồng thời, vòng đầy đủ R1→từ chối→R2→thư riêng, kho/tiền/audit |
+| `docs/m4-contract.md`, `docs/m4-implementation-plan.md`, `docs/plan.md`, `docs/local-trial-m4.md` | Cập nhật hợp đồng endpoint + view, trạng thái triển khai, hướng dẫn chạy thử M4.5.8 |
+
+**Data flow:** Admin mở đơn PACKING có yêu cầu PENDING → nhập lý do → FE gửi `POST /admin/orders/:id/cancellation-decisions` (CSRF, `Idempotency-Key`, `requestId`+`expectedVersion`) → service khóa dòng `orders`, kiểm version/trạng thái/requestId còn PENDING → ghi REJECTED + metadata lên `cancellation_requests`, tăng `orders.version` trong cùng transaction (không đổi kho/tiền/lịch sử) → trả `{requestId, decision, decidedAt, order}` → khách GET đơn thấy `cancellationDecision` (lý do + thời điểm, không có tên nhân viên) và bấm xin hủy lại → `POST /orders/:code/cancellation-requests` tạo R2 mới với thư shop riêng theo `occurrenceKey`.
+
+**Kiểm tra:**
+- **RED trước sửa:** spec integration mới chạy trước khi implement — 25/25 fail đúng dự kiến (endpoint 404, thiếu `cancellationDecision`).
+- **Integration M4.5.8:** `order-cancellation-decisions.integration.spec.ts` đạt **25/25** (chạy 2 lần liên tiếp sau khi xanh).
+- **Integration toàn bộ backend qua `./tools/npm.ps1 run test:integration`:** lần 1 có 3 fail là assertion cũ khẳng định đúng bộ khóa response mà phần này mở rộng hợp lệ (view khách thêm `cancellationDecision`, view admin thêm metadata quyết định) — đã cập nhật 3 assertion trong `order-access`, `order-lookup`, `order-cancellation-requests` spec; lần 2 còn `import-products` timeout hook 30s do máy đang chạy việc khác; lần 3 trên máy rảnh đạt **20/20 file, 345/345 test**.
+- **Unit backend:** 74/74 đạt. **Unit/frontend (3 file đụng):** parser + trang khách 66/66, trang admin 91/91 đạt.
+- **Unit frontend toàn bộ:** lần 1: 553/560 — 5 fail là fixture `OrderLookupPage.test.tsx` thiếu trường mới của view (đã sửa, chạy riêng đạt), 2 fail `App.test.tsx`; lần 2: 558/560 — còn `App.test.tsx > redirects an unauthenticated account request to login` và `AdminOrderDetailPage.test.tsx > shows the snapshot an admin works from` fail khi chạy 42 worker song song, **chạy riêng 2 file đạt 103/103**; đúng dạng flake song song đã ghi nhận ngày 02/11, không nằm ở test mới của M4.5.8.
+- **E2E:** `node tools/test-e2e.mjs admin-orders.spec.ts` đạt **6/6** (1,4 phút), gồm test mới vòng đầy đủ R1→từ chối→R2→đồng ý; runner tự build và dùng DB `_test` riêng rồi xóa.
+- **Typecheck:** `./tools/npm.ps1 run typecheck` đạt 0 lỗi (cả hai workspace). **Build:** `./tools/npm.ps1 run build` đạt.
+- Kiểm tra hồi quy cũ: spec M4.4.4 `order-cancellation-requests.integration.spec.ts` đạt 29/29 sau thay đổi.
+
+**Giới hạn:** từ chối không gửi thư cho ai (chỉ thư xin hủy có sẵn); tên/ID nhân viên chỉ ở API admin; quyết định cũ ẩn khi khách gửi yêu cầu mới; dữ liệu từ chối kiểu cũ (bàn giao trước M4.5.8) không có lý do nên không hiện cảnh báo cho khách. Chưa làm M4.6/M4.9. **Chưa chạy:** CI, deploy — không tự commit/push.
+
+**Còn lại:** người dùng chạy thử theo [docs/local-trial-m4.md](docs/local-trial-m4.md) § M4.5.8 (chạy `./tools/npm.ps1 run db:migrate` trước), phản hồi rồi mới chuyển phần tiếp theo.
+
+**Dừng chờ người dùng chạy thử; chưa bắt đầu phần tiếp theo.**
+
+## Ngày 04/11/2026 — Lập kế hoạch M4.5.8 (chờ duyệt)
+
+- Người dùng yêu cầu tiếp tục kế hoạch M4.5.8 sau khi đối chiếu Git và các phần M4 còn thiếu. Đã khảo sát code xin hủy, xử lý admin, view khách và thông báo; chưa sửa code sản phẩm/schema hoặc chạy migration/test.
+- Kế hoạch M4.5.8 được trình bày trong chat, không tạo tệp kế hoạch riêng theo yêu cầu người dùng. Phạm vi một vòng đầy đủ: admin từ chối đúng yêu cầu với lý do, khách thấy quyết định và xin hủy lại, thông báo shop chống trùng theo từng lần. Đơn vẫn PACKING, kho/tiền giữ nguyên.
+- Đề xuất kỹ thuật chờ duyệt: quyết định gắn requestId + expectedVersion; tăng Order.version để tranh chấp với bàn giao/hủy chỉ một bên thắng; audit quyết định trên CancellationRequest; khóa NotificationDelivery thêm occurrenceKey để yêu cầu mới có thông báo riêng.
+- Kiểm tra ở bước lập kế hoạch: đối chiếu code/contract và rà nội dung kế hoạch. Chưa có kết quả triển khai hoặc nghiệm thu M4.5.8. Người dùng yêu cầu lập kế hoạch chung trong chat; chỉ soạn prompt hoặc giao riêng Antigravity khi người dùng yêu cầu. Dừng chờ duyệt kế hoạch trong chat.
+
 ## Ngày 02/11/2026 — M4.3.2.1: Sửa lỗi P2 theo dõi wardInput khi xóa lỗi server và cập nhật hợp đồng địa chỉ
 
 **Phạm vi đã duyệt:** người dùng duyệt kế hoạch ("chạy đi"). Tiếp tục trên nhánh `feat/checkout-ward-picker` từ commit `b9152d4`. **Đã viết code và agent đã kiểm tra local; người dùng chưa chạy thử/nghiệm thu.** Chỉ frontend + test/tài liệu; không đổi backend/API/DB, không migration, không thêm dependency, không commit/push/merge/deploy. Giữ nguyên key/body và cơ chế chống đặt trùng.

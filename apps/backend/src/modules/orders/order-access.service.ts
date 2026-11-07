@@ -44,6 +44,8 @@ export interface OrderDetailView {
   items: OrderDetailItemView[]; subtotal: number; shippingFee: number; total: number;
   recipient: OrderDetailRecipientView; trackingNumber: string | null; deliveredAt: string | null;
   cancellationRequest: { status: 'PENDING'; reason: string; createdAt: string } | null;
+  // The latest refusal, only while it is still the order's current state (M4.5.8): packing, no newer ask.
+  cancellationDecision: { status: 'REJECTED'; reason: string; decidedAt: string } | null;
 }
 
 export interface OrderDetailTimelineView {
@@ -64,8 +66,10 @@ const ORDER_DETAIL_SELECT = {
     unitPriceVnd: true, quantity: true, lineTotalVnd: true } },
   history: { select: { fromStatus: true, toStatus: true, actorType: true, reason: true, version: true,
     createdAt: true }, orderBy: [{ version: 'asc' }, { createdAt: 'asc' } as const] },
-  // Only a waiting request: once the shop answers, the order's own status tells the customer the outcome.
-  cancellationRequests: { where: { status: 'PENDING' }, select: { reason: true, createdAt: true }, take: 1 },
+  // The waiting request while there is one, plus the rows needed to find the latest refusal (M4.5.8);
+  // decided rows carry no staff data here — only the customer-facing reason and time are projected.
+  cancellationRequests: { select: { status: true, reason: true, decisionReason: true, createdAt: true, decidedAt: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
 } satisfies Prisma.OrderSelect;
 
 type OrderDetailRow = Prisma.OrderGetPayload<{ select: typeof ORDER_DETAIL_SELECT }>;
@@ -73,7 +77,11 @@ type OrderDetailRow = Prisma.OrderGetPayload<{ select: typeof ORDER_DETAIL_SELEC
 /** Explicit allowlist projection (m4-contract §5): item/recipient/money snapshots from the order
  * row, never product names, stock, settings or the internal identifiers. */
 function projectOrderDetail(order: OrderDetailRow): OrderDetailResult {
-  const [waiting] = order.cancellationRequests;
+  const waiting = order.cancellationRequests.findLast((request) => request.status === 'PENDING') ?? null;
+  // The refusal is only the order's current state while it still packs and no newer ask replaced it;
+  // legacy rows decided before M4.5.8 carry no reason and are left out rather than shown half-answered.
+  const refusal = order.cancellationRequests.findLast((request) =>
+    request.status === 'REJECTED' && request.decisionReason !== null && request.decidedAt !== null) ?? null;
   return {
     order: {
       code: order.code, status: order.status as CustomerOrderStatus,
@@ -87,6 +95,9 @@ function projectOrderDetail(order: OrderDetailRow): OrderDetailResult {
         district: order.district, ward: order.ward, addressLine: order.addressLine, note: order.note },
       trackingNumber: order.trackingNumber, deliveredAt: order.deliveredAt?.toISOString() ?? null,
       cancellationRequest: waiting ? { status: 'PENDING', reason: waiting.reason, createdAt: waiting.createdAt.toISOString() } : null,
+      cancellationDecision: order.status === 'PACKING' && !waiting && refusal
+        ? { status: 'REJECTED', reason: refusal.decisionReason!, decidedAt: refusal.decidedAt!.toISOString() }
+        : null,
     },
     timeline: order.history.map((row) => ({ fromStatus: row.fromStatus as CustomerOrderStatus | null,
       toStatus: row.toStatus as CustomerOrderStatus, actorLabel: ACTOR_LABELS[row.actorType],

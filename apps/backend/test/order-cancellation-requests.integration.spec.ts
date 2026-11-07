@@ -154,7 +154,8 @@ describe('POST /orders/:code/cancellation-requests (M4.4.4)', () => {
     expect((await send(order.code, order.token, { reason: REASON })).status).toBe(201);
     const detail = await admin.get(`/api/v1/admin/orders/${order.id}`).expect(200);
     expect((detail.body as { cancellationRequests: unknown[] }).cancellationRequests)
-      .toEqual([{ id: expect.any(String), status: 'PENDING', reason: REASON, createdAt: expect.any(String), decidedAt: null }]);
+      .toEqual([{ id: expect.any(String), status: 'PENDING', reason: REASON, createdAt: expect.any(String), decidedAt: null,
+        decisionReason: null, decidedById: null, decidedByName: null }]);
     const list = await admin.get('/api/v1/admin/orders').query({ q: order.code }).expect(200);
     expect((list.body as { items: Array<Record<string, unknown>> }).items[0]).toMatchObject({ code: order.code, hasPendingCancellationRequest: true });
     const other = await admin.get('/api/v1/admin/orders').query({ q: quiet.code }).expect(200);
